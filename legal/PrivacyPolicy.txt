@@ -1,0 +1,45 @@
+Keyquorum Vault – Privacy Policy
+Effective date: September 2025
+
+1. Introduction
+Keyquorum Vault is a secure password and data management application developed by AJH Software (Anthony Hatton). This policy explains how user information is handled.
+- Keyquorum Vault does not require an online account to use the app. If paid features are introduced later, payment processing will be handled by the store or payment provider and described in an updated policy.
+
+2. Data Storage
+- All vault contents, authentication secrets, and settings are stored locally on the user’s device.
+- No vault data is transmitted to AJH Software or any third party.
+- Users may optionally export encrypted backups for their own storage; AJH Software does not have access to these files.
+
+3. Data Collection
+- Keyquorum Vault does not collect, track, or transmit personal data.
+- No analytics, telemetry, or advertising frameworks are included in the application.
+- The only information we may collect is non-identifying technical logs if a user voluntarily submits them for support.
+
+4. Security
+- Vault data is encrypted using industry-standard algorithms (AES-GCM with Argon2id key derivation).
+- Optional Two-Factor Authentication (2FA) is supported.
+- Clipboard operations are temporary and cleared automatically.
+
+5. Third-Party Services
+- Keyquorum Vault does not rely on cloud services to store user secrets.
+- If the user enables breach checks (HaveIBeenPwned API), only partial, anonymized hashes are sent to the API provider.
+
+6. Responsibility
+- Users are responsible for safeguarding their master password, recovery keys, and backup codes.
+- AJH Software cannot restore access to vault data if a user loses their master password without recovery enabled.
+
+7. Children’s Privacy
+- Keyquorum Vault is not directed at children under 13.
+- We do not knowingly collect data from minors.
+
+8. Changes to This Policy
+- Updates to this policy will be published at https://ajhsoftware.uk/
+- Continued use of the software after changes constitutes acceptance.
+- If we add paid features or new processors (e.g., a payment provider), we will update this policy before the change takes effect.
+
+9. Contact
+For privacy-related questions or support, contact:
+Anthony Hatton (AJH Software)
+Website: https://www.ajhsoftware.uk/
+Help/Support/contact at: https://www.ajhsoftware.uk/keyquorum/kqhelp
+

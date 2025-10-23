@@ -1,0 +1,84 @@
+Keyquorum Vault — End User License Agreement (EULA)
+Copyright © 2025 Anthony Hatton (trading as “AJH Software”). All rights reserved.
+
+IMPORTANT: PLEASE READ THIS AGREEMENT CAREFULLY. BY INSTALLING OR USING THE APPLICATION,
+YOU AGREE TO BE BOUND BY THESE TERMS. IF YOU DO NOT AGREE, DO NOT INSTALL OR USE IT.
+
+0. Licensor
+“Licensor”, “we”, “us” means Anthony Hatton, trading as “AJH Software”. You may contact us at
+the support link shown in the Application (or support@ajhsoftware.uk).
+
+1. License Grant
+We license you a non-exclusive, non-transferable, revocable license to install and use the
+Keyquorum Vault application (“Application”) for your personal or internal business purposes.
+
+2. Ownership
+The Application (excluding third‑party open‑source components listed in the licenses/ folder)
+is licensed, not sold, and remains our property.
+
+3. Restrictions
+Except as expressly permitted by this EULA or by applicable law, you will not copy, publish,
+sublicense, rent, lease, or distribute the Application, or modify, reverse‑engineer, decompile,
+or disassemble any proprietary part of it. This Section does not limit any rights you have under
+third‑party open‑source licenses used by the Application or rights you have that cannot be
+limited by law. To the extent required to exercise rights under such licenses (e.g., the LGPL),
+reverse engineering for purposes of debugging such modifications is permitted.
+
+4. Third‑Party Open‑Source Components (LGPL, etc.)
+The Application includes third‑party components under their own licenses. Full texts are bundled
+in the Application at: licenses/SPDX_LICENSES/ and originals under licenses/SPDX_LICENSES/vendors/.
+Notices appear in licenses/THIRD_PARTY_NOTICES.txt. In particular, the Application uses PySide6
+(Qt for Python) under LGPL‑3.0‑only. You may replace the LGPL libraries with compatible versions.
+Nothing in this EULA is intended to limit rights you have under those third‑party licenses.
+
+5. Security, Keys, and Data Responsibility
+You are solely responsible for safeguarding your master password, recovery keys, 2FA tokens,
+backup codes, and any exports. We cannot access or recover your vault if you lose the
+necessary credentials. You should maintain secure, offline backups appropriate to your risk tolerance.
+
+6. No Warranty
+THE APPLICATION IS PROVIDED “AS IS” AND “AS AVAILABLE,” WITHOUT WARRANTIES OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON‑INFRINGEMENT. YOUR USE IS AT YOUR SOLE RISK.
+Some jurisdictions do not allow exclusion of certain warranties; to the extent such laws apply,
+these disclaimers will apply only to the maximum extent permitted.
+
+7. Limitation of Liability
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, WE WILL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL,
+SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES; LOSS OF PROFITS; LOSS OF DATA; SECURITY
+BREACHES; UNAUTHORIZED ACCESS; OR COSTS OF SUBSTITUTE GOODS OR SERVICES, ARISING OUT OF OR
+RELATED TO THE APPLICATION OR THIS EULA, EVEN IF ADVISED OF THE POSSIBILITY. OUR TOTAL LIABILITY
+FOR ALL CLAIMS WILL NOT EXCEED THE AMOUNT YOU PAID (IF ANY) FOR THE APPLICATION IN THE 12 MONTHS
+PRECEDING THE CLAIM. Nothing in this EULA limits or excludes liability for fraud or for death or
+personal injury resulting from negligence, to the extent such limitation is prohibited by law.
+
+8. Consumers — Statutory Rights (UK/EU)
+If you are a consumer, nothing in this EULA affects your statutory rights. For paid digital
+content supplied by download, you may have a 14‑day right to cancel under applicable law; if you
+request/consent to immediate supply and we begin the download, you may lose that right. Refunds,
+if any, will be handled in accordance with applicable law and our store policy.
+
+9. Updates
+We may make updates or changes to the Application from time to time. Updates may be subject to
+additional terms.
+
+10. Termination
+This EULA terminates automatically if you materially breach it. Upon termination you must cease
+all use of the Application and destroy all copies in your possession or control. Sections 2 and 6–12
+survive termination.
+
+11. Export/Compliance
+You represent that you are not located in any jurisdiction where use of the Application is prohibited
+and that you will comply with applicable laws relating to your use of the Application.
+
+12. Governing Law; Venue
+This EULA and any dispute arising out of it are governed by the laws of England and Wales, without
+regard to conflict of laws rules. The courts of England and Wales will have exclusive jurisdiction;
+however, either party may seek injunctive relief in any court of competent jurisdiction.
+
+13. Entire Agreement
+This EULA is the entire agreement regarding the proprietary parts of the Application (exclusive of
+third‑party open‑source licenses). If any provision is held unenforceable, it will be enforced to
+the maximum extent permitted, and the remainder will continue in full force and effect.
+
+— End of EULA —

@@ -1,0 +1,422 @@
+{
+  "generated_at": "2025-09-17T09:15:16.002151Z",
+  "components": [
+    {
+      "name": "altgraph",
+      "version": "0.17.4",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "argon2-cffi",
+      "version": "25.1.0",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "argon2-cffi-bindings",
+      "version": "25.1.0",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "backports.tarfile",
+      "version": "1.2.0",
+      "spdx_license": "PSF-2.0",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "certifi",
+      "version": "2025.8.3",
+      "spdx_license": "MPL-2.0",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "cffi",
+      "version": "2.0.0",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "charset-normalizer",
+      "version": "3.4.3",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "click",
+      "version": "8.2.1",
+      "spdx_license": "BSD-3-Clause",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "colorama",
+      "version": "0.4.6",
+      "spdx_license": "BSD-3-Clause",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "cryptography",
+      "version": "45.0.7",
+      "spdx_license": "BSD-3-Clause",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "fbs",
+      "version": "1.2.2",
+      "spdx_license": "Proprietary",
+      "verify_required": false,
+      "notes": "Build-time tool; not redistributed",
+      "url_spec": "file:///C:/fbs/Keyquorum/fbs_pro-1.2.2.tar.gz#sha256=7dc107a4e50ac342051cd31ad93491234e10fad1fe5a8f1bc3e10943780d3fed",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "fido2",
+      "version": "2.0.0",
+      "spdx_license": "GPL-2.0-only",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "filelock",
+      "version": "3.19.1",
+      "spdx_license": "Unlicense",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "hidapi",
+      "version": "0.14.0.post4",
+      "spdx_license": "MIT OR BSD-3-Clause OR GPL-3.0-or-later",
+      "verify_required": false,
+      "notes": "Wrapper tri-licensed; upstream HIDAPI is BSD-3",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "idna",
+      "version": "3.10",
+      "spdx_license": "BSD-3-Clause",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "importlib_metadata",
+      "version": "8.7.0",
+      "spdx_license": "Apache-2.0",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "iniconfig",
+      "version": "2.1.0",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "jaraco.classes",
+      "version": "3.4.0",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "jaraco.context",
+      "version": "6.0.1",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "jaraco.functools",
+      "version": "4.3.0",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "keyring",
+      "version": "25.6.0",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "macholib",
+      "version": "1.16.3",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "more-itertools",
+      "version": "10.8.0",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "numpy",
+      "version": "2.2.6",
+      "spdx_license": "BSD-3-Clause",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "opencv-python",
+      "version": "4.12.0.88",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "wrapper MIT; OpenCV BSD-3",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "packaging",
+      "version": "25.0",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "pefile",
+      "version": "2023.2.7",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "pillow",
+      "version": "11.3.0",
+      "spdx_license": "HPND",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "pluggy",
+      "version": "1.6.0",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "pycparser",
+      "version": "2.23",
+      "spdx_license": "BSD-3-Clause",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "Pygments",
+      "version": "2.19.2",
+      "spdx_license": "BSD-2-Clause",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "pyinstaller",
+      "version": "6.16.0",
+      "spdx_license": "GPL-2.0-or-later",
+      "verify_required": false,
+      "notes": "with exception",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "pyinstaller-hooks-contrib",
+      "version": "2025.8",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "pyotp",
+      "version": "2.9.0",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "PySide6",
+      "version": "6.9.2",
+      "spdx_license": "LGPL-3.0-only",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "PySide6_Addons",
+      "version": "6.9.2",
+      "spdx_license": "LGPL-3.0-only",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "PySide6_Essentials",
+      "version": "6.9.2",
+      "spdx_license": "LGPL-3.0-only",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "pytest",
+      "version": "8.4.2",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "pywin32",
+      "version": "311",
+      "spdx_license": "BSD-3-Clause",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "pywin32-ctypes",
+      "version": "0.2.3",
+      "spdx_license": "BSD-3-Clause",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "qasync",
+      "version": "0.28.0",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "qrcode",
+      "version": "8.2",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "QtPy",
+      "version": "2.4.3",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "reportlab",
+      "version": "4.4.3",
+      "spdx_license": "BSD-3-Clause",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "requests",
+      "version": "2.32.5",
+      "spdx_license": "Apache-2.0",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "requests-file",
+      "version": "2.1.0",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "shiboken6",
+      "version": "6.9.2",
+      "spdx_license": "LGPL-3.0-only",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "tldextract",
+      "version": "5.3.0",
+      "spdx_license": "BSD-3-Clause",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "urllib3",
+      "version": "2.5.0",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "winsdk",
+      "version": "1.0.0b10",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "yubikey-manager",
+      "version": "5.8.0",
+      "spdx_license": "BSD-2-Clause",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    },
+    {
+      "name": "zipp",
+      "version": "3.23.0",
+      "spdx_license": "MIT",
+      "verify_required": false,
+      "notes": "",
+      "source": "requirements.txt"
+    }
+  ]
+}

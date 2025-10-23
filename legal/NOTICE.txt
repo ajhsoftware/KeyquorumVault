@@ -1,0 +1,16 @@
+Keyquorum Vault — Third Party Notices
+=====================================
+
+This application contains third-party software components licensed under open-source licenses.
+
+Key dependencies include (but are not limited to):
+- PySide6 (Qt for Python), licensed under the GNU Lesser General Public License v3 (LGPL v3).
+- Python and the Python Standard Library, licensed under the Python Software Foundation License.
+- argon2-cffi (MIT), bcrypt (Apache 2.0), cryptography (Apache 2.0/BSD), click (BSD-3-Clause), numpy (BSD), python-fido2 (Apache 2.0).
+- OpenSSL (Apache 2.0 with OpenSSL exception).
+
+The full text of these licenses is provided in the “licenses” folder included with this distribution.
+
+In compliance with the LGPL, PySide6 is dynamically linked. Users may replace the distributed PySide6 libraries with a compatible version if desired. Source code for PySide6 is available at: https://code.qt.io/cgit/pyside/pyside-setup.git/
+
+Keyquorum Vault itself is proprietary software and distributed under the Keyquorum Vault End User License Agreement (EULA).
