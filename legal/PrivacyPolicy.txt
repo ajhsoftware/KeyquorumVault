@@ -1,45 +1,85 @@
 Keyquorum Vault – Privacy Policy
 Effective date: September 2025
 
-1. Introduction
-Keyquorum Vault is a secure password and data management application developed by AJH Software (Anthony Hatton). This policy explains how user information is handled.
-- Keyquorum Vault does not require an online account to use the app. If paid features are introduced later, payment processing will be handled by the store or payment provider and described in an updated policy.
+1) Who we are
+Controller: Anthony Hatton (sole trader, trading as “AJH Software”).
 
-2. Data Storage
-- All vault contents, authentication secrets, and settings are stored locally on the user’s device.
-- No vault data is transmitted to AJH Software or any third party.
-- Users may optionally export encrypted backups for their own storage; AJH Software does not have access to these files.
+Contact: ajhsoftware1@outlook.com
 
-3. Data Collection
-- Keyquorum Vault does not collect, track, or transmit personal data.
-- No analytics, telemetry, or advertising frameworks are included in the application.
-- The only information we may collect is non-identifying technical logs if a user voluntarily submits them for support.
+Website: https://www.ajhsoftware.uk
 
-4. Security
-- Vault data is encrypted using industry-standard algorithms (AES-GCM with Argon2id key derivation).
-- Optional Two-Factor Authentication (2FA) is supported.
-- Clipboard operations are temporary and cleared automatically.
+This policy explains how Keyquorum Vault (the “App”) handles information. It applies to the desktop application and any official companion tools we publish (for example, the optional browser extension that communicates with the App running on your device).
 
-5. Third-Party Services
-- Keyquorum Vault does not rely on cloud services to store user secrets.
-- If the user enables breach checks (HaveIBeenPwned API), only partial, anonymized hashes are sent to the API provider.
+2) Quick summary (plain English)
+- We don’t run a cloud service for your vault. Your secrets live only on your device (or your USB if you use Portable mode).
+- We don’t collect analytics or telemetry.
+- We can’t see or recover your vault. If you lose your master password and recovery options, we can’t unlock it.
+- Network features are off by default. If you turn on breach checks, we use -privacy‑preserving k‑anonymity (see §6).
+- If you email us for help, you control what you send. We’ll delete support logs within the timeframe in §8.
+- If you buy through a store (e.g., Microsoft Store), that store handles your purchase data and refunds (see §9).
 
-6. Responsibility
-- Users are responsible for safeguarding their master password, recovery keys, and backup codes.
-- AJH Software cannot restore access to vault data if a user loses their master password without recovery enabled.
+3) What the App stores and where
+- Vault contents, authentication secrets (e.g., 2FA seeds), settings, and local logs are stored only on your device (or on your removable drive if you choose Portable mode).
+- No vault data is transmitted to AJH Software or any third party by default.
+- You may create encrypted backups/export files for your own storage. We cannot access those files.
 
-7. Children’s Privacy
-- Keyquorum Vault is not directed at children under 13.
-- We do not knowingly collect data from minors.
+4) What we do NOT collect
+- No Online accounts are created, all local-only.
+- No analytics, crash telemetry, advertising IDs, or tracking.
+- No background uploads of your vault, website usage, or form‑fill data.
+- The browser extension (if you install it) communicates with the local App on 127.0.0.1 to fill passwords; it does not send your vault data to AJH Software or any remote server.
 
-8. Changes to This Policy
-- Updates to this policy will be published at https://ajhsoftware.uk/
-- Continued use of the software after changes constitutes acceptance.
-- If we add paid features or new processors (e.g., a payment provider), we will update this policy before the change takes effect.
+5) Security overview
+- Encryption: AES‑GCM with keys derived using Argon2id (with sensible parameters that may evolve over time).
+- Optional protections: 2‑factor authentication, auto‑lock, clipboard auto‑clear.
+- Integrity: release packages may include integrity checks and signed manifests.
+- Important: You are responsible for safeguarding your master password, recovery keys, and backup codes. Keep secure offline backups appropriate to your risk tolerance.
 
-9. Contact
-For privacy-related questions or support, contact:
-Anthony Hatton (AJH Software)
-Website: https://www.ajhsoftware.uk/
-Help/Support/contact at: https://www.ajhsoftware.uk/keyquorum/kqhelp
+6) Optional network features (off by default)
+- Password breach check (Have I Been Pwned® “range” API): If you enable it, the App sends only the first 5 characters of a SHA‑1 password hash (k‑anonymity). Neither your password nor the full hash is sent.
+- Update checks: The app does not connect to the Internet to look for updates. The Microsoft Store version receives updates through the Store only. Portable mode updates are handled inside the app itself, with no online connection.
+- You can keep all network features off and continue using the App fully offline
 
+7) Children:
+- This App is not directed to children under 13 (or under the minimum legal age in your region). The App does not collect any personal data from anyone, including children.
+
+8) If you contact us for support
+- What you may send: your message and any files/logs you choose to attach.
+- Purpose & lawful basis: to provide support and improve the service (legitimate interests) or consent where you explicitly agree.
+- Retention: we aim to delete support emails/logs within 12 months of closure, or sooner on request unless we must retain them to resolve a continuing issue or comply with law.
+- Recipients: none by default. If you ask us to consult a vendor for troubleshooting, we’ll share the minimum necessary and we’ll tell you first.
+
+
+9) Purchases, refunds, and who holds that data
+- If you buy through a digital store (e.g., Microsoft Store), that store is the merchant of record and controls the purchase/billing data and refunds under its own policies.
+- We do not receive your full billing details from the store. We may receive non‑identifying info like license status to unlock features on your device.
+
+10) Your rights (UK/EU) — when they apply
+- The App does not collect or store your personal data to provide core functionality. Your vault data stays on your device and we cannot access it.
+
+- If you choose to send us information (e.g., support emails/logs), you have the following rights over that information: access, correction, deletion, restriction, objection, and data portability. To exercise them, email ajhsoftware1@outlook.com. We’ll respond within 30 days.
+
+- For store purchases, exercise your rights regarding billing/refunds with the store (e.g., Microsoft Store).
+
+11) International transfers
+We do not transfer your vault data internationally because we do not receive it. If you email us for support, your email may be processed by your email provider or ours in the ordinary course of email delivery.
+
+12) Data retention
+- Vault: stored only on your device for as long as you choose.
+- Support materials you send us: up to 12 months after closure, unless we must keep longer for legal reasons or you ask us to delete sooner (where feasible).
+
+13) Changes to this policy
+We may update this policy from time to time. We’ll post the latest version at https://www.ajhsoftware.uk and include an offline copy in the App.
+
+If we add paid features or new processors (e.g., a payment provider), we’ll update this policy before the change takes effect.
+
+14) Contact & Helpful links
+- Main site: https://www.ajhsoftware.uk
+- Help & docs: https://www.ajhsoftware.uk/keyquorum/kqhelp
+- Support form: https://forms.gle/118nQkUeV5cZyFj27
+- Support me: https://www.ajhsoftware.uk/support-me
+- Email: ajhsoftware1@outlook.com
+
+Solo developer note: AJH Software is operated by a single individual (sole trader). This policy is written to reflect that there are no employees, no third‑party analytics, and no cloud processing of your vault. It is not legal advice; if your setup changes (e.g., adding payment processors or analytics), update this policy before enabling those features.
+
+Trademarks: “Have I Been Pwned” is a trademark of its respective owner. Other names may be trademarks of their owners.
