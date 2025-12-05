@@ -19,4 +19,5 @@ licensed separately by the developer (not redistributed with this product).
 ---
 For any questions, please contact:
 Anthony Hatton (AJH Software)
-https://ajhsoftware.uk/
+https://www.ajhsoftware.uk/
+
