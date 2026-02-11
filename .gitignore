@@ -1,0 +1,104 @@
+# ===============================
+# Python
+# ===============================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+target/
+*.egg-info/
+.eggs/
+# MSIX layout output (huge; build artifact)
+msix/layout/
+
+# Packaged portable vault / exports (never commit)
+*.kqpkg
+
+# PyInstaller / fbs caches
+*.spec
+*.toc
+*.pyi
+
+# Qt / build caches
+*.pdb
+*.ilk
+*.lib
+
+# Installer builds (fbs / pyinstaller)
+__pycache__/
+*.spec
+*.manifest
+
+# ===============================
+# Virtual Environments
+# ===============================
+
+venv/
+.venv/
+env/
+ENV/
+
+# ===============================
+# IDE / Editor
+# ===============================
+
+# Visual Studio
+.vs/
+
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# ===============================
+# OS Files
+# ===============================
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# macOS
+.DS_Store
+
+# ===============================
+# Logs / Runtime
+# ===============================
+
+*.log
+logs/
+
+# ===============================
+# Testing / Coverage
+# ===============================
+
+.coverage
+htmlcov/
+.pytest_cache/
+
+# ===============================
+# Secrets (important for security)
+# ===============================
+
+*.key
+*.pem
+*.pfx
+*.env
+.env.*
+secrets.json
+config.local.json
+
+# ===============================
+# Portable / Local Runtime Data
+# ===============================
+
+KeyquorumPortable/
+userdata/

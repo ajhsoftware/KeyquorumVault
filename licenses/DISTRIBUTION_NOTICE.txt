@@ -1,0 +1,48 @@
+Keyquorum Vault — Distribution Notice
+======================================
+
+Keyquorum Vault is free and open-source software licensed under
+the GNU General Public License version 3.0 or (at your option)
+any later version (GPL-3.0-or-later).
+
+You are free to use, study, modify, and redistribute this software
+in accordance with the terms of the GPL-3.0-or-later license.
+See the LICENSE file for the full license text.
+
+Warranty Disclaimer
+-------------------
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+Limitation of Liability
+-----------------------
+
+To the maximum extent permitted by applicable law, the author
+shall not be liable for any damages arising from the use of this
+software.
+
+Third-Party Components
+----------------------
+
+This software includes third-party components licensed under
+their respective open-source licenses (MIT, BSD, Apache-2.0,
+LGPL-3.0, etc.). Full license texts are provided in the
+"licenses" directory.
+
+Commercial Distribution
+-----------------------
+
+Compiled versions of Keyquorum Vault may be distributed via
+platforms such as the Microsoft Store or other authorized
+resellers. Platform-specific purchase terms apply to those
+transactions, but the source code remains licensed under
+GPL-3.0-or-later.
+
+Privacy
+-------
+
+Keyquorum Vault stores user data locally and does not collect
+or transmit personal data unless explicitly enabled by the user.
+See PrivacyPolicy.txt for details.

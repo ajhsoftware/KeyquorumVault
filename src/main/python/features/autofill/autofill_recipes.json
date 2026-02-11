@@ -1,0 +1,50 @@
+{
+  "generic": {
+    "username": {
+      "control_type": "Edit",
+      "title_re": "(Email|Username|User name|Account|Sign in)",
+      "index": 0
+    },
+    "password": {
+      "control_type": "Edit",
+      "title_re": "(Password|Passcode|PIN)",
+      "prefer_password": true
+    },
+    "submit": {
+      "control_type": "Button",
+      "title_re": "(Sign in|Log in|Continue|OK)"
+    }
+  },
+  "epic-games-launcher": {
+    "window_title_re": "Epic Games Launcher",
+    "username": {
+      "control_type": "Edit",
+      "title_re": "(Email|Username)"
+    },
+    "password": {
+      "control_type": "Edit",
+      "title_re": "(Password)",
+      "prefer_password": true
+    },
+    "submit": {
+      "control_type": "Button",
+      "title_re": "(Sign in|Log in|Continue)"
+    }
+  },
+  "steam": {
+    "window_title_re": "Steam",
+    "username": {
+      "control_type": "Edit",
+      "title_re": "(Account name|User name|Email)"
+    },
+    "password": {
+      "control_type": "Edit",
+      "title_re": "(Password)",
+      "prefer_password": true
+    },
+    "submit": {
+      "control_type": "Button",
+      "title_re": "(Sign in|Log in)"
+    }
+  }
+}

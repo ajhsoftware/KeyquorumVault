@@ -1,0 +1,28 @@
+Keyquorum Vault — Third Party Notices
+=====================================
+
+Keyquorum Vault is licensed under the GNU General Public License
+version 3.0 or (at your option) any later version (GPL-3.0-or-later).
+
+This application contains third-party software components licensed
+under their respective open-source licenses.
+
+Key dependencies include (but are not limited to):
+
+- PySide6 (Qt for Python), licensed under the GNU Lesser General Public License v3 (LGPL v3).
+- Python and the Python Standard Library, licensed under the Python Software Foundation License.
+- argon2-cffi (MIT License)
+- cryptography (Apache License 2.0 / BSD)
+- bcrypt (Apache 2.0)
+- click (BSD-3-Clause)
+- numpy (BSD)
+- python-fido2 (Apache 2.0)
+- OpenSSL (Apache 2.0 with OpenSSL exception)
+
+The full text of these licenses is provided in the "licenses" folder
+included with this distribution.
+
+In compliance with the LGPL, PySide6 is dynamically linked.
+Users may replace the distributed PySide6 libraries with a compatible version.
+
+Source code for Keyquorum Vault is available under GPL-3.0-or-later.

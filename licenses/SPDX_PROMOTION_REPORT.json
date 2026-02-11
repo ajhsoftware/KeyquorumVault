@@ -1,0 +1,35 @@
+{
+  "generated_at": "2025-09-16T21:53:00.957336Z",
+  "written": [
+    {
+      "spdx": "Apache-2.0",
+      "source": "/mnt/data/License/SPDX_LICENSES/vendors/vendors/ALL_LICENSES_CONCAT.txt",
+      "bytes": 769013
+    },
+    {
+      "spdx": "MIT",
+      "source": "/mnt/data/License/SPDX_LICENSES/vendors/vendors/pip-25.2-__init__.py",
+      "bytes": 5727
+    },
+    {
+      "spdx": "BSD-3-Clause",
+      "source": "/mnt/data/License/SPDX_LICENSES/vendors/vendors/setuptools-80.9.0-NOTICE",
+      "bytes": 18737
+    },
+    {
+      "spdx": "GPL-3.0-or-later",
+      "source": "/mnt/data/License/SPDX_LICENSES/vendors/vendors/fido2-2.0.0-COPYING.MPLv2",
+      "bytes": 16726
+    },
+    {
+      "spdx": "GPL-3.0-only",
+      "source": "/mnt/data/License/SPDX_LICENSES/vendors/vendors/hidapi-0.14.0.post4-LICENSE.txt",
+      "bytes": 558
+    },
+    {
+      "spdx": "HPND",
+      "source": "/mnt/data/License/SPDX_LICENSES/vendors/vendors/packaging-25.0-_spdx.py",
+      "bytes": 48398
+    }
+  ]
+}
