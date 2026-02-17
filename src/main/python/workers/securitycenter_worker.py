@@ -27,7 +27,7 @@ from security.preflight import scan_for_suspicious_processes, _any_av_present
 from security.integrity_manifest import verify_manifest_auto
 
 
-# =============================================================================
+# ==============================
 # --- SecurityCenterWorker
 #==============================================================================
 class SecurityCenterWorker(QThread):

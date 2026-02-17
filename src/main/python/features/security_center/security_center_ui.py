@@ -127,7 +127,7 @@ def _run_security_center_scan(w):
     # Thread worker
     w._sc_worker = SecurityCenterWorker(username)
     # IMPORTANT: connect to module functions using lambdas.
-    # After your split, `w` may not have `_sc_on_progress/_sc_on_finished` attributes,
+    # After split, `w` may not have `_sc_on_progress/_sc_on_finished` attributes,
     # which can crash on click.
     w._sc_worker.progress.connect(lambda msg: _sc_on_progress(w, msg))
     w._sc_worker.finished.connect(lambda results, err=None: _sc_on_finished(w, results, err))
@@ -779,7 +779,6 @@ def _update_security_clipboard_section(w) -> bool:
         ).format(err=e)
         clipboard_ok = False
 
-    # Push to UI (adjust names if your labels are different)
     try:
         w.systemClipboardStatusLabel.setText(status)
     except Exception:
@@ -904,7 +903,7 @@ def _update_security_account_section(w, username: str):
     last_vault = _tr("Last Vault Backup: (unknown)")
     last_pwd = _tr("Last Password Change: (unknown)")
 
-    # --- Load user record from your normal user_db path ---
+    # --- Load user record from normal user_db path ---
     record = {}
     try:
         record = get_user_record(username) or {}

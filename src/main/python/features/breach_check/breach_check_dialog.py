@@ -112,7 +112,7 @@ class BreachCheckDialog(QDialog):
 
         self._worker = None
 
-    # ---------------------------------------------------------------------
+    # ---------------------------
 
     def _tick_idle_timer(self):
         """Reset idle timer in parent (if implemented)."""
@@ -123,7 +123,7 @@ class BreachCheckDialog(QDialog):
             except Exception:
                 pass
 
-    # ---------------------------------------------------------------------
+    # ---------------------------
 
     def check_password_breach(self):
         """Start background check."""
@@ -143,7 +143,7 @@ class BreachCheckDialog(QDialog):
         )
         self._worker.start()
 
-    # ---------------------------------------------------------------------
+    # ---------------------------
 
     def _on_breach_result(self, count: int):
         """Handle result from background worker."""

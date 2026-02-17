@@ -227,7 +227,7 @@ def install_binding_overrides(username: str, user_dir: Path) -> None:
         except Exception:
             pass
 
-    # --- Reload vault_store (single-file module in your tree) ---
+    # --- Reload vault_store ---
     try:
         import vault_store as vstore
         importlib.reload(vstore)

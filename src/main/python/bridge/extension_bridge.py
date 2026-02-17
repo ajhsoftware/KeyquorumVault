@@ -33,9 +33,9 @@ DEFAULT_PORT = 8742
 
 def _now() -> float: return time.monotonic()
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # CORS origin validation
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def _is_allowed_origin(origin: str) -> bool:
     """
     Return True if the provided Origin header value is permitted to access the bridge.
@@ -128,7 +128,6 @@ class ExtensionBridge:
             server_version = "KQBridge/0.2"
 
             def log_message(self, fmt, *args):
-                # Silence to avoid leaking origins into console; hook into your logger if needed.
                 return
 
             # CORS preflight

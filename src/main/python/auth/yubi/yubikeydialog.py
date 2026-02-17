@@ -44,9 +44,9 @@ except Exception:
 # --- Identity store
 from auth.identity_store import get_yubi_meta_quick, set_yubi_config, bind_recovery_wrapper, bind_yubi_wrapper, clear_yubi_config
 
-# =============================================================
+# ==============================
 # ---------------- Small modal "Touch" spinner ----------------
-# =============================================================
+# ==============================
 
 class _TouchPrompt(QDialog):
     cancelled = Signal()
@@ -107,9 +107,9 @@ WRAP binds your vault encryption to BOTH:
 Continue with WRAP setup?
 """)
 
-# =============================================================
+# ==============================
 # ---------------- Yubi enable worker ----------------
-# =============================================================
+# ==============================
 
 class _YkEnableWorker(QThread):
     status = Signal(str)
@@ -207,7 +207,7 @@ class _YkEnableWorker(QThread):
                     raise RuntimeError(f"User salt file not found for '{self.username}'")
 
                 try:
-                    # use your real Argon2id function
+                    # use Argon2id function
                     from vault_store.kdf_utils import derive_key_argon2id
                 except Exception:
                     from vault_store.kdf_utils import derive_key_argon2id  # fallback if you have it
@@ -318,9 +318,9 @@ class _YkEnableWorker(QThread):
         except Exception as e:
             self.done.emit({"ok": False, "error": str(e)})
 
-# =============================================================
+# ==============================
 # ---------------- Setup Dialog ----------------
-# =============================================================
+# ==============================
 
 class YubiKeySetupDialog(QDialog):
     """
@@ -486,10 +486,7 @@ class YubiKeySetupDialog(QDialog):
             QMessageBox.information(self, "YubiKey", "Changes cancelled — backup was skipped.")
             return False
 
-        # Run your existing export_vault() exactly as-is
         ok = parent.export_vault()
-
-        # ❗ Don't treat None as failure — your export_vault() returns None on success
         if ok is False:
             QMessageBox.warning(
                 self,
@@ -515,9 +512,9 @@ class YubiKeySetupDialog(QDialog):
         slot = self._selected_slot()
         mode = "wrap" if self.rad_wrap.isChecked() else "gate"
 
-        # ------------------------------------------------------------------
+        # ------------------------
         # 🔒 WRAP ONLY: full backup + explicit warning/confirm
-        # ------------------------------------------------------------------
+        # ------------------------
         if mode == "wrap":
             # 1) Require backup first
             if hasattr(self, "_must_backup"):
@@ -540,9 +537,9 @@ class YubiKeySetupDialog(QDialog):
             if warn.clickedButton() is not continue_btn:
                 return
 
-        # ------------------------------------------------------------------
+        # ------------------------
         # Normal enable flow
-        # ------------------------------------------------------------------
+        # ------------------------
         if self._yk_touch:
             try:
                 self._yk_touch.close()
@@ -618,9 +615,9 @@ class YubiKeySetupDialog(QDialog):
             QMessageBox.information(self, "YubiKey", "No YubiKey mode is enabled for this account yet.")
             return
 
-        # ------------------------------------------------------------
+        # ------------------
         # GATE MODE TEST
-        # ------------------------------------------------------------
+        # ------------------
         if mode == "yk_hmac_gate":
             try:
                 from auth.yubi.yk_backend import yk_hmac_challenge_gate_test
@@ -657,9 +654,9 @@ class YubiKeySetupDialog(QDialog):
                     msg)
             return
 
-        # ------------------------------------------------------------
+        # ------------------
         # WRAP MODE TEST
-        # ------------------------------------------------------------
+        # ------------------
         if mode == "yk_hmac_wrap":
             try:
                 from auth.yubi.yk_backend import test_yk_wrap_unwrap
@@ -704,9 +701,9 @@ class YubiKeySetupDialog(QDialog):
                      msg)
             return
 
-        # ------------------------------------------------------------
+        # ------------------
         # Unknown mode fallback
-        # ------------------------------------------------------------
+        # ------------------
         QMessageBox.information(self, "YubiKey", f"Unknown YubiKey mode: {mode}")
 
     def _on_disable(self) -> None:

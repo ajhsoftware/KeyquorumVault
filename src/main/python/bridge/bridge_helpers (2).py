@@ -14,14 +14,13 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 """
 
-# -----------------------------------
-# Standalone helpers to build autofill entries
-# -----------------------------------
+# -----------------------------------------------------------------------------
+# Standalone helpers to build autofill entries from your QTableWidget
+# -----------------------------------------------------------------------------
 
 from __future__ import annotations
 from typing import Callable, Optional, Dict
 from urllib.parse import urlparse
-import re
 
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QTableWidget, QTableWidgetItem
@@ -33,9 +32,9 @@ SECRET_ROLE   = int(Qt.ItemDataRole.UserRole)          # clear sensitive value i
 URL_ROLE      = int(Qt.ItemDataRole.UserRole) + 104    # optional canonical URL (if you ever set it)
 
 # ---- Header label synonyms (lowercased) ----
-URL_LABELS   = {"website", "url", "site", "login url", "web site", "web", "domain"}
-USER_LABELS  = {"email", "e-mail", "username", "user", "login", "account", "email address", "user name"}
-PASS_LABELS  = {"password", "pass", "passcode", "pwd", "secret", "pin", "key"}
+URL_LABELS   = {"website", "url", "site", "login url", "web site"}
+USER_LABELS  = {"email", "username", "user", "login", "account", "email address"}
+PASS_LABELS  = {"password", "passcode", "pwd", "secret"}
 TOTP_LABELS  = {"2fa", "totp", "otp", "two-factor"}
 TITLE_LABELS = {"title", "name", "label"}
 
@@ -56,42 +55,29 @@ WEBFILL_COL = {
     "COUNTRY": "Country",
 }
 
-# -----------------------------------
+# -----------------------------------------------------------------------------
 # Utilities
-# -----------------------------------
-
-# NOTE: Your table headers sometimes include emojis or extra words (e.g. '🔒 Password').
-# We normalise headers so column matching stays reliable across UI tweaks.
-_HEADER_CLEAN_RE = re.compile(r"[^a-z0-9]+")
-
-def _norm_header(s: str) -> str:
-    s = (s or "").strip().lower()
-    s = _HEADER_CLEAN_RE.sub(" ", s)
-    return " ".join(s.split())
+# -----------------------------------------------------------------------------
 
 def _headers_lower(table: QTableWidget) -> list[str]:
     out: list[str] = []
     try:
         for c in range(table.columnCount()):
             it = table.horizontalHeaderItem(c)
-            t = _norm_header(it.text() if it else "")
+            t = (it.text() if it else "").strip().lower()
             out.append(t)
     except Exception:
         pass
     return out
 
 def _find_col(table: QTableWidget, wanted: set[str]) -> int:
-    """Return column index matching any of the given labels (normalised), or -1 if not found."""
+    """Return column index matching any of the given lowercased labels, or -1 if not found."""
     headers = _headers_lower(table)
-    wanted_norm = {_norm_header(x) for x in wanted if _norm_header(x)}
     for idx, t in enumerate(headers):
-        if not t or t in {"👁", "password expired"}:
+        if not t or t == "👁" or t == "password expired":
             continue
-
-        # Exact match, startswith, or contains (handles: "password (hidden)", "🔒 password", etc.)
-        for nl in wanted_norm:
-            if t == nl or t.startswith(nl) or (nl in t):
-                return idx
+        if t in wanted or any(t.startswith(lbl) for lbl in wanted):
+            return idx
     return -1
 
 def _not_bullets(s: str) -> bool:
@@ -111,9 +97,9 @@ def _get_role_str(item: Optional[QTableWidgetItem], role: int) -> str:
         pass
     return ""
 
-# -----------------------------------
+# -----------------------------------------------------------------------------
 # Extractors
-# -----------------------------------
+# -----------------------------------------------------------------------------
 
 def extract_url(table: QTableWidget, row: int) -> str:
     """Return URL/Website for the row; prefers URL_ROLE if present."""
@@ -156,19 +142,7 @@ def extract_password(table: QTableWidget, row: int) -> str:
         col = getattr(table, "_kq_pass_col", -1)
 
         if col < 0:
-            # No specific password column. Scan the row for a SECRET_ROLE value,
-            # but avoid "email/username" columns so we don't accidentally fill the
-            # password box with the email address when headers don't match.
-            headers = _headers_lower(table)
-            for c in range(table.columnCount()):
-                h = headers[c] if c < len(headers) else ""
-                if any(k in h for k in ("email", "user", "username", "login", "account", "url", "website", "site", "totp", "otp", "2fa")):
-                    continue
-                it = table.item(row, c)
-                v = _get_role_str(it, SECRET_ROLE)
-                if v:
-                    return v
-            # final fallback: return first SECRET_ROLE we can find
+            # no specific password column—scan the row for a secret in UserRole
             for c in range(table.columnCount()):
                 it = table.item(row, c)
                 v = _get_role_str(it, SECRET_ROLE)
@@ -242,9 +216,9 @@ def extract_has_totp(table: QTableWidget, row: int) -> bool:
         pass
     return False
 
-# -----------------------------------
+# -----------------------------------------------------------------------------
 # Domain matching
-# -----------------------------------
+# -----------------------------------------------------------------------------
 
 def _host(s: str) -> str:
     p = urlparse(s if "://" in s else f"https://{s}")
@@ -267,9 +241,9 @@ def match_domain(url: str, domain: str) -> bool:
     except Exception:
         return False
 
-# -----------------------------------
+# -----------------------------------------------------------------------------
 # Public entry builder
-# -----------------------------------
+# -----------------------------------------------------------------------------
 
 def entries_for_origin(table: QTableWidget,
                        origin: str,

@@ -14,9 +14,9 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 """
 
-# ========================================================================================
+# ==============================
 # --- sysimport/environ/pyside6 backend(important)/F401/
-# ========================================================================================
+# ==============================
 from unittest import skip
 import _fbs_bootstrap
 import os, hmac, hashlib, sys, traceback
@@ -27,17 +27,16 @@ from features.url.main_url import open_url, pnwed_url
 os.environ["QT_API"] = "pyside6"
 STORE_BUILD = os.getenv("KQ_STORE_BUILD", "").lower() in ("1", "true", "yes")
 
-# =============================================================================
+# ==============================
 # --- PySide6
-# =============================================================================
-from dev.dev import dev_cmd, is_dev
+# ==============================
 from qtpy import PYSIDE6, API_NAME
 assert PYSIDE6, f"[API NAME] QtPy backend is {API_NAME}, expected PySide6"
 from app.single_app import get_app
 
-# =============================================================================
+# ==============================
 # - touchscreen frendly
-# =============================================================================
+# ==============================
 from qtpy.QtCore import Qt
 from qtpy import PYSIDE6
 
@@ -78,9 +77,7 @@ def has_touch_device() -> bool:
 
 app = get_app()
 
-# ========================================================================================
 # --- qtpy (pyside6 backend)
-# ========================================================================================
 from qtpy import uic
 from qtpy import QtCore, QtWidgets
 from qtpy.QtCore import (
@@ -98,18 +95,13 @@ from qtpy.QtWidgets import (
     QGraphicsOpacityEffect, QFileDialog, QVBoxLayout, QTextEdit, QFormLayout, QProgressBar,
     QInputDialog, QHBoxLayout, QToolTip, QCheckBox, QSplashScreen,)    
 
-# ========================================================================================
-# --- linked 
-# ========================================================================================
-
 # --- logging ---
 import app.kq_logging as kql
 from app.kq_logging import (
     apply_debug_flag,
     get_logfile_path,)
-# --- Path ---
+
 from pathlib import Path
-# --- Pathsfrom app.paths ---
 from app.paths import (
     log_dir, users_root, user_root, CONFIG_DIR, profile_pic,  
     vault_file, shared_key_file, catalog_file, salt_file, identities_file, breach_cache,
@@ -124,32 +116,21 @@ def per_user_db_file(username: str, *, ensure_parent: bool = False, name_only: b
     # Delegate to the Phase-2 canonical API
     return user_db_file(username, ensure_parent=ensure_parent, name_only=name_only)
 
-# per_user_root (old callers expect this helper)
 def per_user_root(username: str, *, ensure_parent: bool = False):
     p = users_root() / username
     if ensure_parent:
         p.mkdir(parents=True, exist_ok=True)
     return p
-
-# --- portable manager ---
 from features.portable.portable_user_usb import install_binding_overrides
-# --- status worker
 from workers.worker_status import Worker 
-# --- QR code preview --- 
 from features.qr.qr_tools import show_qr_for_object
-# --- sharing ---
 from features.share.share_keys import ensure_share_keys
-# --- frameless
 from ui.frameless_window import FramelessWindowMixin
-# --- clipboard ---
 from features.clipboard.secure_clipboard import install_clipboard_guard, copy_secret
-# --- preflight ---
 from security.preflight import (
     load_security_prefs, save_security_prefs,add_process_to_watch, add_allowlist_process,
     run_preflight_checks, ensure_preflight_defaults,)
-# --- audit secured Removeing ---
 from security.secure_audit import is_locked_out, log_event_encrypted
-# --- kdf util ---
 from auth.change_pw.change_password_dialog import ChangePasswordDialog
 from security.security_prefs_dialog import SecurityPrefsDialog
 from features.breach_check.breach_check_dialog import BreachCheckDialog
@@ -157,65 +138,49 @@ from catalog_category.category_editor import patch_mainwindow_class
 # --- passkey ---
 import features.passkeys.capabilities as cap
 import features.passkeys.passkeys_windows as pkwin
-
-# ========================================================================================
-# --- Auth link 
-# ========================================================================================
 from vault_store.authenticator_store import (
     list_authenticators, add_authenticator, add_from_otpauth_uri, delete_authenticator,
     update_authenticator, get_current_code, import_otpauth_from_qr_image, build_otpauth_uri, export_otpauth_qr_bytes
 )
-# --- two factor ---
 from auth.tfa.twofactor import has_recovery_wrap, yk_twofactor_enabled
 from auth.login.login_handler import (
     validate_login, is_locked_out,
     set_recovery_mode, _canonical_username_ci,
     get_user_setting, get_user_cloud, set_user_cloud,
     get_recovery_mode, set_user_setting, get_user_record)
-
-# --- CatalogSecure
 from catalog_category.catalog_editor_user import CatalogEditorUserDialog
 from catalog_category.catalog_user import (
             ensure_user_catalog_created, load_user_catalog_raw,
             load_effective_catalogs_from_user, verify_hmac_seal, write_hmac_seal)
 
 from catalog_category.my_catalog_builtin import CLIENTS, ALIASES, PLATFORM_GUIDE
-
-# --- identity store ---
 from auth.identity_store import get_login_backup_count_quick, set_totp_secret, replace_backup_codes, mark_totp_header, verify_recovery_key
-# --- share ---
 from features.share.share_keys import ensure_share_keys, export_share_id_json
-
-# --- password gen ---
 from auth.pw.password_generator import show_password_generator_dialog, generate_strong_password
-# --- vault storage / crypto ---
 from vault_store.vault_store import (
     add_vault_entry, load_vault, save_vault,
     export_full_backup,)
 
-# ========================================================================================
+# ==============================
 # --- Third party link 
-# ========================================================================================
+# ==============================
 from functools import wraps
 from typing import Optional
-
 import weakref
 import ctypes
 from ctypes import wintypes
-# --- http ---
 from urllib.parse import urlparse, quote
 import urllib.request, urllib.error
 import http.client
-# --- date/time ---
 import datetime as dt 
 import time as _t
              
-# ========================================================================================
+# ==============================
 # --- Standard library, import at top(os, sys, traceback)
-# ========================================================================================
+# ==============================
 import re as _re
 import tempfile
-import json, threading, socket, secrets, base64
+import json, threading, socket, secrets
 import subprocess
 import string
 from shutil import copy2, rmtree
@@ -232,21 +197,14 @@ try:
 except Exception:
     cv2 = None
    
-# =============================================================================
+# ==============================
 # --- logging ---
-# =============================================================================
+# ==============================
 # --- Logging bootstrap (unified paths) ---
 from app.paths import log_dir
-
+from app.basic import is_dev
 # Tell kq_logging where to write files (use the unified log_dir())
 os.environ.setdefault("KEYQUORUM_LOG_DIR", str(log_dir()))
-
-# In dev, also mirror logs to the console
-try:
-    if is_dev():
-        os.environ["KQ_CONSOLE"] = "1"
-except Exception:
-    pass # not important dev only
 
 # Init logging
 log = kql.setup_logging("keyquorum")
@@ -258,9 +216,9 @@ except Exception:
 
 # Keep console + debug level in sync with dev mode
 from app.kq_logging import apply_debug_flag
-apply_debug_flag(enabled=is_dev(), keep_console=is_dev())
+apply_debug_flag(enabled=is_dev, keep_console=is_dev)
 
-# === Unified helpers (per-user logging + licensing + baseline wrappers) ===
+# --- Unified helpers (per-user logging + licensing + baseline wrappers) ---
 import logging, os, json, hashlib, hmac
 
 _KQ_USER_HANDLER = None  # type: logging.Handler | None
@@ -288,14 +246,12 @@ def switch_to_user_log(username: str) -> None:
             target = Path(log_dir()) / "users" / f"{username}.log"
             target.parent.mkdir(parents=True, exist_ok=True)
 
-        # If already using this exact handler, keep it
         existing = _find_file_handler_for(target)
         if existing:
             _KQ_USER_HANDLER = existing
             app_log.info("%s using existing per-user log → %s", kql.i("ok"), target)
             return
 
-        # Remove previous per-user handler (leave base app handler intact)
         if _KQ_USER_HANDLER:
             root.removeHandler(_KQ_USER_HANDLER)
             _KQ_USER_HANDLER.close()
@@ -303,7 +259,7 @@ def switch_to_user_log(username: str) -> None:
 
         fh = logging.FileHandler(target, encoding="utf-8")
         fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-        fh.setLevel(root.getEffectiveLevel())  # match current effective level
+        fh.setLevel(root.getEffectiveLevel())
         root.addHandler(fh)
         _KQ_USER_HANDLER = fh
         app_log.info("%s switched to per-user log → %s", kql.i("ok"), target)
@@ -324,9 +280,9 @@ def restore_app_log() -> None:
     except Exception as e:
         app_log.error("%s failed restoring app log: %s", kql.i("err"), e)
 
-# =============================================================================
-# Baseline convenience --------------------------------------------------------
-# =============================================================================
+# ==============================
+# Baseline convenience
+# ==============================
 try:
     from app.paths import is_portable
     _mode = 'portable' if is_portable() else 'installed'
@@ -372,18 +328,14 @@ except Exception as e:
 # app version
 from app.basic import get_app_version
 get_app_version()
-# show defualt paths
 debug_log_paths()
-
 # Directory that contains the current log file
 LOG_DIR_ = str(Path(get_logfile_path()).parent)
 log.debug(f"{kql.i('path')} [LOG] Open Path {get_logfile_path()}")
-# =============================================================================
 
-
-# =============================================================================
+# ==============================
 # --- uppdate windows header with tint ---
-# =============================================================================
+# ==============================
 if sys.platform == "win32":
     _DWMWA_USE_IMMERSIVE_DARK_MODE_TRY = (20, 19)
     _DWMWA_CAPTION_COLOR = 35  # Win11+
@@ -412,21 +364,19 @@ if sys.platform == "win32":
                 except Exception:
                     continue
 
-            # 2) Optionally set explicit colors (Windows 11+ only)
+            # 2) set explicit colors (Windows 11+ only)
             if caption_rgb is not None:
                 col = _COLORREF(*caption_rgb)
                 DwmSetWindowAttribute(hwnd, _DWMWA_CAPTION_COLOR, ctypes.byref(col), ctypes.sizeof(col))
             if text_rgb is not None:
                 col = _COLORREF(*text_rgb)
                 DwmSetWindowAttribute(hwnd, _DWMWA_TEXT_COLOR, ctypes.byref(col), ctypes.sizeof(col))
-
         except Exception:
-            # Best effort; ignore if not available
             pass
 
-# =============================================================================
+# ==============================
 # --- Login
-# =============================================================================
+# ==============================
 def _read_user_salt(username: str) -> bytes:
     """Read-only salt load via new paths."""
     from app.paths import salt_file
@@ -436,21 +386,21 @@ def _read_user_salt(username: str) -> bytes:
     except Exception:
         return b""
 
-# =============================================================================
+# ==============================
 # --- language
-# =============================================================================
+# ==============================
 def _tr(text: str) -> str:
-    # context name can be anything stable, e.g. "MainWindow" or "Keyquorum"
     return QCoreApplication.translate("main", text)
 
 def _load_ui_language() -> str:
     from ui.ui_language import _load_ui_language as __load_ui_language
     return __load_ui_language()
 
-# =============================================================================
+# ==============================
 # --- first time run wizard
-# =============================================================================
-# --- Existing users discovery (new per-user layout; no mkdirs) ---------------
+# ==============================
+
+# --- Existing users discovery (new per-user layout; no mkdirs) ---
 def _list_existing_users() -> list[str]:
     from app.paths import read_only_paths
     """
@@ -478,19 +428,16 @@ def _list_existing_users() -> list[str]:
                 if not Path(db_path).exists():
                     continue
 
-                # Consider it present only if it has a non-empty record
                 try:
                     rec = get_user_record(u)
                     if isinstance(rec, dict) and rec:
                         users.append(u)
                 except Exception:
-                    # unreadable or broken user -> skip
                     continue
 
         users.sort(key=str.lower)
         return users
     except Exception:
-        # safest fallback
         return []
 
 def _needs_first_run() -> bool:
@@ -503,9 +450,9 @@ def _needs_first_run() -> bool:
     except Exception:
         return True
 
-# =============================================================================
+# ==============================
 # --- YubiKey login worker --- (runs in background thread) 
-# =============================================================================
+# ==============================
 # - YubiKey backend (bundle-first ykman with CLI fallbacks)
 from auth.yubi.yk_backend import YKBackend
 from auth.yubi.yubikeydialog import YubiKeySetupDialog
@@ -559,13 +506,13 @@ class _YKTouchWorker(QThread):
     def run(self):
         try:
 
-            # If we were cancelled before we even start, just exit
+            # If cancelled before even start, just exit
             if self.isInterruptionRequested():
                 return
 
 
             yk = YKBackend(self.ykman_path)
-            # If the slot clearly doesn't require touch, fail early so we don't hang
+            # If the slot clearly doesn't require touch, fail early so don't hang
             try:
                 if hasattr(yk, "slot_requires_touch") and not yk.slot_requires_touch(self.slot):
                     raise RuntimeError("This YubiKey slot isn’t set to require touch. Reprogram it with touch in Settings → YubiKey.")
@@ -672,16 +619,13 @@ class YubiKeyLoginGateDialog(QDialog):
         self._presence_worker = None
         self._worker: _YKTouchWorker | None = None
         self._closed = False
-
         # Mode: gate vs wrap
         self.mode = (self.cfg.get("mode") or "").strip()  # "yk_hmac_gate" or "yk_hmac_wrap"
-
-        # Stacked pages
         self.stack = QStackedLayout()
 
-        # ----------------------------------------------------------------------
+        # ----------------------------
         # Page 0: insert + touch prompt
-        # ----------------------------------------------------------------------
+        # ----------------------------
         p0 = QVBoxLayout()
         self.p0_status = QLabel(self.tr("Insert your YubiKey…"))
         self.p0_status.setWordWrap(True)
@@ -710,9 +654,9 @@ class YubiKeyLoginGateDialog(QDialog):
         w0.setWindowFlags(Qt.Widget)
         self.stack.addWidget(w0)
 
-        # ----------------------------------------------------------------------
+        # ----------------------------
         # Page 1: fallback (backup code [+ recovery key for WRAP])
-        # ----------------------------------------------------------------------
+        # ----------------------------
         p1 = QVBoxLayout()
 
         if self.mode == "yk_hmac_gate":
@@ -748,9 +692,9 @@ class YubiKeyLoginGateDialog(QDialog):
         w1.setWindowFlags(Qt.Widget)
         self.stack.addWidget(w1)
 
-        # ----------------------------------------------------------------------
+        # ----------------------------
         # Overall layout
-        # ----------------------------------------------------------------------
+        # ----------------------------
         v = QVBoxLayout(self)
         v.addLayout(self.stack)
         self.setLayout(v)
@@ -787,7 +731,6 @@ class YubiKeyLoginGateDialog(QDialog):
         self._touch_to.setInterval(self.touch_timeout_s * 1000)
         self._touch_to.timeout.connect(self._fallback_auto)
 
-        # at end of __init__
         try:
             set_probe_enabled(False)
         except:
@@ -797,7 +740,7 @@ class YubiKeyLoginGateDialog(QDialog):
     def _tick_insert(self):
         if self._closed or self._presence_inflight or self._touch_inflight:
             return
-        if self.stack.currentIndex() == 1:  # on fallback page → don't poll
+        if self.stack.currentIndex() == 1: 
             return
         self._presence_inflight = True
         worker = _YKPresenceWorker(self.ykman_path, self.serial)
@@ -885,12 +828,9 @@ class YubiKeyLoginGateDialog(QDialog):
 
     def _shutdown_worker(self):
         """Stop any background polling (QThread or threading.Thread) and wait briefly."""
-        # --- QThread path ---
         try:
-            # if you used a QObject poller with a stop() slot
             if hasattr(self, "_poller") and self._poller:
                 try:
-                    # tell the poller to stop its loop
                     if hasattr(self._poller, "stop"):
                         self._poller.stop()
                 except Exception:
@@ -1042,7 +982,6 @@ class YubiKeyLoginGateDialog(QDialog):
         # Detect mode best-effort
         mode = (getattr(self, "mode", "") or "").strip().lower()
 
-        # --- helpers
         def _norm_rk(s: str) -> str:
             return "".join(ch for ch in (s or "") if ch.isalnum()).upper()
 
@@ -1062,7 +1001,7 @@ class YubiKeyLoginGateDialog(QDialog):
             self.accept()
             return
 
-        # --- Wrap path (and any other mode where recovery is needed)
+        # --- Wrap path
         if not code or not rk:
             QMessageBox.critical(
                 self,
@@ -1109,7 +1048,6 @@ class YubiKeyLoginGateDialog(QDialog):
 
         # Case A: worker_obj *is* a QThread
         if isinstance(worker_obj, QThread):
-            # Don't wait on the GUI thread
             gui_th = QCoreApplication.instance().thread() if QCoreApplication.instance() else None
             if worker_obj is gui_th or worker_obj is QThread.currentThread():
                 return
@@ -1121,7 +1059,7 @@ class YubiKeyLoginGateDialog(QDialog):
             except Exception: pass
             return
 
-        # Case B: QObject moved to a QThread (not used in your snippet, but safe)
+        # Case B: QObject moved to a QThread
         th = None
         try:
             th = worker_obj.thread() if hasattr(worker_obj, "thread") else None
@@ -1133,7 +1071,7 @@ class YubiKeyLoginGateDialog(QDialog):
             if th is gui_th or th is QThread.currentThread():
                 return
             try:
-                # ask the QObject loop to stop if it supports it
+                # ask the QObject loop to stop
                 if hasattr(worker_obj, "stop"):
                     worker_obj.stop()
             except Exception: pass
@@ -1145,7 +1083,7 @@ class YubiKeyLoginGateDialog(QDialog):
             except Exception: pass
             return
 
-        # Case C: python threading.Thread (if you ever use it)
+        # Case C: python threading.Thread
         try:
             if hasattr(worker_obj, "stop"):
                 worker_obj.stop()
@@ -1228,9 +1166,9 @@ class YubiKeyLoginGateDialog(QDialog):
         self._worker = None
         self._touch_inflight = False
    
-    # ------------------------------------------------------------------
+    # ------------------------
     # Robust cleanup helpers (override-safe)
-    # ------------------------------------------------------------------
+    # ------------------------
     def _stop_thread(self, worker_obj):
         """Best-effort stop for QThread/worker objects and python threads."""
         try:
@@ -1321,14 +1259,13 @@ class _YKPresenceWorker(QThread):
                     self.found.emit(present, serials)
                 except Exception:
                     self.found.emit(False, [])
-                QThread.msleep(600)  # ← be nice; allows interruption to work quickly
+                QThread.msleep(600)  # allows interruption to work quickly
         finally:
-            # if you add a finished signal, emit it here
             pass
 
-# =============================================================================
+# ==============================
 # --- Touch Finder --- (Tuchscreen)
-# =============================================================================
+# ==============================
 def _win_has_touch() -> bool:
     """Best-effort Windows touch detection via GetSystemMetrics."""
     try:
@@ -1345,9 +1282,9 @@ def _win_has_touch() -> bool:
     except Exception:
         return False
     
-# =============================================================================
+# ==============================
 # --- prefligh safe ---
-# =============================================================================
+# ==============================
 def safe_preflight() -> tuple[bool, str]:
     """
     Call run_preflight_checks() safely.
@@ -1363,15 +1300,13 @@ def safe_preflight() -> tuple[bool, str]:
             return ok, reason
         return bool(result), ""
     except Exception as e:
-        # capture full traceback for debug.log
         tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))
-        # Use single quotes inside kql.i() to avoid nested double-quote syntax errors
         log.error(str(f"{kql.i('err')} [ERROR] 🛑 Preflight checks crashed:\n{tb}"))
         return False, f"Preflight crashed: {e}"
 
-# =============================================================================
+# ==============================
 # --- Manifest Mismatch ---
-# =============================================================================
+# ==============================
 def show_error_and_exit(message):
     QMessageBox.critical(None, "Security Alert ❌ Exiting !!!", message)
     sys.exit(1)
@@ -1381,9 +1316,7 @@ def log_manifest_tamper(reason: str, username: str | None = None) -> None:
     Append a manifest tamper line to the per-user (or global) tamper log.
     Uses Phase-2 paths.audit_tamper().
     """
-    #from datetime import datetime as _dt
-
-    # If we don't know the user yet (pre-login), write to a global log in config dir.
+    # If don't know the user yet (pre-login), write to a global log in config dir.
     if not username:
         # Use a single shared file for pre-login events
         global_log = Path(config_dir("global", ensure_dir=True)) / "manifest_tamper.log"
@@ -1398,14 +1331,12 @@ def log_manifest_tamper(reason: str, username: str | None = None) -> None:
     with open(p, "a", encoding="utf-8") as f:
         f.write(f"[{dt.datetime.now().isoformat(timespec='seconds')}] [TAMPER] {reason}\n")
 
-# =============================================================================
+# ==============================
 # --- baseline ---
-# =============================================================================
+# ==============================
 
 from app.paths import audit_tamper, config_dir
-
-from security.baseline_signer import verify_baseline, ensure_baseline   # write_baseline as ensure_baseline, 
-
+from security.baseline_signer import verify_baseline, ensure_baseline
 from security.secure_audit import log_event_encrypted
 
 def update_baseline(username: str, *, verify_after: bool = True, who: str = "Unknow") -> bool:
@@ -1414,30 +1345,30 @@ def update_baseline(username: str, *, verify_after: bool = True, who: str = "Unk
         log.error("[baseline] (In Settings) update_baseline called with empty username")
         return False
     try:
-        # --- 2) Load salt (using same helper as prelogin peek) ---
+        # Load salt
         try:
             salt = _load_vault_salt_for(username)
         except Exception as e:
             log.error(f"{kql.i('err')} [baseline] (In Settings) failed to load salt for {username}: {e}")
             salt = b""
 
-        # --- 3) Build full tracked file set (mandatory + optional) ---
+        # Build full tracked file set (mandatory + optional)
         files = _baseline_tracked_files(username)
         log.info(f"[baseline] files : to update:{files}")
 
         log.info(f"{kql.i('info')} [baseline] (In Settings) updating for user={username}")
        
-        # --- 4) Write baseline ---
+        # Write baseline
         ensure_baseline(username, salt, files)
         log.info(f"{kql.i('ok')} [baseline] (In Settings) wrote baseline (files={len(files)})")
 
-        # --- 5) Log all baseline
+        # Log all baseline
         msg = "Who:" + f"{who}"
         log_event_encrypted(username, "📜 [Baseline Update]", msg)
         log.info(f"📜 [Baseline Update] {msg},->Verify on Update->{verify_after} ")
         
         if verify_recovery_key:
-            # --- 6) Optional post-verify ---
+            # post-verify
             changed, missing, new, mac_ok = verify_baseline(username, salt, files)
             log.info(
                 f"{kql.i('check')} [baseline] (In Settings) post-verify: mac_ok={mac_ok} "
@@ -1494,8 +1425,8 @@ def _baseline_tracked_files(username: str) -> list[str]:
     # --- OPTIONAL FILES (only if present) ---
     optional_paths: list[Path] = [
         security_prefs_file(username, ensure_parent=False, name_only=False),
-        category_schema_file(username, ensure_parent=False),  # can add later if stable
-        catalog_file(username, ensure_parent=False),          # KQ_Dev_KQ.kq; excluded for now
+        category_schema_file(username, ensure_parent=False),
+        catalog_file(username, ensure_parent=False),         
         catalog_seal_file(username, ensure_parent=False),
         shared_key_file(username, ensure_parent=False),
         profile_image_file(username, ensure_parent=False),
@@ -1513,23 +1444,9 @@ def _baseline_tracked_files(username: str) -> list[str]:
             files.append(str(p))
     return files
 
-# =============================================================================--
-# --- microsoft store licensing client (if available) ---
-# =============================================================================--
-def my_fallback_checker():
-    """
-    Your portable/key-based check. Return {"has_pro": True/False}.
-    For example, verify Google Sheet + device fingerprint here.
-    """
-    try:
-        # ... your logic ...
-        return {"has_pro": False}
-    except Exception:
-        return {"has_pro": False}
-
-# =============================================================================
+# ==============================
 # --- USB Binding (unified paths) ---
-# =============================================================================
+# ==============================
 
 def check_usb_binding(parent=None) -> bool:
     """
@@ -1598,20 +1515,13 @@ def _compat_get_user_usb_binding(username: str):
     try:
         sig = inspect.signature(_get)
         if len(sig.parameters) == 0:
-            # 0-arg API
-            return _get()
-        # else assume it wants username
-        return _get(username)
-    except TypeError:
-        # Fallback if signature introspection lies in frozen builds
-        try:
             return _get(username)
-        except Exception:
-            try:
-                return _get()
-            except Exception as e:
-                log.debug(f"[USB] get_user_usb_binding compat failed: {e}")
-                return {}
+    except TypeError:       
+        try:
+            return _get()
+        except Exception as e:
+            log.debug(f"[USB] get_user_usb_binding compat failed: {e}")
+            return {}
     except Exception as e:
         log.debug(f"[USB] get_user_usb_binding call failed: {e}")
         return {}
@@ -1621,9 +1531,7 @@ def notify_usb_loaded_once(parent, username: str) -> None:
     If running from USB, show a one-time notice with a 'Don't show again' checkbox.
     Persists a per-user suppress flag. Safe to call multiple times.
     """
-    # import app.paths as _paths
-
-    # Only show if we're actually in portable mode (USB)
+    # Only show if actually in portable mode (USB)
     try:
         if not is_portable_mode():
             return
@@ -1676,17 +1584,14 @@ def notify_usb_loaded_once(parent, username: str) -> None:
 
     chk = QCheckBox(parent.tr("Don't show this again"))
     box.setCheckBox(chk)
-
-    # Show non-blocking or blocking depending on your flow; blocking is fine here
     box.exec_()
 
-    # Persist the choice
     _set_suppress(username, bool(chk.isChecked()))
     log.info("[USB] notice shown (suppress=%s)", bool(chk.isChecked()))
 
-# =============================================================================
+# ==============================
 # --- Migrating Vault To USB ---
-# =============================================================================
+# ==============================
 class MigrationPopup(QDialog):
 
     def __init__(self, parent=None):
@@ -1752,9 +1657,9 @@ class USBMigrator(QObject):
         except Exception as e:
             self.error.emit(f"❌ Migration failed:\n{str(e)}")
 
-# =============================================================================
+# ==============================
 # --- Resource Paths ---
-# =============================================================================
+# ==============================
 def _global_excepthook(exc_type, exc_value, exc_tb):
     tb = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
     log.debug(str(tb))
@@ -1767,113 +1672,26 @@ def _global_excepthook(exc_type, exc_value, exc_tb):
 sys.excepthook = _global_excepthook
 
 
-# =============================================================================
+# ==============================
 # --- Clipboard Safty Check History Is On ---
-# =============================================================================
+# ==============================
 def _win_clipboard_risk_state() -> dict:
     """Returns dict with booleans for history/cloud and optional GPO flags (Windows only)."""
     from features.clipboard.secure_clipboard import _win_clipboard_risk_state as __win_clipboard_risk_state
     return __win_clipboard_risk_state()
     
-    # -- remove below
-    state = {"history": False, "cloud": False, "history_gpo": None, "cloud_gpo": None}
-    if sys.platform != "win32":
-        return state
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Clipboard") as k:
-            def _d(name):
-                try: return int(winreg.QueryValueEx(k, name)[0]) != 0
-                except Exception: return False
-            state["history"] = _d("EnableClipboardHistory")
-            state["cloud"]   = _d("EnableCloudClipboard")
-    except Exception:
-        pass
-    # Group Policy overrides (if present)
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Policies\Microsoft\Windows\System") as k:
-            def _opt(name):
-                try: return int(winreg.QueryValueEx(k, name)[0])
-                except Exception: return None
-            state["history_gpo"] = _opt("AllowClipboardHistory")          # 0=disabled, 1=enabled
-            state["cloud_gpo"]   = _opt("AllowCrossDeviceClipboard")      # 0=disabled, 1=enabled
-    except Exception:
-        pass
-    return state
-
 def maybe_warn_windows_clipboard(username: str, copy=True) -> None:
     """Show a one-time warning if Windows Clipboard history / sync are ON."""
     from ui.ui_flags import maybe_warn_windows_clipboard as _maybe_warn_windows_clipboard
     return _maybe_warn_windows_clipboard(copy)
-    
-    self.set_status_txt(self.tr("Checking Windows Clipboard save is On"))
-    try:
-        # let users suppress the warning
-        if bool(get_user_setting(username, "suppress_clipboard_warn")):
-            return
-    except Exception:
-        set_user_setting = None
-        get_user_setting = None
-
-    s = _win_clipboard_risk_state()
-    risky = s.get("history") or s.get("cloud")
-    if not risky:
-        return
-
-    msg = (
-        "Windows Clipboard history and/or Sync are ON.\n\n"
-        "Anything you copy (including passwords) may be kept in clipboard history "
-        "and could sync to your Microsoft account.\n\n"
-        "For maximum privacy, turn these features OFF in Settings → System → Clipboard."
-    )
-    box = QMessageBox(self)
-    box.setIcon(QMessageBox.Icon.Warning)
-    box.setWindowTitle(self.tr("Clipboard history is ON"))
-    box.setText(msg)
-    open_btn   = box.addButton(self.tr("Open Clipboard Settings"), QMessageBox.ButtonRole.AcceptRole)
-    if copy:
-        copy_btn   = box.addButton(self.tr("Copy anyway"), QMessageBox.ButtonRole.YesRole)
-    else:
-        copy_btn   = box.addButton(self.tr("OK"), QMessageBox.ButtonRole.YesRole)
-    dont_btn   = box.addButton(self.tr("Don’t warn again"), QMessageBox.ButtonRole.DestructiveRole)
-    box.setDefaultButton(copy_btn)
-    box.exec()
-
-    if box.clickedButton() is open_btn:
-        try:
-            QDesktopServices.openUrl(QUrl("ms-settings:clipboard"))
-        except Exception:
-            pass
-    elif box.clickedButton() is dont_btn and set_user_setting:
-        try:
-            set_user_setting(username, "suppress_clipboard_warn", True)
-        except Exception:
-            pass
 
 def secure_copy(text: str, ttl_ms: int = None, username:str = None):
     from features.clipboard.secure_clipboard import secure_copy as _secure_copy
     return _secure_copy(text, ttl_ms, username)
-    try:
-        maybe_warn_windows_clipboard(username)
-    except Exception:
-        pass
-    try:
-        tm = ttl_ms if ttl_ms is not None else int(getattr(self, "clipboard_timeout", 8000))
-    except Exception:
-        tm = 8000
-    try:
-        try:
-            install_clipboard_guard(tm)
-        except Exception:
-            pass
-        copy_secret("" if text is None else str(text), tm)
-        return
-    except Exception:
-        pass
-    QApplication.clipboard().setText("" if text is None else str(text))
 
-# =============================================================================
+# ==============================
 # --- CSV Import ---
-# =============================================================================
+# ==============================
 class DedupeResolverDialog(QDialog):
     """
     Shows all duplicate collisions in one table.
@@ -1950,7 +1768,7 @@ class DedupeResolverDialog(QDialog):
 
             combo = QComboBox(self.table)
             combo.addItems([self.tr("Update existing"), self.tr("Keep both"), self.tr("Skip")])
-            combo.setCurrentIndex(0)  # default to Update
+            combo.setCurrentIndex(0)
             self.table.setCellWidget(r, 6, combo)
 
         self.table.resizeColumnsToContents()
@@ -1999,9 +1817,9 @@ class DedupeResolverDialog(QDialog):
             self.result_actions.append(mapping.get(idx, "update"))
         self.accept()
 
-# =============================================================================
+# ==============================
 # --- Camera QR Scanner Dialog --- (Auth ADD)
-# =============================================================================
+# ==============================
 class _QRCameraScannerDialog(QDialog):
     """Minimal webcam QR scanner that returns an otpauth:// URI if found."""
     found_uri = None
@@ -2046,7 +1864,7 @@ class _QRCameraScannerDialog(QDialog):
         self._det = self._cv2.QRCodeDetector()
 
         self._timer = QTimer(self)
-        self._timer.setInterval(33)  # ~30 fps
+        self._timer.setInterval(33)  # ~33 fps
         self._timer.timeout.connect(self._on_tick)
         self._timer.start()
 
@@ -2068,7 +1886,7 @@ class _QRCameraScannerDialog(QDialog):
             payloads = [payload] if payload else []
             points = [pts] if pts is not None else None
 
-        # If we saw an otpauth URI, accept and close
+        # If saw an otpauth URI, accept and close
         for s in payloads:
             if isinstance(s, str) and s.startswith("otpauth://"):
                 self.found_uri = s.strip()
@@ -2087,7 +1905,6 @@ class _QRCameraScannerDialog(QDialog):
             except Exception:
                 pass
 
-        # Show in QLabel
         rgb = self._cv2.cvtColor(frame, self._cv2.COLOR_BGR2RGB)
         h, w, ch = rgb.shape
         qimg = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
@@ -2112,16 +1929,14 @@ class _QRCameraScannerDialog(QDialog):
         except Exception:
             pass
 
-# =============================================================================
-# --- URL --- (Might Remove)
-# =============================================================================
+# ==============================
+# --- URL ---
+# ==============================
 def _ui_async(fn):
         try:
-            QtCore.QTimer.singleShot(0, fn)  # queued to main event loop
+            QtCore.QTimer.singleShot(0, fn)
         except Exception:
             pass
-
-
 
 def open_path_in_explorer(p: Path | str):
     p = Path(p)
@@ -2137,11 +1952,11 @@ def open_path_in_explorer(p: Path | str):
         # fall back to file://
         open_url(p.as_uri())
 
-# =============================================================================
+# ==============================
 # --- Helpers for create account and app ---
-# =============================================================================
+# ==============================
 
-def _mask_secret(s: str | None) -> str | None:                                              # - make secert 
+def _mask_secret(s: str | None) -> str | None:    # - make secert 
             if not s: return None
             return (s[:4] + ("*" * max(0, len(s) - 6)) + s[-2:]) if len(s) > 6 else "***"
 
@@ -2154,14 +1969,14 @@ def center_on_screen(w):
         geo.y() + (geo.height() - w.frameGeometry().height()) // 2,
     )
 
-# =============================================================================
+# ==============================
 # --- Main Values ---
-# =============================================================================
+# ==============================
 from features.url.main_url import SITE_HELP, PRIVACY_POLICY, APP_ID
 
-# =============================================================================
+# ==============================
 # --- Browser  Extensions  ---
-# =============================================================================
+# ==============================
 # --- URL Bridge Values  ---
 COLUMN_URL      = 0     # - "Website" Match Table
 COLUMN_USERNAME = 1     # - "Email" Match Table
@@ -2175,11 +1990,10 @@ URL_ROLE      = int(Qt.ItemDataRole.UserRole) + 104    # optional canonical URL 
 appref = None  # set start_bridge_server
 server_version = "KQBridge/1.0"
 protocol_version = "HTTP/1.0"   # simpler; no keep-alive
-LOCAL_TEST_HOSTS = {"127.0.0.1", "localhost"}  # allow manual testing pages (Replace With Test Site GitHub)
 # --- Allow Only
 _ALLOW_METHODS = "GET, POST, OPTIONS"
 _ALLOW_HEADERS = "Content-Type, Authorization, X-Auth-Token, X-KQ-Token"
-# --- http/https (note: make option in setting to allow/block http sites)
+# --- http/https (NOTE: make option in setting to allow/block http sites)
 if is_dev:
     ALLOW_LOCAL_HTTP  = True  # True in dev HTTP Mode 
 else:
@@ -2205,7 +2019,7 @@ QMenu::item { padding: 8px 16px; }
 """ + _TOUCH_MARKER
 
 # --- Trash Delete
-TRASH_KEEP_DAYS_DEFAULT = 1  # can be overridden by env KQ_TRASH_KEEP_DAYS   note change back to 30 days
+TRASH_KEEP_DAYS_DEFAULT = 30  # can be overridden by env KQ_TRASH_KEEP_DAYS # NOTE: Might add a setting
 
 QWIDGETSIZE_MAX = 16777215  # Qt's max widget size
 
@@ -2213,11 +2027,11 @@ QWIDGETSIZE_MAX = 16777215  # Qt's max widget size
 LOGIN_SIZE = QSize(400, 620)  # - w, h
 VAULT_SIZE = QSize(1000, 400) # - w, h
 
-# =============================================================================
+# ==============================
 # --- Bridge / Allowed Origins (unified paths) ---
-# =============================================================================
+# ==============================
 
-# Default allowed origins (e.g., browser extensions)
+# Default allowed origins (browser extensions)
 _DEFAULT_ORIGINS = {
     # Store ID
     "chrome-extension://jcblpckopkkhokdjdojlblknikfahbgb",
@@ -2292,10 +2106,9 @@ def remove_allowed_origin(origin: str) -> set[str]:
     save_allowed_origins(cur)
     return load_allowed_origins()
 
-# Global snapshot (optional). Recompute after any change if you rely on it.
 ALLOWED_ORIGINS = refresh_allowed_origins(force=True)
 
-# =============================================================================
+# ==============================
 # --- Software/Install --------------------------------
 
 def _expand_path(p: str) -> str:
@@ -2339,17 +2152,17 @@ def run_software_exec(exec_path: str) -> bool:
         log.info(f"[WARN] run_software_exec: {e}")
         return False
 
-# =============================================================================
+# ==============================
 # --- (UI) Main App ---
-# =============================================================================
+# ==============================
 class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
   
-    # =============================================================================
+    # ==============================
     # --- __init__ Main App ----------------
-    # =============================================================================
+    # ==============================
 
     def init_catalogs_for_user(self, user_root: str):
-        # If we have the session key, use the proper encrypted + merged loader
+        # If have the session key, use the proper encrypted + merged loader
         if isinstance(getattr(self, "userKey", None), (bytes, bytearray)):
             self.CLIENTS, self.ALIASES, self.PLATFORM_GUIDE, _ = self._load_catalog_effective(user_root)
             return
@@ -2363,18 +2176,18 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def __init__(self):
         super().__init__()
 
-        # =========================================================
+        # ==============================
         # Session key state (must always exist; DPAPI/Yubi flows may set later)
-        # =========================================================
+        # ==============================
         self.userKey = None        # master key / vault KEK in-memory after unlock
         self.current_mk = None     # alias used by some flows
         self.vault_unlocked = False
         self._login_requires_yubi_wrap = False
      
 
-        # =========================================================
+        # ==============================
         # Language startup (prefer global file over user_db)
-        # =========================================================
+        # ==============================
         ui_lang = _load_ui_language()
         if not ui_lang:
             ui_lang = self._startup_language_code()                     # fallback to old per-user/global stored system
@@ -2383,9 +2196,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception as e:
             log.warning(f"[LANG] failed to apply startup language: {e}")
 
-        # =========================================================
+        # ==============================
         # --- load UI via unified resource lookup (no RES_DIR) ---
-        # =========================================================
+        # ==============================
         try:
             ui_path = ui_file("keyquorum_ui")
             uic.loadUi(str(ui_path), self)
@@ -2397,9 +2210,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             log.error(f"{kql.i('err')} Failed to load UI: {e}")
             raise
         
-        # =========================================================
+        # ==============================
         # frameless/window chrome
-        # =========================================================
+        # ==============================
         self._init_frameless("Keyquorum Vault", use_translucency=False, glow=False)
 
         self.setAttribute(Qt.WA_StyledBackground, True)
@@ -2412,22 +2225,22 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         self.settings = QSettings("AJH Software", "Keyquorum Vault")
 
         # Load last theme without touching user_db
-        last_theme = self.settings.value("ui/last_theme", "dark")  # or whatever your default is
-        self._current_theme = None  # track current so we don’t re-apply for no reason
+        last_theme = self.settings.value("ui/last_theme", "dark") 
+        self._current_theme = None  # track current so don’t re-apply for no reason
         self.apply_theme(last_theme, initial=True)
 
         log.debug(f"{kql.i('build')} Apply App")
 
         self.setFixedSize(380, 600)         # set initial size (Login Box)
 
-        # ==========================
+        # ==============================
         # -- new import
-        # ===========================
+        # ==============================
         from ui.ui_bind import bind_all
 
-        # =========================================================
+        # ==============================
         # init internals
-        # =========================================================
+        # ==============================
         bind_all(self)       # link Ui buttons, text, menu       
 
         # --- Reminders button (optional UI element) ---
@@ -2442,18 +2255,18 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
             pass
         
-        # =========================================================
+        # ==============================
         # Category Editor Hooks
-        # =========================================================
+        # ==============================
 
         try:
             patch_mainwindow_class(KeyquorumApp)
         except Exception as e:
             log.error(f"{kql.i('err')} [ERROR] Category editor hooks patch failed: {e}")
 
-        # =========================================================
+        # ==============================
         # enable/disable touch mode
-        # =========================================================
+        # ==============================
         self._enable_touch_mode(force=False)
         if not has_touch_device():
             try:
@@ -2464,9 +2277,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                 pass
 
 
-        # =========================================================
-        # ----- login widgets we toggle together -----
-        # =========================================================
+        # ==============================
+        # ----- login widgets toggle together -----
+        # ==============================
         self.loginWidgets = [
             self.loginTitle,
             self.usernameField,
@@ -2496,9 +2309,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             log.error(f"[ERROR] rememberDeviceCheckbox {e}")
 
 
-        # =========================================================
+        # ==============================
         # Position avatar relative to username field
-        # =========================================================
+        # ==============================
         try:
             username_geo = self.usernameField.geometry()
             x = username_geo.right() + 50
@@ -2507,23 +2320,23 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
             pass
 
-        # =========================================================
+        # ==============================
         # Initially show login and hide tabs
-        # =========================================================
+        # ==============================
         self.show_login_ui()
 
-        # =========================================================
+        # ==============================
         # Table selection behavior
-        # =========================================================
+        # ==============================
         if self.vaultTable is not None:
             self.vaultTable.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
             self.vaultTable.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
             self.vaultTable.setSelectionBehavior(QAbstractItemView.SelectRows)
             self.vaultTable.setSelectionMode(QAbstractItemView.ExtendedSelection)
 
-        # =========================================================
+        # ==============================
         # Extend category list, remove obsolete item, refresh list
-        # =========================================================
+        # ==============================
         if self.categorySelector_2:
             existing = [self.categorySelector_2.itemText(i) for i in range(self.categorySelector_2.count())]
             if "Login Reports" in existing:
@@ -2532,9 +2345,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                     self.categorySelector_2.removeItem(idx)
             self.refresh_category_selector()
         
-        # =========================================================
+        # ==============================
         # ---------------- Theme Selector ----------------
-        # =========================================================
+        # ==============================
                 
         if self.themeSelector:
             legacy_alias = {
@@ -2570,46 +2383,45 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                     self.themeSelector.addItem(label)
             self.themeSelector.currentTextChanged.connect(self.apply_theme)
 
-        # =========================================================
+        # ==============================
         # Profile picture controls
-        # =========================================================
+        # ==============================
         self.init_profile_picture(self.profile_layout)
 
-        # =========================================================
+        # ==============================
         # Main tab
-        # =========================================================
+        # ==============================
         self.mainTabs: QTabWidget = self.findChild(QTabWidget, "mainTabs")
         self.mainTabs.setCurrentIndex(0)
         self._connect_ui_scale_controls()
 
 
-        # =========================================================
+        # ==============================
         # status task start
-        # =========================================================
+        # ==============================
         self.set_status_txt(self.tr("Loading components…"))
 
-        # =========================================================
+        # ==============================
         # Refresh category-dependent UI
-        # =========================================================
+        # ==============================
         self.refresh_category_dependent_ui()
 
-        # =========================================================
+        # ==============================
         # Init tabs/features
-        # =========================================================
+        # ==============================
         self._init_auto_sync()
-        # self._init_passkeys_table()
-
+        # self._init_passkeys_table() # NOTE: passkey not full working yet
 
         self.software_root = self._init_software_root()
         
-        # =========================================================
+        # ==============================
         # defer thread start until after showEvent
-        # =========================================================
+        # ==============================
         QTimer.singleShot(100, self.start_long_task)
 
-    # ==============================================================================
+    # ==============================
     # --- Restart App ---
-    # ==============================================================================
+    # ==============================
     def _restart_application(self):
         """
         Attempt to restart the application in-place.
@@ -2620,9 +2432,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             self.logout_user()
             log.info("%s [LANG] attempting app restart after language change", kql.i("build"))
             python = sys.executable
-            # Replace current process with a new one:
-            # - in dev:  python <args>
-            # - in frozen: exe <args>
             os.execl(python, python, *sys.argv)
         except Exception as e:
             log.error("%s [LANG] restart failed, quitting instead: %s", kql.i("err"), e)
@@ -2630,9 +2439,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             if app is not None:
                 app.quit()
 
-    # ==============================================================================
+    # ==============================
     # --- Security Center tab Split ---
-    # ==============================================================================
+    # ==============================
 
     def _sc_on_progress(self, msg: str):
         # Runs on GUI thread (Qt signal); safe to touch UI
@@ -2722,9 +2531,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         return __security_center_clear_ui(self)
 
 
-    # ==============================================================================
+    # ==============================
     # --- lock vault
-    # ==============================================================================
+    # ==============================
 
     def _require_unlocked(self) -> bool:
         if not self.vault_unlocked or not self.current_mk or not self.current_username:
@@ -2752,7 +2561,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     # set worker for status update
 
     def start_long_task(self):
-        self.thread = QThread(self)          # keep a ref!
+        self.thread = QThread(self)
         self.worker = Worker()
         self.worker.moveToThread(self.thread)
 
@@ -2784,9 +2593,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         self.show_category_editor(self.currentUsername.text())
         self.stackedWidget.setCurrentIndex(6)
 
-    # ===============================================
+    # ==============================
     # --- Backup Advisor
-    # ===============================================
+    # ==============================
 
     def __init__backup_avisor(self, *args, **kwargs):
         from app.misc_ops import __init__backup_avisor as _impl
@@ -2800,11 +2609,11 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         Try likely method names on self; return a callable or a stub that warns and returns False.
         """
         candidates = [
-            "export_evault_with_password",  # your newer name (if present)
+            "export_evault_with_password", 
             "export_vault_with_password",
             "export_vault_secure",
-            "export_vault",                 # older plain export
-            "backup_now",                   # any custom alias you might have
+            "export_vault",                
+            "backup_now",                   
         ]
         for name in candidates:
             fn = getattr(self, name, None)
@@ -2833,13 +2642,12 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                 adv = getattr(self, "backupAdvisor", None)
                 self.set_status_txt(self.tr("Last Changes backup"))
                 if adv:
-                    changes   = int(adv.pending_changes())
-                    
-                    threshold = max(1, int(getattr(adv, "threshold", 5) or 5))
-                    # On logout we prompt if either:
+                    # On logout prompt if either:
                     #  - mode includes logout AND changes >= threshold (same rule as in-session), OR
                     #  - you prefer: always prompt on logout when mode includes logout (uncomment next line)
                     # changes = max(changes, threshold)  # <- forces prompt once on logout
+                    changes   = int(adv.pending_changes())
+                    threshold = max(1, int(getattr(adv, "threshold", 5) or 5))
                     if changes >= threshold:
                         adv.prompt_to_backup_now(force=True)
         except Exception:
@@ -2858,25 +2666,23 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         self.backupAdvisor = None
         self.backupScheduler = None
 
-    # ===============================================
+    # ==============================
     # Default state reset
-    # ===============================================
+    # ==============================
     def __init__default_values(self, *args, **kwargs):
         from app.misc_ops import __init__default_values as _impl
         return _impl(self, *args, **kwargs)
 
     def _on_any_entry_changed(self):
-        # … your save/update logic …
         if getattr(self, "_backup_remind_mode", "both") in ("changes", "both"):
             if hasattr(self, "backupAdvisor") and self.backupAdvisor:
                 self.backupAdvisor.note_change()
 
-    # ===============================================
+    # ==============================
     # --- software
-    # ===============================================
+    # ==============================
 
     def _init_software_root(self) -> str:
-        # 1) from settings (if you persist this)
         try:
             val = getattr(self, "settings", None)
             if val:
@@ -2888,7 +2694,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
             pass
 
-        # 2) derive a sensible base directory
+        # derive a sensible base directory
         base_candidates = [
             getattr(self, "appdata_dir", None),
             os.getenv("KEYQUORUM_DATA_DIR"),
@@ -2907,24 +2713,21 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             except Exception:
                 continue
 
-        # 3) absolute last resort
+        # absolute last resort
         root = os.path.join(os.path.expanduser("~"), "Keyquorum", "software")
         os.makedirs(root, exist_ok=True)
         return root
 
-    # ===============================================
-    # --- open password gen
-    # ===============================================
-
-  
+    # ==============================
+    # --- open password gen  
     def open_generator(self):
         # Translate literal message directly without f‑string
         self.set_status_txt(self.tr("Opening Password Generator"))
         return show_password_generator_dialog(target_field=None, confirm_field=None)
 
-    # =============================================================================
+    # ==============================
     # --- Maybe dont show again popups ---  Maybe Popups ---
-    # =============================================================================
+    # ==============================
 
     # --- new = show app whats new
     def _maybe_show_release_notes(self, *args, **kwargs):
@@ -2940,12 +2743,12 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         Try to start the target app if we know which one it is.
         Returns True if a launch was attempted (and likely succeeded), False if we didn't try.
         """
-        exe = (entry.get("app_exe") or "").strip()             # e.g. "KeePassXC.exe"
-        title_hint = (entry.get("app_window") or "").strip()   # e.g. "KeePassXC"
+        exe = (entry.get("app_exe") or "").strip()            
+        title_hint = (entry.get("app_window") or "").strip()
         if not exe and not title_hint:
             return False  # nothing to launch
 
-        # Attempt a simple launch; your project may already have a launcher helper—use it instead.
+        # Attempt a simple launch
         try:
             if exe:
                 # If an absolute path is stored, use it; otherwise let the shell resolve from PATH
@@ -2975,14 +2778,13 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             hwnd = win32gui.GetForegroundWindow()
             title = (win32gui.GetWindowText(hwnd) or "").strip()
             if not pat or pat.search(title):
-                # Optionally ensure it’s visible/enabled; bring to front if you have such a helper
                 return True
             _t.sleep(0.25)
         return False
 
-    # =============================================================================
+    # ==============================
     # --- Autofill helpers (V2) ----
-    # =============================================================================
+    # ==============================
     def on_toggle_launch_before_autofill(self, checked: bool):
         KeyquorumApp.set_status_txt(self, "Launch App before Autofill Toggled")
         """User toggled: Launch target app before autofill."""
@@ -3018,7 +2820,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             app = Application(backend="uia").connect(handle=hwnd, timeout=7)
             return app.window(handle=hwnd)
 
-        # fallback: find by regex (picker already gave a forgiving regex)
+        # fallback: find by regex
         try:
             if pid:
                 Application(backend="uia").connect(process=pid, timeout=7)
@@ -3140,9 +2942,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         if "epic" in h: return "epic"
         return None
 
-    # =============================================================================
-    # --- Passkeys: table + helpers     (V1) ---
-    # =============================================================================
+    # ==============================
+    # --- Passkeys: table + helpers (V1) ---
+    # ==============================
 
     def launch_passkey_manager_with_token(base_dir: str, token_file: str) -> tuple[bool, str]:
         from app.paths import find_passkey_manager_exe
@@ -3207,7 +3009,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             return
 
         try:
-            from features.passkeys.passkeys_store import load_passkeys  # to be created
+            from features.passkeys.passkeys_store import load_passkeys
         except Exception:
             # No storage module yet: just clear.
             tbl.setRowCount(0)
@@ -3357,7 +3159,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                 log.debug(f"[PASSKEY] table reload failed: {e}")
             except Exception:
                 pass
-        # # passkey dev 🔧 DEV ONLY – seed a dummy entry once to prove it works
+        # NOTE:  passkey dev TEST 🔧 DEV ONLY – seed a dummy entry once to prove it works
         # try:
         #     self._dev_seed_dummy_passkey()
         # except Exception:
@@ -3411,7 +3213,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             account = getattr(e, "display_name", "") or ""
             created = self._fmt_passkey_ts(getattr(e, "created", 0.0))
             last_used = self._fmt_passkey_ts(getattr(e, "updated", 0.0) or getattr(e, "created", 0.0))
-            status = self.tr("Active")  # no disabled flag yet
+            status = self.tr("Active") 
 
             # Column 0: Website (RP ID) + store the credential id in UserRole
             it0 = QTableWidgetItem(rp)
@@ -3486,14 +3288,13 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         helper_ok = self._has_provider_helper()
 
-        # Install / uninstall buttons (if present)
+        # Install / uninstall buttons
         try:
             self.installPasskeysButton.setEnabled(helper_ok and not cap.is_portable_mode())
             self.uninstallPasskeysButton.setEnabled(helper_ok and not cap.is_portable_mode())
         except Exception:
             pass
 
-        # Optional group + note widgets – only touch if they exist
         grp = getattr(self, "passkeysGroup", None)
         note = getattr(self, "passkeysNote", None)
 
@@ -3522,7 +3323,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                     ))
 
     # --- install ---
-
     def _provider_exe_path(self, *args, **kwargs):
         from app.misc_ops import _provider_exe_path as _impl
         return _impl(self, *args, **kwargs)
@@ -3615,9 +3415,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             QMessageBox.critical(self, self.tr("Passkeys"), self.tr("Could not run provider helper:\n{e}").format(e))
 
 
-    # =============================================================================
+    # ==============================
     # --- create account
-    # =============================================================================
+    # ==============================
     
     def create_account(self):
         """
@@ -3633,12 +3433,8 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         # Proceed to the onboarding wizard
         try:
             from new_users.ui_wizard_create_account import InlineOnboardingWizard
-            # Use self as parent (your snippet used `w`, which likely isn't defined here)
             wiz = InlineOnboardingWizard(parent=self)
         except NameError:
-            # If your class is imported differently, you can adapt here.
-            # from ui_gen.inline_onboarding import InlineOnboardingWizard as _W
-            # wiz = _W(parent=self)
             raise
 
         try:
@@ -3648,9 +3444,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         wiz.exec()
     
-    # =============================================================================
+    # ==============================
     # --- Touch Screen ---------------- (V1)
-    # =============================================================================
+    # ==============================
     def _enable_touch_mode(self, *args, **kwargs):
         from app.misc_ops import _enable_touch_mode as _impl
         return _impl(self, *args, **kwargs)
@@ -3674,9 +3470,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         self.on_touch_mode_toggled_set(checked)
         self.set_status_txt(self.tr("Done"))
 
-    # =============================================================================
+    # ==============================
     # --- first run tour ----------------
-    # =============================================================================
+    # ==============================
     
     def _run_quick_tour(self):
         """
@@ -3750,17 +3546,13 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def _center_on_screen(self):
         try:
             QTimer.singleShot(0, lambda: center_on_screen(self))
-            # fg = self.frameGeometry()
-            # scr = QtWidgets.QApplication.primaryScreen().availableGeometry().center()
-            # fg.moveCenter(scr)
-            # self.move(fg.topLeft())
         except Exception:
             pass
 
     def _apply_login_geometry(self):
         """Shrink to login size (called after login UI is visible)."""
         self._clear_fixed_size()
-        self.showNormal()                 # exit maximized/fullscreen if needed
+        self.showNormal()
         self.resize(LOGIN_SIZE)
         self._center_on_screen()
 
@@ -3774,9 +3566,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             self.showMaximized()
         self._center_on_screen()
 
-    # =============================================================================
+    # ==============================
     # --- Cloud Sync----------------
-    # =============================================================================
+    # ==============================
 
     def on_select_cloud_vault(self, *args, **kwargs):
         from vault_store.vault_ui_ops import on_select_cloud_vault as _impl
@@ -3828,7 +3620,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         except Exception as e:
             try:
-                # Useful if you have logging wired up
                 import logging
                 logging.getLogger(__name__).exception("Cloud sync failed")
             except Exception:
@@ -4015,7 +3806,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         if not accepted:
             return False, False, False
 
-        # If extra cloud wrapping already ON, we’re done
+        # If extra cloud wrapping already ON
         if current_wrap:
             return True, bool(dont_ask_box.isChecked()), False
 
@@ -4106,7 +3897,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             if not u:
                 return None
 
-            # use case-insensitive helper if available
             try:
                 canon = _canonical_username_ci(u)
                 if canon:
@@ -4161,9 +3951,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         if rp:
             self.sync_engine.set_localpath(str(rp))
 
-    # =============================================================================
+    # ==============================
     # --- cloud encrtped wrap ---
-    # =============================================================================
+    # ==============================
     def _read_bytes(self, path: str) -> bytes:
         with open(path, "rb") as f:
             return f.read()
@@ -4214,9 +4004,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         os.makedirs(os.path.dirname(local_file), exist_ok=True)
         self._write_bytes(local_file, data)
     
-    # =============================================================================
+    # ==============================
     # --- cloud autoSynic -------
-    # =============================================================================
+    # ==============================
     """ Call _init_auto_sync() once during UI setup (e.g., in your constructor or _init_cloud_sysnic). """
     """ add self._schedule_auto_sync() to save meather to save exp:"""
     """ self._schedule_auto_sync() after save"""
@@ -4321,16 +4111,16 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
             pass
 
-    # =============================================================================
+    # ==============================
     # UI Scale: Text / Button / Table size (0 = default)
-    # =============================================================================
+    # ==============================
     
     def _connect_ui_scale_controls(self) -> None:
         """
         Hook the Settings spinboxes:
           - text_size        -> app font point size (0 = default)
           - button_size      -> min button height px (0 = default)
-          - button_size_2    -> table row height px (0 = default)  [your UI name]
+          - button_size_2    -> table row height px (0 = default)
         """
         # Guard: only run once
         if getattr(self, "_ui_scale_controls_connected", False):
@@ -4362,7 +4152,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
             pass
 
-        # NOTE: your table size spinbox is called button_size_2 in the .ui
         try:
             if hasattr(self, "button_size_2") and self.button_size_2 is not None:
                 self.button_size_2.valueChanged.connect(self.on_table_size_changed)
@@ -4384,8 +4173,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             
             # Apply to main window + all children
             self.setFont(base)
-            for w in self.findChildren(type(self)):
-                pass  # (ignore: not needed)
 
             for w in self.findChildren(object):
                 try:
@@ -4406,7 +4193,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             btn = int(s.value("ui/button_h", 0) or 0)
             tbl = int(s.value("ui/table_row_h", 0) or 0)
 
-            # Load into UI (block signals so we don't double-apply)
+            # Load into UI (block signals so don't double-apply)
             try:
                 if hasattr(self, "text_size") and self.text_size is not None:
                     self.text_size.blockSignals(True)
@@ -4558,9 +4345,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
             pass
 
-    # =============================================================================
+    # ==============================
     # --- Safe Quit/Exit----------------
-    # =============================================================================
+    # ==============================
     def closeEvent(self, event):
         """Mandatory logout before window closes."""
         try:
@@ -4569,20 +4356,18 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
            
         except Exception:
             pass
-        event.accept()  # proceed with closing
-
+        event.accept() 
         # Graceful quit
         try:
             QApplication.instance().quit()
         except Exception:
             pass
-
         # Hard kill after a short delay in case something hangs
         QTimer.singleShot(200, lambda: os._exit(0))
 
-    # =============================================================================
+    # ==============================
     # --- Authenticator Store/ Tab Wiring ---------------
-    # =============================================================================
+    # ==============================
 
     def _auth_after_login(self):
         """Enable the Authenticator tab and populate it after a successful login."""
@@ -4673,7 +4458,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             except Exception:
                 code, rem = "—", 0
 
-            # Code column = 1
             if table.item(r, 1) is None:
                 table.setItem(r, 1, QTableWidgetItem(str(code)))
             else:
@@ -4782,7 +4566,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         try:
             dlg = self._QRCameraScannerDialog(self) if hasattr(self, "_QRCameraScannerDialog") else _QRCameraScannerDialog(self)
         except NameError:
-            # if you placed the class outside, use it directly
             dlg = _QRCameraScannerDialog(self)
         if dlg.exec():
             uri = dlg.found_uri
@@ -4939,10 +4722,11 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     @contextmanager
     def _hide_for_screen_scan(self, delay_ms: int = 250):
         """Temporarily hide/minimize the window so it doesn't appear in the screenshot."""
+        # NOTE: screenshot is only for scaning for qr on screen only
         was_visible = self.isVisible()
         prev_opacity = self.windowOpacity()
         try:
-            # Hide quickly & flush events so the window is gone before we grab the screen
+            # Hide quickly & flush events so the window is gone before grab the screen
             self.setWindowOpacity(0.0)
             self.hide()
             QApplication.processEvents()
@@ -4956,9 +4740,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             self.setWindowOpacity(prev_opacity)
             QApplication.processEvents()
 
-    # =============================================================================
+    # ==============================
     # --- YubiKey 2-of-2 ----------------
-    # =============================================================================
+    # ==============================
 
     def on_yk_setup_clicked(self):
         self.set_status_txt(self.tr("YubiKey Setup"))
@@ -4978,11 +4762,8 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         )
         if identity_pwd == False: return
 
-        # Lazy import to avoid circulars, then pass identity_password
-        from auth.yubi.yubikeydialog import YubiKeySetupDialog
-        #log.info( uname, getattr(self, "userKey", None), identity_pwd)
         dlg = YubiKeySetupDialog(self, uname, getattr(self, "userKey", None), identity_password=identity_pwd)
-        dlg.finished_setup.connect(self._on_enable_finished)   # was: dlg.done.connect(...)
+        dlg.finished_setup.connect(self._on_enable_finished)
         self._track_window(dlg)
         dlg.exec()
         identity_pwd = ""
@@ -5081,25 +4862,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def on_generate_recovery_key_clicked(self, *args, **kwargs):
         from app.misc_ops import on_generate_recovery_key_clicked as _impl
         return _impl(self, *args, **kwargs)
-
-    # note: remove 
-    def _canonical_username_ci_old(typed: str) -> str | None:
-        """If you already defined this elsewhere, remove this local copy."""
-        try:
-            typed = (typed or "").strip()
-            if not typed:
-                return None
-            probe = Path(per_user_db_file("__probe__"))
-            users_root = probe.parent.parent
-            if not users_root.is_dir():
-                return None
-            tl = typed.casefold()
-            for d in users_root.iterdir():
-                if d.is_dir() and d.name.casefold() == tl:
-                    return d.name
-        except Exception:
-            pass
-        return None
 
     def _show_login_rescue_both(self, *args, **kwargs):
         from auth.login.auth_flow_ops import _show_login_rescue_both as _impl
@@ -5224,13 +4986,10 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             if not getattr(self, "userKey", None) or not username:
                 QMessageBox.warning(self, self.tr("Export Share ID"), self.tr("Please log in first."))
                 return
-
             # Use the unified per-user shared_key_file path
             key_path = shared_key_file(username, ensure_dir=True, name_only=False)
-            # Old: export_share_id_json(AUTH_DIR, username, userKey)
             share_id = export_share_id_json(username, self.userKey)
 
-            # Optional QR preview
             try:
                 show_qr_for_object(
                     "My Share ID (scan to add me)",
@@ -5241,7 +5000,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             except Exception:
                 pass
 
-            # Default save path in unified config_dir()
             suggested = Path(config_dir()) / f"{username}.kqshareid"
             out_path, _ = QFileDialog.getSaveFileName(
                 self,
@@ -5587,7 +5345,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         os.replace(tmp, p)
 
     def vault_encrypt_with_master(self, user_key: bytes, plaintext: bytes) -> bytes:
-        # AES-GCM with a subkey derived from your master key
+        # AES-GCM with a subkey derived from master key
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
         sk = self._hkdf_subkey(user_key, b"passkeys-store:aesgcm-32")
         nonce = os.urandom(12)
@@ -5616,7 +5374,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def _trash_path(self, username: str, ensure_parent=False) -> str:
         return trash_path(username, ensure_parent=ensure_parent)
 
-    # --- json encrypt/decrypt using your vault helpers -------------------
+    # --- json encrypt/decrypt using vault helpers -------------------
 
     def _enc_json_write(self, path: str | os.PathLike, key: bytes, data: dict | list) -> None:
         p = str(path)
@@ -5643,7 +5401,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         return str(pw_cache_file(username, ensure_parent=ensure_parent))
 
     def _pwlast_load(self, username: str, user_key: bytes) -> dict:
-        # ✅ HKDF 'info' MUST be bytes, not a Path
+        # HKDF 'info' MUST be bytes, not a Path
         info = f"pwcache:{username}".encode("utf-8")
         key  = self._hkdf_subkey(user_key, info)
         return self._enc_json_read(self._pwcache_path(username), key) or {}
@@ -5678,11 +5436,11 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             pass
         return rec.get("pw") or None
 
-    # =============================================================================
+    # ==============================
     # --- Trash storage (encrypted) ----------------
-    # =============================================================================
+    # ==============================
 
-    def _trash_load(self, username: str, user_key: bytes) -> list:                                          # - load trash
+    def _trash_load(self, username: str, user_key: bytes) -> list:   # - load trash
         """
         Load encrypted trash for this user.
         Returns a list of trashed entries (dicts), or [] if none.
@@ -5694,7 +5452,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             log.error(f"[TRASH] load failed for {username}: {e}")
             return []
 
-    def _trash_save(self, username: str, user_key: bytes, rows: list):                                      # - save to trash
+    def _trash_save(self, username: str, user_key: bytes, rows: list):       # - save to trash
         """
         Save encrypted trash for this user.
         Overwrites the trash file with the given list of entries.
@@ -5707,9 +5465,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             raise
 
 
-    # =============================================================================
+    # ==============================
     # --- Key-change migrations (reuse across password change / WRAP toggle) ------
-    # =============================================================================
+    # ==============================
     def _run_key_change_migrations(
         self,
         username: str,
@@ -5839,7 +5597,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         from vault_store.vault_ui_ops import soft_delete_entry as _impl
         return _impl(self, *args, **kwargs)
 
-    def on_move_to_trash_clicked(self):                                                                     # - move to trash button click
+    def on_move_to_trash_clicked(self):       # - move to trash button click
         row = self.vaultTable.currentRow()
         if row < 0:
             QMessageBox.information(self, self.tr("Delete"), self.tr("Select an item to delete."))
@@ -5876,7 +5634,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             msg = self.tr("Could not delete this entry.\n\n") + f"{why}"
             QtWidgets.QMessageBox.critical(self, self.tr("Delete"), msg)
 
-    def restore_from_trash_uid(self, username: str, key: bytes, uid: str) -> bool:                          # - restore from trash using uid
+    def restore_from_trash_uid(self, username: str, key: bytes, uid: str) -> bool:       # - restore from trash using uid
         if not self._require_unlocked():
             return
         try:
@@ -5938,7 +5696,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             log.error(f"[Trash] restore_from_trash_index failed: {e}")
             return False
 
-    def restore_from_trash(self, username: str, key: bytes, match_id: str) -> bool:                         # - find item to restore id 
+    def restore_from_trash(self, username: str, key: bytes, match_id: str) -> bool:    # - find item to restore id 
         """
         Restore a trashed item by persistent id (id/_id/row_id) or fingerprint ('fp:...').
         """
@@ -5949,7 +5707,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             picked = None
             picked_i = -1
 
-            # 1) exact id match
+            # exact id match
             def _rid(e):
                 return str(e.get("id") or e.get("_id") or e.get("row_id") or "")
 
@@ -5958,7 +5716,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                     picked = e; picked_i = i
                     break
 
-            # 2) fingerprint fallback
+            # fingerprint fallback
             if picked is None and str(match_id).startswith("fp:"):
                 def _norm(s): return (s or "").strip().lower()
                 for i, e in enumerate(trash):
@@ -5996,7 +5754,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             return False
    
     # NOTE add option to change this on updates (in settings add option to change days)
-    def _auto_purge_trash(self) -> int:                                                                     # - delete after 30 days
+    def _auto_purge_trash(self) -> int:  # - delete after 30 days
         """Purge trashed items older than TRASH_KEEP_DAYS; quiet if anything is missing."""
         try:
             username = (self.currentUsername.text() or "").strip()
@@ -6045,15 +5803,12 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         from vault_store.vault_ui_ops import show_trash_manager as _impl
         return _impl(self, *args, **kwargs)
 
-    def purge_trash(self, username: str, key: bytes, max_age_days: int = 30) -> int:                        # - delete after 30 days
+    def purge_trash(self, username: str, key: bytes, max_age_days: int = 30) -> int:   # - delete after 30 days
         """
         Remove soft-deleted items older than max_age_days from the encrypted trash.
         Return the number of items purged.
         """
-        # After login/unlock.
-        # On startup.
-        # (Optional) Nightly via a QTimer (e.g., every 24h).
-        
+        # After login/unlock
         trash = self._trash_load(username, key)
         if not trash:
             return 0
@@ -6088,7 +5843,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         from vault_store.vault_ui_ops import _trash_preview_for_entry as _impl
         return _impl(self, *args, **kwargs)
 
-    def _redact_for_preview(self, entry: dict) -> dict:                                                     # - trash preview
+    def _redact_for_preview(self, entry: dict) -> dict: # - trash preview
         """
         Return a shallow copy with common secret fields masked.
         """
@@ -6106,9 +5861,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         return red
 
 
-    # =============================================================================
-    # --- login/out ---------------------------------------------
-    # =============================================================================
+    # ==============================
+    # --- login/out ---
+    # ==============================
 
     def _prelogin_baseline_peek(self, *args, **kwargs):
         from auth.login.auth_flow_ops import _prelogin_baseline_peek as _impl
@@ -6133,16 +5888,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             except Exception:
                 log.info(msg)
                 
-    # - Auto fill username/password if in dev mode and boxs empty
-    def _dev_autofill_login(self):
-        if not is_dev():
-            return  # only in dev
-        from dev.dev_secrets import user, pwd
-
-        if self.usernameField.text().strip() == "":
-            self.usernameField.setText(user)
-        if self.passwordField.text() == "":
-            self.passwordField.setText(pwd)
    
     def _is_locked_out_tuple(self, username: str, threshold: int):
         try:
@@ -6165,7 +5910,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             Works with your login_handler's storage.
             """
             try:
-                # If your login_handler exposes something better, use it.
                 data = get_user_setting(username, "lockout_fail_count", 0)
                 count = int(data or 0)
                 return max(0, threshold - count)
@@ -6236,14 +5980,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             cb.setChecked(bool(has_device_unlock(rec)))
         except Exception:
             # Never break login UI for a convenience toggle.
-            return
-
-    def reset_login_timer(self, username: str) -> None:
-        if is_dev:
-            from security.secure_audit import record_login_success
-            record_login_success(username)
-            self.set_status_txt(self.tr("reset count"))
-        else:
             return
 
     # --- shows main widget/hide login widget, log_audit
@@ -6324,7 +6060,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                 except Exception:
                     pass
 
-            # Toggle the individual login widgets you already collected
             for w in getattr(self, "loginWidgets", []):
                 if w:
                     try:
@@ -6394,7 +6129,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         if elapsed * 1000 >= self.logout_timeout + 2_000:
             self.force_logout()
 
-    # --- optional: capture app resume/activate to re-evaluate timers
+    # --- capture app resume/activate to re-evaluate timers
     def eventFilter(self, obj, event):
         try:
             # if disabled, don’t enforce anything here
@@ -6414,7 +6149,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     # --- utility: compute seconds left using monotonic/remaining time
     def _seconds_until_logout(self) -> int:
         if not getattr(self, "_auto_logout_enabled", False):
-            # effectively "infinite" so nothing else triggers
             return 2_147_483_647  # ~INT_MAX seconds
 
         try:
@@ -6430,7 +6164,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
     # --- stop logout on other windows ---------------------------
 
-    # --- note might need morving to open diog box
     def safe_messagebox_question(self, *args, **kwargs):
         self.reset_logout_timer()
         return QMessageBox.question(*args, **kwargs)
@@ -6445,9 +6178,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
     # --- Check and verfy, (checks before allowed change)
 
-    # =========================
+    # ==============================
     # SENSITIVE ACTION RE-AUTH
-    # =========================
+    # ==============================
     def _prompt_account_password(self, username: str) -> Optional[str]:
         """Prompt the user to confirm their identity with their account password."""
         try:
@@ -6700,9 +6433,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             "country":  "",
         }
 
-        # 1) optional JSON profile (unchanged – keep your current code if you like)
-
-        # 2) From table
         try:
             table = getattr(self, "vaultTable", None)
             if not table or table.rowCount() == 0:
@@ -6833,9 +6563,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         """
         if new:
             tok = secrets.token_urlsafe(32)
-            self.bridge_token = tok              # single source of truth
-            # If you want it persisted across app restarts, uncomment:
-            self.save_bridge_token(tok)
+            self.bridge_token = tok
+            # NOTE: (V2) store in file for passkey and browser usage
+            self.save_bridge_token(tok) 
             return tok
 
         tok = getattr(self, "bridge_token", "") or ""
@@ -6853,9 +6583,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def clear_bridge_token(self):
         """Clear token in memory (and on disk if you persisted it)."""
         self.bridge_token = ""
-        # If you persist tokens, also wipe the file/store here:
+        # NOTE: Need to add new token file from last update
         try:
-            self.save_bridge_token("")  # or os.remove(path) if you have a path
+            self.save_bridge_token("") 
         except Exception:
             pass
 
@@ -6967,8 +6697,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception as e:
             log.error(f"[BRIDGE] save_card_from_bridge failed: {e}")
             return False
-
-    # --- get to add
     
     def get_webfill_profiles(self, *args, **kwargs):
         from app.misc_ops import get_webfill_profiles as _impl
@@ -7103,8 +6831,8 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         return _impl(self, *args, **kwargs)
 
     def check_bridge_token_headless(self, presented: str) -> bool:
-        # compare with whatever you store as the current token / auth mode
-        expected = (self.bridgeToken.text() or "").strip()  # or wherever you keep it
+        # compare with store as the current token / auth mode
+        expected = (self.bridgeToken.text() or "").strip()
         mode = (self.authMode.currentText() or "Authorization").lower()
         if mode in ("none", "disabled"):
             return True
@@ -7149,7 +6877,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         """Start/verify the local bridge and show the pairing token + URL."""
         log.info("%s [PAIR] button clicked", kql.i('ok'))
         try:
-            # 1) Ensure we have a token (don't rotate unless explicitly requested)
+            # 1) Ensure a token (don't rotate unless explicitly requested or logout ) 
             token = self.ensure_bridge_token(new=False)
             if not token:
                 log.error("%s [BRIDGE] no token (user not logged in?)", kql.i('err'))
@@ -7159,7 +6887,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             # 2) Start (or verify) the local HTTP bridge (idempotent)
             try:
                 self.start_bridge_server(strict=None)
-                self.start_bridge_monitoring()   # <-- add this line
+                self.start_bridge_monitoring()
             except Exception:
                 log.exception("%s [BRIDGE] start threw", kql.i('err'))
 
@@ -7243,10 +6971,8 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         if reply == QMessageBox.Yes:
             try:
-                # Uses your existing full-backup flow (export_vault)
                 self.export_vault()
             except Exception as e:
-                # Don’t block the user forever, but warn them clearly
                 QMessageBox.warning(
                     self,
                     self.tr("Backup Error"),
@@ -7265,9 +6991,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         self._track_window(dialog)
         dialog.exec()
     
-    # --- open add entry windows (gets values need retuns them for vault added)
-    
-
     # --- open reminders window ---
     def open_reminders_dialog(self):
         """Open the Reminders panel (in-app list of due/overdue reminders)."""
@@ -7316,7 +7039,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         self.set_status_txt(self.tr("Opening security prefs"))
         self.reset_logout_timer()
 
-        # If not passed, use currently active username
         username = (username or self._active_username() or "").strip()
         if not username:
             QMessageBox.information(
@@ -7326,11 +7048,10 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             )
             return
 
-        # Open prefs dialog for that username
         try:
             dlg = SecurityPrefsDialog(username=username, parent=self)
         except TypeError:
-            # back-compat fallback
+            # - back-compat fallback
             dlg = SecurityPrefsDialog(parent=self)
             if hasattr(dlg, "setUsername"):
                 dlg.setUsername(username)
@@ -7369,9 +7090,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         show_password_generator_dialog(target_field=target_field, confirm_field=confirm_field)
 
 
-    # =============================================================================
-    # --- table/vault Managemen ---------------------------------------------
-    # =============================================================================
+    # ==============================
+    # --- table/vault Managemen ---
+    # ==============================
     # load vault into table (called from load_setting and any refresh)
     def load_vault_table(self, *args, **kwargs):
         from vault_store.vault_ui_ops import load_vault_table as _impl
@@ -7388,10 +7109,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         try:
             self.load_vault_table()
         except Exception as e:
-            # Provide basic fallbacks for non-vault categories.  Currently
-            # there are no static categories that require a placeholder
-            # (previously Login Reports).  You could add similar
-            # placeholders here if needed.
             self.vaultTable.clear()
 
     # --- refresh category edit
@@ -7407,7 +7124,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     # --- new
     def _install_vault_reload_debouncer(self):
         if getattr(self, "_vault_reload_timer", None) is None:
-            # parent must be the window (a QObject), not a method
             self._vault_reload_timer = QTimer(self)
             self._vault_reload_timer.setSingleShot(True)
             self._vault_reload_timer.setInterval(300)  # coalesce bursts
@@ -7453,9 +7169,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception as e:
             log.error(str(f"{kql.i('vault')} [ERROR] {kql.i('err')} Hadle edit button {e}"))
 
-    # =============================================================================
+    # ==============================
     # --- search box (look for item loaded in table)
-    # =============================================================================
+    # ==============================
     def filter_vault_table(self, text):
         log.debug(str(f"{kql.i('search')} [SEARCH] filter vault table called Filtering with text: {text}"))
 
@@ -7467,14 +7183,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         informs the user that no matches were found.  Blank search strings
         restore all rows.
         """
-
-        # dev mode
-        dev_cmd(self, text)
-
         try:
             self.reset_logout_timer()
             text_lower = text.lower() if text else ""
-            any_visible = False
             for row in range(self.vaultTable.rowCount()):
                 visible = False
                 for col in range(self.vaultTable.columnCount()):
@@ -7498,22 +7209,20 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         return _impl(self, *args, **kwargs)
 
     def _disconnect_search_signals(self, dlg, thread, worker):
-        # Only disconnect things we actually connected. We didn't connect `progress`.
         try:
             if worker:
-                try: worker.finished.disconnect()    # we connected this
+                try: worker.finished.disconnect()   
                 except Exception: pass
-                try: worker.error.disconnect()       # we connected this
+                try: worker.error.disconnect()     
                 except Exception: pass
-                # DO NOT touch worker.progress here; we never connected it.
             if dlg:
-                try: dlg.canceled.disconnect()       # we connected this
+                try: dlg.canceled.disconnect()   
                 except Exception: pass
         except Exception:
             pass
 
     def _on_search_finished_collect(self, results: list[dict]):
-        # Runs on GUI thread (queued). Just stash results; no UI work yet.
+        # Runs on GUI thread (queued)
         try:
             if self._search_ctx is not None:
                 self._search_ctx["results"] = results
@@ -7545,7 +7254,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
             pass
 
-        # Now it is safe to show results or an error message
         try:
             if ctx and ctx.get("error"):
                 msg = self.tr("Search failed:\n") + f"{ctx['error']}"
@@ -7696,9 +7404,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         dlg.resize(900, 480)
         return dlg
 
-    # ================================
+    # ==============================
     # Go-to-item from global search
-    # ================================
+    # ==============================
 
     def _first(self, *vals):
         for v in vals:
@@ -7750,7 +7458,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
             # Build a lowercase signature of the row text
             def cell_text(col_name_candidates):
-                # try to find a column by header name (robust to column order)
                 headers = [table.horizontalHeaderItem(c).text().strip().lower() if table.horizontalHeaderItem(c) else ""
                            for c in range(table.columnCount())]
                 for names in col_name_candidates:
@@ -7826,9 +7533,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         QTimer.singleShot(0, _find_and_focus)
 
 
-    # =============================================================================
+    # ==============================
     # --- move to diffent category
-    # =============================================================================
+    # ==============================
     def _move_row_to_category_full(self, *args, **kwargs):
         from vault_store.vault_ui_ops import _move_row_to_category_full as _impl
         return _impl(self, *args, **kwargs)
@@ -7953,7 +7660,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             return
         sm = table.selectionModel()
         if sm is None:
-            # selection model may not exist yet; try again on the next cycle
             try:
                 QTimer.singleShot(0, self._wire_move_selection_guard)
             except Exception:
@@ -7978,12 +7684,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         try: btn.clicked.disconnect(self.on_move_category_clicked)
         except Exception: pass
         btn.clicked.connect(self.on_move_category_clicked)
-
-        # also wire selection guard here
         self._wire_move_selection_guard()
-        # --- block 
 
-    # ---- move restrictions -------------------------------------------------
+    # ---- move restrictions -------
     def _update_move_button_enabled(self):
         btn = getattr(self, "move_category_", None)
         table = getattr(self, "vaultTable", None)
@@ -8009,26 +7712,17 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         # rows currently in any of these categories cannot be moved
         return {"banks", "creditcards", "bankaccount", "bankaccounts", "creditcard", "MAC", "wifi"}
 
-    def BLOCKED_MOVE_TARGETS(self) -> set[str]:  # note move, remove after
-        # you cannot move entries into these categories
-        return {}
-        return {"banks", "creditcards", "bankaccount", "bankaccounts", "creditcard", "MAC", "wifi"}
-
     def _is_blocked_source(self, cat: str) -> bool:
         return self._norm_cat(cat) in self.BLOCKED_MOVE_SOURCES()
 
     def _is_blocked_target(self, cat: str) -> bool:
-        return self._norm_cat(cat) in self.BLOCKED_MOVE_TARGETS()
+        return self._norm_cat(cat) in self.BLOCKED_MOVE_SOURCES()
 
-    # =============================================================================
-    # --- settings enable/disable or value change ---------------------------
-    # =============================================================================
-
-    # =============================================================================
+    # ==============================
     # --- sets and load all settings (called after successful_login)
-    # =============================================================================
-    # --- all lables, check boxs, pro version, timers, apply theme, ect
-    # --- then loads table
+    # ==============================
+    # - all lables, check boxs, timers, apply theme, ect
+    # - then loads table
     
     def load_setting(self, *args, **kwargs):
         from ui.settings_ops import load_setting as _impl
@@ -8043,7 +7737,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         try: spin.setKeyboardTracking(False)
         except Exception: pass
 
-        # If we wired this spin before, cleanly disconnect old callbacks
         cb_val  = getattr(spin, "_kwire_value_cb", None)
         cb_edit = getattr(spin, "_kwire_edit_cb", None)
         if cb_val:
@@ -8053,7 +7746,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             try: spin.editingFinished.disconnect(cb_edit)
             except Exception: pass
 
-        # New callbacks (named so we can disconnect next time)
+        # New callbacks (named so it can disconnect next time)
         def _on_val(v):
             try:
                 handler(cast(v), flush=False)
@@ -8071,9 +7764,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         spin._kwire_value_cb = _on_val
         spin._kwire_edit_cb  = _on_edit
 
-    # ============================================================================= 
+    # ============================== 
     # --- catalog
-    # ============================================================================= 
+    # ============================== 
 
     def export_user_catalog_encrypted(self, *args, **kwargs):
         from app.misc_ops import export_user_catalog_encrypted as _impl
@@ -8229,7 +7922,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             prefs[pref_key] = True
             try:
                 self.userPrefs = prefs
-                # if you have a save_user_prefs(...), call it here
             except Exception:
                 pass
         return ret == QMessageBox.Ok
@@ -8265,9 +7957,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         QDesktopServices.openUrl(QUrl(u))
 
-    # =============================================================================
+    # ==============================
     # --- update current theme
-    # =============================================================================
+    # ==============================
 
     def _persist_theme_choice(self, label: str):
         """
@@ -8348,8 +8040,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         theme = (theme or "").strip()
 
         # Persist choice (QSettings + user_db) unless explicitly disabled.
-        # This is what lets us load the last theme quickly on next start
-        # without hitting user_db just to know the theme.
         if persist:
             try:
                 self._persist_theme_choice(theme)
@@ -8357,15 +8047,15 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                 pass
 
         # Delegate the real theming to the original implementation.
-        # We pass persist=False to avoid double-saving in _persist_theme_choice.
+        # pass persist=False to avoid double-saving in _persist_theme_choice.
         try:
             try:
                 self.apply_theme2(theme, persist=False)
             except TypeError:
-                # In case apply_theme2 has the old signature without 'persist'
+                # In case apply_theme2 has the old signature 
                 self.apply_theme2(theme)
         finally:
-            # Only show a status message for interactive changes, not initial loads.
+            # Only show a status message for interactive changes
             if not initial:
                 try:
                     self.set_status_txt(self.tr("Theme Set"))
@@ -8399,9 +8089,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         self.setStyleSheet(base)
 
-    # =========================================================================
+    # ==============================
     # --- UI language preference (per-user) -----------------------------------
-    # =========================================================================
+    # ==============================
 
     def _init_language_from_file(self) -> None:
         from ui.ui_language import _init_language_from_file as __init_language_from_file
@@ -8435,15 +8125,14 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         from ui.ui_language import _install_translator_for_code as __install_translator_for_code
         return __install_translator_for_code(self, ui_lang)
       
-    # =============================================================================
+    # ==============================
     # --- ontop/toast  ---
-    # =============================================================================
+    # ==============================
     def set_topmost_no_flash(self, on: bool) -> None:
         """Toggle always-on-top without setWindowFlags() (no white flash)."""
         try:
             if sys.platform != "win32":
                 # Fallback: avoid recreating unless absolutely needed
-                # self.setWindowFlag(Qt.WindowStaysOnTopHint, on); self.show()
                 return
             HWND_TOPMOST     = -1
             HWND_NOTOPMOST   = -2
@@ -8490,16 +8179,16 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             log.error(f"{kql.i('tool')} [ERROR] {kql.i('err')} Failed to set ontop: {e}")
     
     def _toast(self, message: str, msec: int = 2500):
-        try:
-            # show near the main window’s top-left; replace with your nicer toast if you have one
+        # NOTE: Temp toast, will be moving to windows 11 Notifications on windows
+        try: 
             pos = self.mapToGlobal(QPoint(20, 20))
             QToolTip.showText(pos, message, self, self.rect(), msec)
         except Exception:
             pass        
     
-    # =============================================================================
+    # ==============================
     # --- portable app ---
-    # =============================================================================
+    # ==============================
 
     def action_move_user_to_usb(self, *args, **kwargs):
         from features.portable.portable_ops import action_move_user_to_usb as _impl
@@ -8559,12 +8248,10 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         QApplication.processEvents()
 
         try:
-            # IMPORTANT: run on the main thread so that any QMessageBox
-            # calls inside build_portable_app are safe.
             ok = build_portable_app(self, Path(drive))
         except Exception as e:
             ok = False
-            log = kql  # or use logging.getLogger("keyquorum")
+            log = kql  
             log.error(f"[PORTABLE] build_portable_app failed: {e}")
         finally:
             try:
@@ -8632,11 +8319,10 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
             pass
 
-    # ============================================================================= 
+    # ============================== 
     # helper to stop crease on rapid change
-    # =============================================================================
-    
-    # call this once from your class before using _debounce_setting (or lazily inside it)
+    # ==============================
+
     def _ensure_debounce_store(self):
         if not hasattr(self, "_debounce_timers"):
             self._debounce_timers: dict[str, "QTimer"] = {}
@@ -8698,15 +8384,15 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             pass
         t.start(delay_ms)
 
-    # =============================================================================
+    # ==============================
     # --- preflight/AV enable/disable
-    # =============================================================================
+    # ==============================
     def on_enable_preflight_toggled(self, checked: bool):
         self.set_status_txt(self.tr("Saving Preflight change") + f" {checked}")
         self.reset_logout_timer()
         log.debug("%s [TOOLS] %s preflight toggled -> %s", kql.i('tool'), kql.i('ok'), checked)
 
-        # We support two independent toggles in the UI:
+        # support two independent toggles in the UI:
         # - enablePreflightCheckbox   : per-user (runs after username is entered, before unlocking)
         # - enablePreflightCheckbox_2 : global (runs on app startup)
         try:
@@ -8728,7 +8414,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                 prefs["enable_preflight_startup"] = bool(checked)
             else:
                 prefs["enable_preflight_login"] = bool(checked)
-            # Back-compat: keep the legacy key aligned for existing code paths
             prefs["enable_preflight"] = bool(checked)
             prefs["preflight_prompted"] = True
             save_security_prefs(prefs, target)
@@ -8786,7 +8471,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             prefs["check_av"] = bool(checked)  # back-compat
             save_security_prefs(prefs, target)
 
-            # Back-compat: keep user_db flags too (older builds may read these)
+            # Back-compat: keep user_db flags (older builds may read these)
             if not is_startup_toggle and username:
                 set_user_setting(username, "WinDefCheckbox", bool(checked))
                 set_user_setting(username, "av_prompt_on_login", bool(checked))
@@ -8867,10 +8552,10 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
             pass
 
-        # Mirror to cloud profile if your engine watches 'sync_enable'
+        # Mirror to cloud profile
         set_user_cloud(
             username=username,
-            enable=bool(prof.get("enabled")),                 # keep as-is
+            enable=bool(prof.get("enabled")), 
             provider=(prof.get("provider") or "localpath"),
             path=(prof.get("remote_path") or ""),
             wrap=bool(prof.get("cloud_wrap")),
@@ -8908,9 +8593,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                 log.debug(f"[AUTO-SYNC] setup failed: {e}")
         self.set_status_txt(self.tr("Done"))
 
-    # =============================================================================
+    # ==============================
     # --- Password expiry days (int)
-    # =============================================================================
+    # ==============================
     def on_password_expiry_days_change(self, value: int | float, *, flush: bool = False) -> None:
         self.set_status_txt(self.tr("Saving Password Expiry Change"))
         v = int(round(value))
@@ -8937,9 +8622,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         self._debounce_setting("password_expiry_days", v, 2000, _persist, flush=flush)
         self.set_status_txt(self.tr("Done"))
 
-    # =============================================================================
+    # ==============================
     # Lockout threshold (int)
-    # =============================================================================
+    # ==============================
     def on_lockout_threshold_changed(self, value: int | float, *, flush: bool = False) -> None:
         v = int(round(value))
         if v < 0: v = 0
@@ -8963,9 +8648,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         self._debounce_setting("lockout_threshold", v, 2000, _persist, flush=flush)
 
-    # =============================================================================
+    # ==============================
     # Clipboard clear timeout (seconds, int)
-    # =============================================================================
+    # ==============================
     def on_clipboard_clear_timeout_sec_change(self, value: int | float, *, flush: bool = False) -> None:
         self.set_status_txt(self.tr("Clipboard timeout changed"))
         v = int(round(value))
@@ -8998,9 +8683,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         self._debounce_setting("clipboard_clear_timeout_sec", v, 2000, _persist, flush=flush)
 
 
-    # =============================================================================
+    # ==============================
     # Auto logout timeout (seconds, int) — 0 = OFF
-    # =============================================================================
+    # ==============================
     def on_auto_logout_timeout_sec_change(self, value: int | float, *, flush: bool = False) -> None:
         v = int(round(value))
         if v < 0: v = 0
@@ -9012,7 +8697,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             log.debug(f"{kql.i('tool')} {kql.i('warn')} no user for auto-logout update")
             return
 
-        # live apply now; your setup_auto_logout() should implement 0 = OFF
         self.logout_timeout = 0 if v == 0 else v * 1000
         try: self.setup_auto_logout()
         except Exception: pass
@@ -9030,22 +8714,19 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         self._debounce_setting("auto_logout_timeout_sec", v, 2000, _persist, flush=flush)
 
 
-    # =============================================================================
-    # --- note logging enable/disable need updateing to current log meathord also not so if logging 
-    # =============================================================================
     def enable_debug_logging_change(self, checked: bool) -> None:
         self.set_status_txt(self.tr("saving logging set") + f" {checked}")
         log.debug("%s [TOOLS] %s enable_debug_logging_change(%s)",
                   kql.i('tool'), kql.i('ok'), checked)
 
         # Apply runtime logging mode (console in dev only)
-        apply_debug_flag(bool(checked), keep_console=is_dev())
+        apply_debug_flag(bool(checked), keep_console=is_dev)
 
-        # Programmatic changes (e.g., during logout) set this flag to suppress popups
+        # Programmatic changes (during logout) set this flag to suppress popups
         if getattr(self, "_suppress_logging_toasts", False):
             return
 
-        # Persist per-user if we have a username
+        # Persist per-user if theres a username
         try:
             username = (self.currentUsername.text() or "").strip()
         except Exception:
@@ -9073,9 +8754,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
             pass
 
-    # =============================================================================
+    # ==============================
     # --- breach checker
-    # =============================================================================
+    # ==============================
 
     def enable_breach_checker_change(self, *args, **kwargs):
         from features.security_center.security_center_ops import enable_breach_checker_change as _impl
@@ -9086,8 +8767,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         Show a one-time consent explaining the HIBP 'range' API (k-anonymity).
         Returns True if the user accepts (Enable), False if Cancel.
         """
-
-        # Try to use your configured help/privacy URLs; fall back to sensible defaults.
+        # use configured help/privacy URLs; fall back to sensible defaults.
         help_url = getattr(self, "SITE_HELP", SITE_HELP)
         privacy_url = PRIVACY_POLICY
 
@@ -9114,9 +8794,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         res = msg.exec_() if hasattr(msg, "exec_") else msg.exec()
         return msg.clickedButton() is enable_btn
 
-    # =============================================================================
+    # ==============================
     # --- watchtower rescan 
-    # =============================================================================
+    # ==============================
     def _watchtower_rescan(self):
         """
         Trigger Watchtower rescan (legacy-safe).
@@ -9125,9 +8805,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         if wt and hasattr(wt, "start_scan"):
             wt.start_scan()
 
-    # =============================================================================
+    # ==============================
     # --- zoom user profile pic value change
-    # =============================================================================
+    # ==============================
 
     def auto_zoom_factor(self, value: float, *, flush: bool = False) -> None:
         log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('ok')} zoom -> {value}")
@@ -9154,9 +8834,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         self._debounce_setting("zoom_factor", value, 2000, _persist, flush=flush)
 
-    # =============================================================================
+    # ==============================
     # --- two 2fa enable/disable 
-    # =============================================================================
+    # ==============================
     # ---------------- Manual Emergency Kit input (no persistence) ----------------
     def prompt_manual_kit_entries(self, *args, **kwargs):
         from app.misc_ops import prompt_manual_kit_entries as _impl
@@ -9175,7 +8855,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         Clears TOTP (secret + codes) and flips the identity header flag OFF.
         Does NOT delete username.data (preserves YubiKey & other identity metadata).
         """
-        # Ensure we have a password to rewrap identity blob
+        # Ensure a password to rewrap identity blob
         if not password:
             password = getattr(self, "current_password", None)
         if not password:
@@ -9211,9 +8891,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             QMessageBox.critical(self, self.tr("2FA"), f"Failed to disable 2FA for this account.\n\n{e}")
             return False
 
-    # =============================================================================
-    # --- Portable Version ----------------------------------------------
-    # =============================================================================
+    # ==============================
+    # --- Portable Version ----
+    # ==============================
 
     def update_portable_actions(self, *args, **kwargs):
         from features.portable.portable_ops import update_portable_actions as _impl
@@ -9246,9 +8926,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def open_logs_folder(self):
         open_path_in_explorer(LOG_DIR_)
 
-    # =============================================================================
+    # ==============================
     # --- table context actions
-    # =============================================================================
+    # ==============================
 
     def _header_map(self):
         """Return a dict of lowercase header -> column index for vaultTable."""
@@ -9279,7 +8959,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                 Qt.ItemDataRole.EditRole,
                 Qt.ItemDataRole.DisplayRole,
             ]
-            extra_role = int(Qt.ItemDataRole.UserRole) + 1  # if you used a custom role before
+            extra_role = int(Qt.ItemDataRole.UserRole) + 1
             for role in [*roles, extra_role]:
                 val = item.data(role)  # IntEnum works here; it's an int underneath
 
@@ -9292,7 +8972,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                     return str(val)
         except Exception:
             pass
-        # Fallback to text, but if masked we return empty to avoid copying bullets
+        # Fallback to text, but if masked return empty to avoid copying bullets
         txt = item.text() if hasattr(item, "text") else ""
         return "" if self._is_masked(txt) else txt
 
@@ -9306,7 +8986,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         # 2) Naked domains: example.com, example.co.uk, www.example.co.uk, etc.
         #    - no scheme
-        #    - no '@' (so we don't confuse emails)
+        #    - no '@' (don't confuse emails)
         naked_domain_re = _re.compile(
             r'(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$'
         )
@@ -9383,7 +9063,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             )
             return
 
-        # Use your existing helper to find a URL in this row
         url = self._find_url_in_row(row)
         if not url:
             QMessageBox.information(
@@ -9413,7 +9092,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     
     def _active_username(self) -> str:
         """Best-effort active username for reading user_db."""
-        # Common case: there's a QLineEdit on the UI
         try:
             if hasattr(self, "currentUsername") and callable(getattr(self.currentUsername, "text", None)):
                 u = (self.currentUsername.text() or "").strip()
@@ -9483,7 +9161,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             except Exception:
                 pass
 
-        # Fallback if we got nothing
+        # Fallback if got nothing
         if not names:
             try:
                 from catalog_category.category_fields import get_categories
@@ -9493,8 +9171,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         return names
 
-    # --- per-user field meta (table uses user_db first)
-   
     def refresh_category_selector(self):
         self.set_status_txt(self.tr("refresh category selector"))
         combo: QComboBox = getattr(self, "categorySelector_2", None)
@@ -9539,7 +9215,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
     def refresh_category_dependent_ui(self):
         self.set_status_txt(self.tr("refresh category dependent ui"))
-        # Vault filter combo
         combo = getattr(self, "categoryFilterCombo", None) or getattr(self, "categoryFilter", None)
         if combo:
             cats = self._schema_category_names()
@@ -9577,7 +9252,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         self.reset_logout_timer()
         self.edit_selected_vault_entry(row, column)
 
-    # =============================================================================
+    # ==============================
     # --- _cell
     
     def _cell(self, text):
@@ -9585,7 +9260,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         self.reset_logout_timer()
         return QTableWidgetItem(text)
 
-    # =============================================================================
+    # ==============================
     # --- QR show for selected item
     
     def show_qr_for_selected(self, *args, **kwargs):
@@ -9601,16 +9276,16 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         h = "true" if bool(hidden) else "false"
         return f"WIFI:T:{t};S:{esc(ssid)};P:{esc(password)};H:{h};;"
 
-    # =============================================================================
+    # ==============================
     # --- Software Games --------------------------------
-    # =============================================================================
+    # ==============================
     
     def run_selected_software(self):
         """
         Runs the 'Executable' of the currently selected row if category is 'Software'.
         """
         try:
-            # 1) ensure we are on the Software category
+            # 1) ensure Software category
             cat = getattr(self, "currentCategory", None)
             if not isinstance(cat, str) and hasattr(self, "comboCategory"):
                 cat = self.comboCategory.currentText()
@@ -9626,14 +9301,10 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                 return
 
             idx = sel[0]
-            # Adjust these column names/indexes to match your model
-            # e.g. columns: Title | Executable | Key Path | Notes
+
             model = view.model()
             def get(col_name: str, default=""):
-                # Try your model's role/column mapping; fallback by header search
-                # If you already know the column index for "Executable", use that directly
                 try:
-                    # find column by header text
                     for c in range(model.columnCount()):
                         if model.headerData(c, Qt.Horizontal) and \
                            str(model.headerData(c, Qt.Horizontal)).strip().lower() == col_name:
@@ -9650,7 +9321,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             if run_software_exec(exec_path):
                 return
 
-            # If not a direct exe, try to open its folder instead
             ep = _expand_path(exec_path)
             if os.path.exists(ep):
                 _reveal_in_explorer(ep)
@@ -9719,9 +9389,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             log.info(f"[WARN] open_selected_software_key: {e}")
 
 
-    # =============================================================================
+    # ==============================
     # --- Install/Download games --------------------------------
-    # =============================================================================
+    # ==============================
 
     def _platform_from_link(self, link: str) -> str | None:
         u = (link or "").strip().lower()
@@ -9771,8 +9441,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             "razer": "razer synapse",
         }
         return self._installed_via_uninstall_key(HINTS.get(platform, platform))
-
-    # call this once after UI is ready (e.g., end of __init__ or after setupUi)
 
     def build_launch_install_menu(self, *args, **kwargs):
         from features.url.url_ops import build_launch_install_menu as _impl
@@ -9855,7 +9523,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
             return False
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # --- right click on item show menu
 
     def show_entry_context_menu(self, *args, **kwargs):
@@ -9900,10 +9568,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         return counts
 
-    # =============================================================================
-    # --- this is add/edit tab
-    # =============================================================================    
-    # --- save on change
+    # ==============================
+    # --- add/edit tab
+    # ==============================    
 
     def _on_editor_schema_saved(self, *args, **kwargs):
         from app.misc_ops import _on_editor_schema_saved as _impl
@@ -9959,7 +9626,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         self.profilePicLabel1.setFixedSize(100, 100)
 
     def _current_username_text(self) -> str:
-        # centralised, consistent place to read the username field
         try:
             w = getattr(self, "currentUsername", None) or getattr(self, "usernameField", None)
             return (w.text() or "").strip() if w else ""
@@ -9971,11 +9637,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             return _canonical_username_ci(name) or name
         except Exception:
             return name
-
-    # add near your other imports for this file:
-
-    # ---------- helpers ----------
-    
 
     def _default_profile_icon_path(self) -> str:
         """
@@ -10009,9 +9670,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                 sys.excepthook(*sys.exc_info())
         return wrapper
 
-    # =============================================================================
+    # ==============================
     # --- track and close open ui's
-    # =============================================================================
+    # ==============================
 
     def _init_window_tracker(self):
         if not hasattr(self, "_child_windows"):
@@ -10041,13 +9702,13 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         """Close/hide any opened UI (password gen, add/edit entry, etc.)."""
         self._init_window_tracker()
 
-        # 1) close everything we explicitly tracked
+        # 1) close everything explicitly tracked
         for r in list(self._child_windows):
             w = r() if callable(r) else None
             if not w:
                 continue
             try:
-                # give dialogs a chance to clean up (stop timers/threads)
+                # dialogs a chance to clean up (stop timers/threads)
                 for attr in ("stop", "shutdown", "closeEventHook"):
                     m = getattr(w, attr, None)
                     if callable(m):
@@ -10085,9 +9746,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
             pass
 
-    # ==================================================
-    # --- Portable USB watchdog ---------------------------------------------
-    # ==================================================
+    # ==============================
+    # --- Portable USB watchdog ---
+    # ==============================
     def _start_usb_watch_if_needed(self) -> None:
         """
         If running in portable mode (KeyquorumPortable on a USB drive),
@@ -10206,22 +9867,17 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                 pass
 
 
-    # =============================================================================
+    # ==============================
     # --- serecty ---
-    # =============================================================================
+    # ==============================
 
-    # verfie 
-    # =============================================================================
     # --- Basline check
-    # =============================================================================
     def _shorten_path(self, p: str) -> str:
         """Make long absolute paths easier to read by replacing known roots."""
         try:
             s = str(Path(p))
         except Exception:
             return p
-
-        # Replace HOME with ~
         try:
             home = str(Path.home())
             if s.startswith(home):
@@ -10229,7 +9885,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
             pass
 
-        # Replace app-known roots if available
         roots = [
             ("APP", getattr(self, "APP_ROOT", None)),
             ("DATA", getattr(self, "DATA_DIR", None)),
@@ -10255,14 +9910,12 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
     def action_add_suspect(self):
         self.reset_logout_timer()
-        #   self.reset_logout_timer()
         name, ok = QInputDialog.getText(self, self.tr("Add Watch Process"), self.tr("Process name to watch (e.g., wireshark.exe):"))
         if ok and name.strip():
             add_process_to_watch(name.strip())
 
     def action_add_allow(self):
         self.reset_logout_timer()
-    #    self.reset_logout_timer()
         name, ok = QInputDialog.getText(self, self.tr("Add Allowlisted Process"), self.tr("Allowlist process name (exact match):"))
         if ok and name.strip():
             add_allowlist_process(name.strip())
@@ -10271,7 +9924,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def maybe_prompt_enable_preflight(self, parent=None):
         prefs = load_security_prefs()
         if prefs.get("preflight_prompted", False):
-            return  # already asked once
+            return
 
         box = QMessageBox(parent or self)
         box.setWindowTitle(self.tr("Security Preflight"))
@@ -10291,18 +9944,13 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         save_security_prefs(prefs)
 
     def _load_user_preflight_overrides(self, username: str) -> dict:
-
         user = username
-
         # Login-time prefs are stored per-user in the *.sp file.
-        # If missing, we fall back to legacy user_db settings.
         user_sp = load_security_prefs(user) or {}
-
         enable_preflight = bool(
             user_sp.get("enable_preflight_login",
                         user_sp.get("enable_preflight", True))
         )
-
         # Master AV toggle (login)
         if "check_av_login" in user_sp:
             av_enabled = bool(user_sp.get("check_av_login", False))
@@ -10314,7 +9962,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             except TypeError:
                 av_enabled = bool(get_user_setting(user, "WinDefCheckbox"))
 
-        # Optional quick-scan (login)
+        # quick-scan (login)
         if "defender_quick_scan_login" in user_sp:
             quick_scan = bool(user_sp.get("defender_quick_scan_login", False))
         elif "defender_quick_scan" in user_sp:
@@ -10324,8 +9972,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                 quick_scan = bool(get_user_setting(user, "DefenderQuickScan", False))
             except TypeError:
                 quick_scan = bool(get_user_setting(user, "DefenderQuickScan"))
-
-        # Vendor UI prompt (legacy: stored in user_db)
         try:
             vendor_prompt = bool(get_user_setting(user, "av_prompt_on_login", True))
         except TypeError:
@@ -10347,7 +9993,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         }
 
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # --- Audit and Lockout Management
    
     def load_audit_table(self, *args, **kwargs):
@@ -10362,11 +10008,11 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         from app.misc_ops import on_export_audit_clicked as _impl
         return _impl(self, *args, **kwargs)
 
-    # =============================================================================
+    # ==============================
     # --- export/import/back up ---
-    # =============================================================================
+    # ==============================
     
-    # =============================================================================
+    # ==============================
     # --- export/import vault data (not full back) ------------------
     
     def export_vault_with_password(self, *args, **kwargs):
@@ -10422,12 +10068,11 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         update_baseline(username=self.currentUsername.text(), verify_after=False, who=self.tr("Soft Restored"))
         QMessageBox.information(self, self.tr("Software Restore"), self.tr("✅ Software folder restored successfully."))
 
-        # password exfill imput
+    # ==============================
+    # --- Full backup/export (vault + salt + user_db + wrapped_key if present)
+    # ==============================
 
-     # --- Full backup/export (vault + salt + user_db + wrapped_key if present) ---
-
-    # =============================================================================
-    # --- export/import vault + user_data + settings (full backup) ------------------
+    # --- export/import vault + user_data + settings (full backup) 
 
     def export_vault(self):
         self.set_status_txt(self.tr("Exporting Vault"))
@@ -10494,11 +10139,10 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         )
 
         try:
-            ensure_dirs()  # global app dirs, safe if already created
+            ensure_dirs()
         except Exception:
             pass
 
-        # Build canonical per-user destinations and ensure their parents exist
         targets = [
             Path(vault_file(username, ensure_parent=True)),
             Path(vault_wrapped_file(username, ensure_parent=True, name_only=False)),
@@ -10629,7 +10273,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             # Headless / any error: identity mapping
             return {n: n for n in suggested}
 
-    # =============================================================================
+    # ==============================
     # --- import/export csv and add to vault
 
     def _add_category_to_user_schema(self, category_name: str) -> bool:
@@ -10653,7 +10297,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             if any((c.get("name") or "").strip().casefold() == lower for c in cats if isinstance(c, dict)):
                 return True  # exists
 
-            # sensible default fields (feel free to tweak)
+            # sensible default fields
             fields = [
                 {"label": "Website"},
                 {"label": "Email"},
@@ -10674,19 +10318,14 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         Non-destructive: only adds missing categories.
         """
         try:
-            # Collect distinct categories from your table/model or vault store
             used = set()
-
-            # If you have a model: iterate rows
             model = getattr(self, "vaultModel", None)
             if model is not None:
                 for r in range(model.rowCount()):
-                    # adapt to your data access
-                    cat = (model.data(model.index(r, 0), 0) or "").strip()  # or wherever category is stored
+                    cat = (model.data(model.index(r, 0), 0) or "").strip()
                     if cat:
                         used.add(cat)
 
-            # Extra: also include any categories present in CSV batches you just imported
             used |= set(getattr(self, "_last_import_categories", []))
 
             # Ensure they exist in schema
@@ -10725,7 +10364,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                 "Email", "Notes", "Date"
             ]]
 
-        # fallback minimal
         # fallback minimal category fields.  Use "Username" consistently.
         return [{"label": x} for x in ["Title", "Username", "Password", "URL", "Notes"]]
 
@@ -10806,8 +10444,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception as e:
             log.error(str(f"[DEBUG] check_selected_email_breach error: {e}"))
 
-    # =============================================================================
+    # ==============================
     # --- open password breach dulog (user can enter password)
+
     def open_password_breach_checker(self):
         """Open the password breach checker dialog from the Vault tab."""
         try:
@@ -10826,7 +10465,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception as e:
             log.error(str(f"[DEBUG] Failed to open breach checker dialog: {e}"))
    
-    # =============================================================================
+    # ==============================
     # --- used in check_selected_email_breach check if been porned site
     def open_hibp_for_email(self, email: str) -> None:
         """
@@ -10901,7 +10540,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             ).format(help_url=help_url, privacy_url=privacy_url)
         )
 
-        # Add a "Don't ask me again" checkbox
+        # "Don't ask me again" checkbox
         dont_ask_box = QCheckBox(self.tr("Don't ask me again"))
         msg.setCheckBox(dont_ask_box)
 
@@ -10912,9 +10551,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         accepted = (msg.clickedButton() is cont_btn)
         return accepted, bool(dont_ask_box.isChecked())
 
-    # =============================================================================
+    # ==============================
     # --- other
-    # =============================================================================
+    # ==============================
 
     # --- clear passwordless
     def clear_passwordless_unlock_on_this_device(self):
@@ -11005,7 +10644,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             self.tr("Remembered username cleared for this device."),
         )
 
-
     # --- Logging 
     def enable_debug_logging_change(self, checked: bool):
         """
@@ -11051,7 +10689,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     
     # --- updates lable to username in app
     def _active_username(self):
-    # Tries common places you store the username
         try:
             if hasattr(self, "currentUsername") and hasattr(self.currentUsername, "text"):
                 u = (self.currentUsername.text() or "").strip()
@@ -11067,9 +10704,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
 
 
-# ======================================================================
+# ==============================
 # --- FAST STARTUP
-# ======================================================================
+# ==============================
 def main() -> int:    
     # --- cheap USB bind check (keep early) ---
     try:
@@ -11081,9 +10718,9 @@ def main() -> int:
         log.error(f"{kql.i('portable')} [USB] USB binding check failed; exiting.")
         sys.exit(0)
 
-    # ------------------------------------------------------------------
-    # 1️⃣ Immediately apply a dark background before anything paints
-    # ------------------------------------------------------------------
+    # ------------------------
+    # Immediately apply a dark background before anything paints
+    # ------------------------
 
     pal = app.palette()
     dark_bg = QColor(0x12, 0x14, 0x18)  # dark gray
@@ -11093,28 +10730,26 @@ def main() -> int:
     app.setPalette(pal)
     app.setStyleSheet("QWidget { background-color: #121418; }")
 
-    # ------------------------------------------------------------------
-    # 2️⃣ Show a splash instantly to avoid white screen
-    # ------------------------------------------------------------------
-
-    splash_pix = QPixmap(icon_file("splash.png")) # QPixmap()  # optional: 
+    # ------------------------
+    # Show a splash instantly
+    # ------------------------
+    splash_pix = QPixmap(icon_file("splash.png"))
     splash = QSplashScreen(splash_pix)
     splash.setWindowFlag(Qt.FramelessWindowHint, True)
     splash.show()
-    app.processEvents()  # make sure splash paints now
+    app.processEvents()
 
-    # ------------------------------------------------------------------
-    # 3️⃣ Build & show your main window immediately (fast path)
-    # ------------------------------------------------------------------
+    # ------------------------
+    # Build & show main window immediately (fast path)
+    # ------------------------
     try:
         log.debug(f"{kql.i('build')} [boot] instantiating KeyquorumApp fast-path…")
         w = KeyquorumApp()
         w.show()
         center_on_screen(w)
-        app.processEvents()  # ensure first paint
+        app.processEvents()
         log.info(f"{kql.i('build')} [boot] main window shown (fast)")
 
-        # optional: first-run wizard
         try:
             if _needs_first_run():
                 from new_users.ui_wizard_create_account import InlineOnboardingWizard
@@ -11129,16 +10764,16 @@ def main() -> int:
         QMessageBox.critical(None, "Startup Error", tb[:60000])
         sys.exit(1)
 
-    # ------------------------------------------------------------------
-    # 4️⃣ Close the splash once UI is ready
-    # ------------------------------------------------------------------
+    # ------------------------
+    # Close the splash once UI is ready
+    # ------------------------
     QTimer.singleShot(150, splash.close)
 
-    # ------------------------------------------------------------------
-    # 5️⃣ Run heavy checks *after* window is visible
-    # ------------------------------------------------------------------
+    # ------------------------
+    # Run heavy checks *after* window is visible
+    # ------------------------
     def _run_post_show_checks():
-        # Manifest + preflight from your previous code, same logic
+        # Manifest + preflight from previous code, same logic
         try:
             from security.integrity_manifest import verify_manifest_auto
             ok, msg = verify_manifest_auto(show_ui=False, parent=w, dev_app_name="keyquorum-vault")
@@ -11171,7 +10806,7 @@ def main() -> int:
         # Deferred preflight
         try:
             ensure_preflight_defaults()
-            if not run_preflight_checks(dev_mode=False, parent=w):
+            if not run_preflight_checks(is_dev=False, parent=w):
                 QCoreApplication.quit()
                 return
         except Exception as e:
@@ -11181,10 +10816,9 @@ def main() -> int:
     # Run the heavy checks right after first event loop tick
     QTimer.singleShot(0, _run_post_show_checks)
 
-    # ------------------------------------------------------------------
-    # 6️⃣ Enter event loop
-    # ------------------------------------------------------------------
-    # raise SystemExit(app.exec())
+    # ------------------------
+    # Enter event loop
+    # ------------------------
     return app.exec()
 
 if __name__ == "__main__":

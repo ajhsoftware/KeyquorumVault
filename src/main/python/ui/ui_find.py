@@ -88,9 +88,9 @@ def init_find_child(w):
     w.profile_layout = w.findChild(QFormLayout, "profileLayout")
     w.themeSelector = w.findChild(QComboBox, "themeSelector")
     w.auditTable = w.findChild(QTableWidget, "auditTable")
-    # ---------------------------------------------------------------------
+    # ---------------------------
     # language combo
-    # ---------------------------------------------------------------------
+    # ---------------------------
     w.language_combo = None
     try:
         # Try a few likely objectNames first

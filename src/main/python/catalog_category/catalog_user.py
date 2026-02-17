@@ -23,9 +23,9 @@ import logging
 log = logging.getLogger("keyquorum")
 
 
-# ======================================================
+# ==============================
 # --- Crypto helpers (AES-GCM + HMAC integrity)
-# ======================================================
+# ==============================
 def _hkdf_subkey(user_key: bytes, info: bytes) -> bytes:
     salt = b"\x00" * 32
     prk = hmac.new(salt, user_key, hashlib.sha256).digest()
@@ -70,9 +70,9 @@ def verify_hmac_seal(username: str, obj: dict, user_key: bytes) -> bool:
     return hmac.compare_digest(want, mac)
 
 
-# ======================================================
+# ==============================
 # --- Catalog load / save
-# ======================================================
+# ==============================
 def _build_default_catalog(b_clients, b_aliases, b_guide, b_recipes=None) -> dict:
     return {
         "CLIENTS": b_clients,
@@ -126,9 +126,9 @@ def save_user_catalog(username: str, data: dict, user_key: bytes | None = None):
             json.dump(data, f, indent=2, ensure_ascii=False)
 
 
-# ======================================================
+# ==============================
 # --- Merge logic (respects __deleted__)
-# ======================================================
+# ==============================
 
 def merge_catalogs(builtins: dict, user_overlay: dict) -> dict:
     """
@@ -231,7 +231,7 @@ def load_effective_catalogs_from_user(
     return merged["CLIENTS"], merged["ALIASES"], merged["PLATFORM_GUIDE"], merged.get("AUTOFILL_RECIPES", {}) or {}, merged
 
 
-# --- Diagnostics -------------------------------------------------------------
+# --- Diagnostics -------------------
 
 def debug_catalog_status(username: str, user_key: bytes | None):
     """Prints catalog file existence, overlay stats, and HMAC result."""
@@ -258,9 +258,9 @@ def debug_catalog_status(username: str, user_key: bytes | None):
         log.debug("[CATALOG] debug_catalog_status failed:", e)
         return {}, False
 
-# =========================================================================
+# ==============================
 # --- password change
-# =========================================================================
+# ==============================
 def migrate_user_catalog_overlay(username: str, old_key: bytes, new_key: bytes):
     """
     Re-encrypt the user's catalog overlay (catalog.enc) from old_key -> new_key.
@@ -283,7 +283,6 @@ def migrate_user_catalog_overlay(username: str, old_key: bytes, new_key: bytes):
         try:
             write_hmac_seal(username, overlay, new_key)
         except TypeError:
-            # if signature differs in your build
             write_hmac_seal(username, new_key)
 
         return True, "Catalog overlay migrated"

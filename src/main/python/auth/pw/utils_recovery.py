@@ -26,9 +26,9 @@ from qtpy.QtCore import QCoreApplication
 def _tr(text: str) -> str:
     return QCoreApplication.translate("utils_recovery", text)
 
-# =============================================================================
+# ==============================
 # --- Recovery Key (single source of truth)  
-# =============================================================================
+# ==============================
 
 
 def mk_to_recovery_key(mk: bytes) -> str:
@@ -69,10 +69,10 @@ def recovery_key_to_mk(rk: str) -> bytes:
     if not s_raw:
         raise ValueError(_tr("Recovery Key is empty"))
 
-    # -------------------------------------------------
+    # -------
     # 1) New format (base32 body + 6-char checksum)
     #    Accept dashed or dashless input
-    # -------------------------------------------------
+    # -------
     s = s_raw.upper()
     s_alnum = re.sub(r"[^A-Z0-9]", "", s)
 
@@ -95,9 +95,9 @@ def recovery_key_to_mk(rk: str) -> bytes:
 
             return mk
 
-    # -------------------------------------------------
+    # -------
     # 2) Legacy urlsafe base64 (32 bytes, no checksum)
-    # -------------------------------------------------
+    # -------
     s_b64 = s_raw.replace(" ", "")
     pad = (-len(s_b64)) % 4
     try:
@@ -154,9 +154,9 @@ def _verify_recovery_key_local(*args) -> bool:
         return False
 
 
-# =============================================================================
+# ==============================
 # --- Backup Codes (single source of truth)
-# =============================================================================
+# ==============================
 
 import secrets
 import string

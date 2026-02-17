@@ -22,12 +22,11 @@ from auth.login.login_handler import set_user_setting, get_user_setting, get_use
 from new_users.tour import maybe_show_quick_tour
 from features.backup_advisor.backup_advisor import BackupAdvisor
 from ui.ui_flags import _maybe_show_release_notes
-from dev.dev import is_dev, DEBUG_ON
 from security.secure_audit import log_event_encrypted
 from auth.identity_store import get_login_backup_count_quick, get_2fa_backup_count_quick
 from security.preflight import load_security_prefs 
 from device.utils_device import get_device_fingerprint
-
+from app.basic import is_dev, DEBUG_ON
 
 _MAIN = (
     _sys.modules.get("__main__")
@@ -60,7 +59,7 @@ def load_setting(self, *args, **kwargs):
         self.set_status_txt(self.tr("Loading Settings: System Fingerprint"))
 
         # Hide fingerprint & identifiers if running in dev mode
-        if is_dev():
+        if is_dev:
             safe_fp = "****"
             safe_device = "DEV-DEVICE"
             safe_os = ctx.get("os", "") or "dev_os"
@@ -156,7 +155,7 @@ def load_setting(self, *args, **kwargs):
 
         # debug flag: force-on in dev, else from settings (default False)
 
-        if is_dev() and DEBUG_ON:
+        if is_dev and DEBUG_ON:
             self.debug_set = True
             log.info(f"{kql.i('debug')} [DEBUG] Debug forced ON in dev mode")
         else:
@@ -176,10 +175,8 @@ def load_setting(self, *args, **kwargs):
             recovery_mode = rec.get("recovery_mode", None)
 
         if recovery_mode is False:
-            # adjust text if your semantics differ
             self.recovery_m.setText(self.tr("🔐 Maximum Security (no recovery)"))
         elif recovery_mode is True:
-            # adjust text if your semantics differ
             self.recovery_m.setText(self.tr("🔐 Recovery Mode"))
         
         # --- Cloud prefs (per-user) ---

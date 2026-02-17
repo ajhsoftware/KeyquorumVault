@@ -35,9 +35,9 @@ def _tr(text: str) -> str:
 # ---- Single source of truth for prefs file
 from app.paths import security_prefs_file  # returns a FILE path for per-user prefs
 
-# =============================================================================
+# ==============================
 # Defaults
-# =============================================================================
+# ==============================
 
 
 # Optional per-tool explanations shown in the preflight warning dialog
@@ -158,9 +158,9 @@ DEFAULT_PREFS: Dict[str, object] = {
     "debug": True,
 }
 
-# =============================================================================
+# ==============================
 # Small utils
-# =============================================================================
+# ==============================
 
 def _dbg(enabled: bool, *args) -> None:
     if enabled:
@@ -175,9 +175,9 @@ def _is_windows() -> bool:
     except Exception:
         return False
 
-# =============================================================================
+# ==============================
 # Antivirus detection
-# =============================================================================
+# ==============================
 
 def _wmi_av_products_full() -> Tuple[list[dict], Optional[str]]:
     """
@@ -350,9 +350,9 @@ def _run_defender_quick_scan_interactive(parent=None, debug: bool=False) -> Tupl
         return 0, _tr("Defender quick scan completed (rc=0)")
     return rc, _tr("Defender quick scan returned rc=") + f"{rc}" + _tr(" (threats or error)\n") + f"{result['out']}"
 
-# =============================================================================
+# ==============================
 # Process listing & suspicious tooling
-# =============================================================================
+# ==============================
 
 def get_running_processes() -> list[str]:
     try:
@@ -454,9 +454,9 @@ def try_kill_processes(names: list[str]) -> list[Tuple[str, bool, str]]:
         results.append((n, ok, msg))
     return results
 
-# =============================================================================
+# ==============================
 # Dialog helpers (Qt optional)
-# =============================================================================
+# ==============================
 
 def _ensure_qapp():
     try:
@@ -730,9 +730,9 @@ def _offer_vendor_scan(parent, debug: bool=False) -> Optional[str]:
                 _dbg(debug, f"Failed to prompt/launch {name}: {e}")
     return None
 
-# =============================================================================
+# ==============================
 # Prefs I/O (via paths.security_prefs_file)
-# =============================================================================
+# ==============================
 
 def _prefs_path(username: Optional[str]) -> Optional[Path]:
     try:
@@ -834,9 +834,9 @@ def ensure_preflight_defaults(username: str | None = None) -> None:
     except Exception as e:
         log.error(f"[preflight] ensure_preflight_defaults({username}) failed: {e}")
 
-# =============================================================================
+# ==============================
 # Merge helpers (global + per-user overrides)
-# =============================================================================
+# ==============================
 
 def _merge_prefs(global_prefs: dict, user_overrides: Optional[dict]) -> dict:
     out = dict(DEFAULT_PREFS)
@@ -880,14 +880,14 @@ def _merge_prefs(global_prefs: dict, user_overrides: Optional[dict]) -> dict:
 
     return out
 
-# =============================================================================
+# ==============================
 # Entrypoints
-# =============================================================================
+# ==============================
 
 def run_preflight_for_user(
     username: str,
     user_prefs_loader,
-    dev_mode: bool = False,
+    is_dev: bool = False,
     parent=None
 ) -> bool:
     """
@@ -902,10 +902,10 @@ def run_preflight_for_user(
     except Exception:
         per_user = {}
     merged = _merge_prefs(base, per_user)
-    return run_preflight_checks(dev_mode=dev_mode, parent=parent, prefs=merged)
+    return run_preflight_checks(is_dev=is_dev, parent=parent, prefs=merged)
 
 def run_preflight_checks(
-    dev_mode: bool = False,
+    is_dev: bool = False,
     parent=None,
     prefs: Optional[dict] = None
 ) -> bool:
@@ -990,7 +990,7 @@ def run_preflight_checks(
         _dbg(debug, _tr("All clear (no suspicious processes)."))
         return True
 
-    if dev_mode:
+    if is_dev:
         _show_warning_dialog(_tr(
             "Suspicious tools detected (dev mode):\n\n")
             + "\n".join(f"• {p}" for p in flagged)
@@ -1037,9 +1037,9 @@ def run_preflight_checks(
     _dbg(debug, "Cleared after termination.")
     return True
 
-# =============================================================================
+# ==============================
 # Improved AV summary for UI (Windows 10/11)
-# =============================================================================
+# ==============================
 
 def detect_antivirus_status():
     """Return dict: { overall, providers: [{name,state,upToDate,detailed}], source }"""
@@ -1195,7 +1195,7 @@ def summarize_antivirus_for_ui(av):
     return _tr("Antivirus: ") + "; ".join(pieces)
 
 
-# ===================== Back-compat helpers for main.py =====================
+# ============================== Back-compat helpers for main.py =====================
 
 def _norm_proc_name(name: str) -> str:
     s = (name or "").strip().lower()

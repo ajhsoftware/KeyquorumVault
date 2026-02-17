@@ -46,6 +46,32 @@ See `CONTRIBUTING.md`.
 ## Security
 Please report security issues privately (see `SECURITY.md`).
 
+## Future architecture direction
+
+Keyquorum’s long-term goal is to move security-critical vault logic into a native core
+(C++ target) to allow tighter memory control and explicit zeroisation patterns.
+
+This would:
+
+- Keep the vault file format stable and well documented.
+- Allow a shared native "VaultCore" library.
+- Enable future Android builds (likely Kotlin UI + native core).
+- Improve long-term maintainability across platforms.
+
+This is a gradual transition plan. The current Python/Qt desktop app remains
+the primary maintained client while the architecture is stabilised.
+
+## Security architecture direction
+
+Keyquorum may gradually migrate security-critical components into a native core
+(C++ target) to improve memory handling and explicit zeroisation capabilities.
+
+All such changes will:
+- Be publicly reviewable.
+- Require code review before merge.
+- Avoid introducing hidden network functionality.
+- Preserve backward compatibility of vault formats where possible.
+
 ## License
 Keyquorum Vault is licensed under the **GNU General Public License v3.0 or later** (**GPL-3.0-or-later**).
 

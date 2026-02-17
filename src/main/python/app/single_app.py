@@ -25,16 +25,12 @@ _DEV_BLOCK_QUIT = True  # flip to False for production
 class DevApp(QApplication):
     def quit(self):  # instance method
         if _DEV_BLOCK_QUIT:
-# dev print removed (use logs instead)
-
             traceback.print_stack(limit=40)
             return
         return super().quit()
 
     def exit(self, code: int = 0):
         if _DEV_BLOCK_QUIT:
-# dev print removed (use logs instead)
-
             traceback.print_stack(limit=40)
             return
         return super().exit(code)

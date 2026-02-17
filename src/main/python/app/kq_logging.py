@@ -18,10 +18,10 @@ from __future__ import annotations
 """usage :
 App start (pre-login):
 import app.kq_logging as kql
-log = kql.setup_logging()   # default shared app log
+log = kql.setup_logging()   # ==============================default shared app log
 kql.install_qt_message_logging(log)
 After successful login:
-kql.set_log_user(username)  # switches to %APPDATA%\Keyquorum\\Users\\<user>\logs\<user>.log
+kql.set_log_user(username)  # ==============================switches to %APPDATA%\Keyquorum\\Users\\<user>\logs\<user>.log
 log.info("%s user logged in: %s", kql.i("auth"), username)
 On logout / user switch back to shared log:
 kql.set_log_user(None)
@@ -34,9 +34,9 @@ from typing import Optional
 import re
 from app.paths import user_log_file
 
-# -----------------------------
-# Redaction filter (hide secrets)
-# -----------------------------
+# ==============================
+# ==============================Redaction filter (hide secrets)
+# ==============================
 
 """ Windows (PowerShell)
 setx KQ_NO_REDACT 1
@@ -57,14 +57,14 @@ class RedactFilter(logging.Filter):
     def __init__(self, name: str = ""):
         super().__init__(name)
 
-        # Redaction ON by default
-        # Disable ONLY if explicitly requested
+        # ==============================Redaction ON by default
+        # ==============================Disable ONLY if explicitly requested
         self._disable_redaction = (
             os.getenv("KQ_NO_REDACT", "").strip().lower() in ("1", "true", "yes", "on")
         )
 
     def filter(self, record: logging.LogRecord) -> bool:
-        # ✅ Explicit opt-out only
+        # ==============================✅ Explicit opt-out only
         return True
         if self._disable_redaction:
             return True
@@ -81,9 +81,9 @@ class RedactFilter(logging.Filter):
         return True
 
 
-# -----------------------------
-# Emoji icons (nice-to-have)
-# -----------------------------
+# ==============================
+# - Emoji icons (nice-to-have)
+# ==============================
 ICON = {
     "ok":"✅","info":"ℹ️","debug":"🐞","warn":"⚠️","err":"❌","crit":"🚨",
     "sec":"🔐","locked":"🔒","key":"🗝️","salt":"🧂","sign":"🔏","shield":"🛡️",
@@ -97,14 +97,14 @@ ICON = {
     "always_on_top3": "⬆️", "trial":"🧪","unlock":"🔓","store":"🛍️", "copy": "📋",
     "portable":"💽","preflight":"✈️","scan":"🧪","defender":"🛡️",
     "manifest":"📜","hash":"🧮","verify":"✅","portable": "🧳", 
-    "build":"🏗️","pkg":"📦","update":"🔄", "tool":"🧰"
+    "build":"🏗️","pkg":"📦","update":"🔄", "tool":"🧰", "arrow_r": "→",
 }
 def i(tag: str) -> str:
     return ICON.get(tag, "")
 
-# -----------------------------
-# Internals / globals
-# -----------------------------
+# ==============================
+# - Internals / globals
+# ==============================
 _LOGGER_NAME = "keyquorum"
 _FILE_HANDLER_KIND = RotatingFileHandler
 _ACTIVE_LOGGER: Optional[logging.Logger] = None
@@ -143,9 +143,9 @@ def install_qt_message_logging(logger: logging.Logger) -> None:
     except Exception:
         pass
 
-# -----------------------------
-# Paths & handlers
-# -----------------------------
+# ==============================
+# - Paths & handlers
+# ==============================
 def _default_log_dir() -> str:
     """Default app log directory (pre-login, shared). Overridable via KEYQUORUM_LOG_DIR."""
     p = os.environ.get("KEYQUORUM_LOG_DIR")
@@ -216,9 +216,9 @@ def _remove_console_handler(lg: logging.Logger) -> None:
             except Exception:
                 pass
 
-# -----------------------------
-# Public API
-# -----------------------------
+# ==============================
+# - Public API
+# ==============================
 def setup_logging(logger_name: str = _LOGGER_NAME,
                   level_env: str = "KQ_LOG_LEVEL",
                   *,
@@ -237,18 +237,18 @@ def setup_logging(logger_name: str = _LOGGER_NAME,
     lg = _get_logger(_LOGGER_NAME)
     lg.setLevel(level)
 
-    # Redaction filter (once)
+    # ==============================Redaction filter (once)
     if not any(isinstance(f, RedactFilter) for f in lg.filters):
         lg.addFilter(RedactFilter())
 
-    # File handler (default or per-user)
+    # ==============================File handler (default or per-user)
     target_path = user_log_file(username, ensure_parent=True) if username else _default_log_file()
     _detach_active_file_handler(lg)
     _ACTIVE_FILE_HANDLER = _make_file_handler(target_path, level)
     _attach_file_handler(lg, _ACTIVE_FILE_HANDLER)
     _ACTIVE_USERNAME = username
 
-    # Optional console mirror if KQ_CONSOLE=1
+    # ==============================Optional console mirror if KQ_CONSOLE=1
     if os.environ.get("KQ_CONSOLE", "0") == "1":
         _ensure_console_handler(lg, level)
     else:
@@ -266,12 +266,12 @@ def set_log_user(username: Optional[str]) -> None:
     """
     global _ACTIVE_USERNAME, _ACTIVE_FILE_HANDLER
     lg = _get_logger()
-    # Keep current level / console setup
+    # ==============================Keep current level / console setup
     current_level = lg.level
 
     target_path = user_log_file(username, ensure_parent=True) if username else _default_log_file()
     if _ACTIVE_USERNAME == username and _ACTIVE_FILE_HANDLER:
-        # already on the desired file
+        # ==============================already on the desired file
         return
 
     _detach_active_file_handler(lg)
@@ -291,7 +291,7 @@ def get_logfile_path() -> str:
             return _ACTIVE_FILE_HANDLER.baseFilename  
         except Exception:
             pass
-    # Fallback to default path
+    # ==============================Fallback to default path
     return _default_log_file()
 
 def install_global_excepthook(logger: logging.Logger | None = None) -> None:

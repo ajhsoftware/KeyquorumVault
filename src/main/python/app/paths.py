@@ -32,9 +32,9 @@ PORTABLE_OVERRIDES = "portable.json"
 # --- global read-only switch (default: False) ---
 _READ_ONLY_PATHS = False
 
-# =============================================================================
+# ==============================
 # --- URL --- 
-# =============================================================================
+# ==============================
 APP_ROOT            = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 LICENSES_DIR        = APP_ROOT / "licenses"        
 LICENSE_CACHE_DIR   = APP_ROOT / "license_cache"
@@ -42,9 +42,9 @@ SPDX_DIR            = LICENSES_DIR / "SPDX_LICENSES"
 VENDORS_DIR         = SPDX_DIR / "vendors"
 PYI_DIR             = VENDORS_DIR / "pyinstaller"
 
-# =============================================================================
+# ==============================
 # --- Resource lookup (unified; no RES_DIR / APP_ROOT) ---
-# =============================================================================
+# ==============================
 
 class read_only_paths:
     """Context manager to suppress any auto-mkdir during sensitive code paths (e.g., login)."""
@@ -84,9 +84,9 @@ def _maybe_mkdir(p: Path, *, note: str, caller: str, ensure: bool):
         pass
     return p
 
-# =============================================================================
+# ==============================
 # --- Resources (single source of truth) ---
-# =============================================================================
+# ==============================
 
 from functools import lru_cache
 from pathlib import Path
@@ -175,9 +175,9 @@ def res(relpath: str | Path) -> str:
     return str(res_path(relpath))
 
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # Mode & overrides
-# -----------------------------------------------------------------------------
+# -----------------------------------
 _PORTABLE_ROOT_OVERRIDE: Optional[Path] = None
 _USERS_DIR_OVERRIDE: Optional[Path] = None  # legacy/compat
 
@@ -252,9 +252,9 @@ def portable_root() -> Path:
     # fallback: installed local app root
     return (_env_local() / "Keyquorum").resolve()
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # App roots (global)
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def app_root_local() -> Path:
     return (_env_local() / "Keyquorum").resolve()
 
@@ -285,9 +285,9 @@ def _backup_dir(username: str):
 
 
 BACKUP_DIR = _backup_dir
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # mkdir instrumentation
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def _ensure_dir_logged(path: Path, make: bool, note: str = "") -> None:
     """Create directory only if make=True AND global read-only is OFF; log who asked."""
     try:
@@ -312,9 +312,9 @@ def _ensure_dir_logged(path: Path, make: bool, note: str = "") -> None:
     except Exception as e:
         log.error(f"❌ [PATHS] mkdir failed -> {path}: {e}  note={note}  caller={caller}")
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # Users roots — split (installed) vs unified (portable)
-# -----------------------------------------------------------------------------
+# -----------------------------------
 
 def users_root_local(*, ensure: bool = False) -> Path:
     p = app_root_local() / "Users"
@@ -379,9 +379,9 @@ def user_root_portable(username: str, *, ensure: bool = False) -> Path:
 def user_root(username: str, *, ensure: bool = False) -> Path:
     return user_root_portable(username, ensure=ensure) if is_portable_mode() \
            else user_root_local(username, ensure=ensure)
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # Per-user subdirs (helpers)
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def _user_local_dir(username: str, *parts: str, ensure_dir: bool = False) -> Path:
     base = users_root_local(ensure=False) / username
     if parts:
@@ -403,9 +403,9 @@ def _user_portable_dir(username: str, *parts: str, ensure_dir: bool = False) -> 
         base = base / Path(*parts)
     _ensure_dir_logged(base, ensure_dir and not _paths_ro(), note="_user_portable_dir")
     return base.resolve()
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # VAULT (Local/Main/<u>.kq_user OR Portable/Main/<u>.kq_user)
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def vault_dir(username: str, *, ensure_parent: bool = False) -> Path:
     base = (user_root_portable(username, ensure=False) / "Main") if is_portable_mode() \
            else (user_root_local(username, ensure=False) / "Main")
@@ -430,9 +430,9 @@ def vault_wrapped_file(username: str, *, ensure_parent: bool = False, name_only:
     name = f"{username}.kq_wrap"
     return Path(name) if name_only else vault_dir(username, ensure_parent=ensure_parent) / name
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # SALT (Roaming/KQ_Store OR Portable/KQ_Store)
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def salt_dir(username: str, *, ensure_parent: bool = False) -> Path:
     """Return the per-user salt directory.
 
@@ -448,9 +448,9 @@ def salt_file(username: str, *, ensure_parent: bool = False, name_only: bool = F
     name = f"kq_user_{username}.slt"
     return Path(name) if name_only else salt_dir(username, ensure_parent=ensure_parent) / name
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # CONFIG (global or per-user)
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def profile_pic(username):
     return config_dir(username, ensure_parent=True) / "Profile" / f"{username}.png"
 
@@ -480,9 +480,9 @@ def config_dir(username: Optional[str] = None, *, ensure_parent: bool = False) -
     _ensure_dir_logged(p, bool(ensure_parent), note="config_dir(global)")
     return p.resolve()
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # LOGS (per-user)
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def user_logs_dir(username: str, *, ensure_parent: bool = False) -> Path:
     want = bool(ensure_parent)
     base = _user_portable_dir(username, ensure_dir=want) if is_portable_mode() \
@@ -503,9 +503,9 @@ def user_log_file(username: str, *, ensure_parent: bool = False, name_only: bool
     name = f"{username}.log"
     return Path(name) if name_only else user_logs_dir(username, ensure_parent=ensure_parent) / name
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # USER DB (Roaming/Main OR Portable/Main)
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def per_user_db_dir(username: str, *, ensure_parent: bool = False) -> Path:
     want = bool(ensure_parent)
     p = _user_portable_dir(username, "Main", ensure_dir=want) if is_portable_mode() \
@@ -517,9 +517,9 @@ def user_db_file(username: str, *, ensure_parent: bool = False, name_only: bool 
     name = f"{username}_KQ.kq"
     return Path(name) if name_only else per_user_db_dir(username, ensure_parent=ensure_parent) / name
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # IDENTITIES (per-user Config)
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def identities_file(username: str, *, ensure_parent: bool = False, name_only: bool = False) -> Path:
     """
     Canonical identity store (TOTP, backup codes, header flags).
@@ -537,9 +537,9 @@ def identities_file(username: str, *, ensure_parent: bool = False, name_only: bo
     _ensure_dir_logged(base, ensure_parent, note="identities_parent")
     return p
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # AUDIT (per-user Config)
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def audit_file_salt(username: str, *, ensure_parent: bool = False, name_only: bool = False, ensure_dir: bool = None) -> Path:
     if ensure_dir is not None:
         ensure_parent = bool(ensure_parent or ensure_dir)
@@ -576,9 +576,9 @@ def audit_dir_for_user(username: str, *, ensure_parent: bool = False, name_only:
     name = "audit.enc.jsonl"
     return Path(name) if name_only else config_dir(username, ensure_parent=ensure_parent) / name
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # LICENSES (global or per-user Config)
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def licenses_dir(username: str | None = None, *, ensure_parent: bool = False) -> Path:
     if is_portable_mode():
         p = (_user_portable_dir(username, "Config", ensure_dir=ensure_parent) / "LICENSES") if username \
@@ -601,9 +601,9 @@ def licenses_key_file(username: str | None = None, *, ensure_parent: bool = Fals
     name = "license_key.key"
     return Path(name) if name_only else licenses_dir(username, ensure_parent=ensure_parent) / name
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # BASELINE, SETTINGS, SECURITY PREFS, SOFTWARE
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def baseline_file(username: str, *, ensure_parent: bool = False, name_only: bool = False) -> Path:
     name = f"{username}_bline.bsln"
     return Path(name) if name_only else config_dir(username, ensure_parent=ensure_parent) / name
@@ -635,9 +635,9 @@ def software_dir(username: str, *, ensure_parent: bool = False, ensure_dir: bool
     _ensure_dir_logged(p, ensure_parent, note="software_dir")
     return p
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # Shared & schema/caches
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def shared_key_file(username: str, *, ensure_parent: bool = False, name_only: bool = False, ensure_dir: bool = None) -> Path:
     if ensure_dir is not None:
         ensure_parent = bool(ensure_parent or ensure_dir)
@@ -697,9 +697,9 @@ LOG_DIR:    Path = log_dir()
 LANG_DIR:    Path = lang_dir()
 UI_DIR:     Path = ui_file()
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # Back-compat alias/registry (optional)
-# -----------------------------------------------------------------------------
+# -----------------------------------
 USERS_DIR: Path = users_root()
 _KQ_ORIG_FUNCS = {
     "user_db_file": user_db_file,
@@ -713,9 +713,9 @@ _KQ_ORIG_FUNCS = {
     "identities_file": identities_file,
 }
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # Import-time summary
-# -----------------------------------------------------------------------------
+# -----------------------------------
 try:
     mode = "portable" if is_portable_mode() else "installed"
     log.info(f"🧭 [PATHS] mode={mode}")
@@ -725,9 +725,9 @@ try:
 except Exception:
     pass
 
-# =============================================================================
+# ==============================
 # --- Unified ensure_dirs (modern)
-# =============================================================================
+# ==============================
 def ensure_dirs(username: str | None = None) -> None:
     """
     Ensure required app and (optionally) per-user directories exist.
@@ -748,9 +748,9 @@ def ensure_dirs(username: str | None = None) -> None:
     except Exception as e:
         log.error(f"❌ [PATHS] ensure_dirs failed: {e}")
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # Bridge token file location helper
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def bridge_token_dir(username: str | None = None, ensure_parent: bool = True) -> Path:
     return config_dir(username, ensure_parent=ensure_parent) / "BTOK.txt"
 
@@ -843,7 +843,7 @@ def user_log_paths(username: str | None = None) -> None:
     ulf = user_lock_flag_path(username, ensure_parent=False)
     cf = config_dir(username, ensure_parent=False)
     bk = _backup_dir(username)
-    # -----------------------------------------------------------------
+    # -----------------------
     log.info(f"{kql.i('path')} [US_PATHS] {spf} exists={spf.exists()}")
     log.info(f"{kql.i('path')} [US_PATHS] {csf} exists={csf.exists()}")
     log.info(f"{kql.i('path')} [US_PATHS] {cf} exists={cf.exists()}")

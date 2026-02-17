@@ -46,11 +46,6 @@ from features.share.zk_share import verify_and_decrypt_share_packet
 from typing import Union
 import weakref
 try:
-    from dev.dev import is_dev
-except Exception:
-    is_dev = False
-
-try:
     from auth.yubi.yk_backend import set_probe_enabled
 except Exception:
     def set_probe_enabled(val: bool):
@@ -58,7 +53,7 @@ except Exception:
 
 from bridge.bridge_helpers import WEBFILL_COL
 from features.share.share_keys import ensure_share_keys
-
+from app.basic import is_dev
 
 _MAIN = (
     _sys.modules.get("__main__")
@@ -418,7 +413,7 @@ def import_csv_entries(self, *args, **kwargs):
             self.set_status_txt(self.tr("CSV import cancelled"))
             return
 
-        # Resolve duplicates (if your Dedupe dialog exists)
+        # Resolve duplicates
         if collisions:
             from app_window import DedupeResolverDialog
             dlg = DedupeResolverDialog(self, collisions)
@@ -580,9 +575,9 @@ def emg_ask(
                     self.tr("Emergency Kit"),
                     self.tr("Could not read or merge the selected Emergency Kit PDF:" + f"\n\n{e}"))
 
-        # If user cancels file selection, we just fall back to current data + optional manual below.
+        # If user cancels file selection, just fall back to current data + optional manual below.
 
-    # --- If user chose "manual", open your manual-entry dialog ---
+    # --- If user chose "manual", open manual-entry dialog ---
     if mode == "manual":
         manual = self.prompt_manual_kit_entries(
             defaults={
@@ -864,9 +859,9 @@ def maybe_show_quick_tour(self, which: str = "core"):
     tour = GuidedTour(self, steps, default_dim=default_dim)
     tour.start()
 
-# =============================================================================
+# ==============================
 # --- size -------
-# ============================================================================= 
+# ============================== 
 
 def save_credential_ui(self, payload: dict) -> bool:
     """
@@ -910,7 +905,7 @@ def save_credential_ui(self, payload: dict) -> bool:
         "notes": "Added With Browser",
         "created_at": now_iso,
         "updated_at": now_iso,
-        "Date": today,  # keep if your UI expects this display field
+        "Date": today, 
 
         # Title-case compatibility for existing table/loaders
         "Website": url,
@@ -1085,7 +1080,6 @@ def _check_backup_codes_ok_one(self, username: str, b_type: str) -> None:
         get_yubi_config_public,
     )
 
-    # if you have is_2fa_enabled in your project, we’ll use it.
     try:
         from auth.login.login_handler import is_2fa_enabled as _is_2fa_enabled
     except Exception:
@@ -1101,9 +1095,9 @@ def _check_backup_codes_ok_one(self, username: str, b_type: str) -> None:
     except Exception:
         pass
 
-    # -------------------------------------------------
+    # -------
     # Skip irrelevant checks (only warn if factor enabled)
-    # -------------------------------------------------
+    # -------
     if b == "yubi":
         try:
             # ✅ best: reads header.meta.yubi_enabled / yubi_mode
@@ -1132,9 +1126,9 @@ def _check_backup_codes_ok_one(self, username: str, b_type: str) -> None:
             log.debug("[B-CODE] 2fa check skipped (not enabled) user=%s", username)
             return
 
-    # -------------------------------------------------
+    # -------
     # Now compute remaining + per-type UI strings/settings
-    # -------------------------------------------------
+    # -------
     if b == "2fa":
         human = "2FA"
         suppress_key = "suppress_backup_warning_2fa"
@@ -1233,7 +1227,7 @@ def _check_backup_codes_ok_one(self, username: str, b_type: str) -> None:
     pwd = getattr(self, "current_password", None)
 
     if not pwd:
-        # Use your existing confirmation flow if present (handles yubi/2fa policies)
+        # Use existing confirmation flow (handles yubi/2fa policies)
         try:
             pw = self._confirm_sensitive_action(
                 username=username,
@@ -1317,11 +1311,11 @@ def _check_backup_codes_ok_one(self, username: str, b_type: str) -> None:
 # --- login\logout ------------------------------------------
 
 def _continue_after_factors(self, username: str) -> None:
-    # ------------------------------------------------------------------
+    # ------------------------
     # YubiKey mode detection
     # - Prefer PUBLIC header (works for passwordless / DPAPI)
     # - Fall back to private identity payload only if we have context
-    # ------------------------------------------------------------------
+    # ------------------------
     mode = None
     cfg = None
 
@@ -1342,12 +1336,13 @@ def _continue_after_factors(self, username: str) -> None:
             cfg = None
             mode = None
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # Enforce YubiKey factors BEFORE any 2FA dialog / successful_login
-    # ------------------------------------------------------------------
+    # ------------------------
     # IMPORTANT: Use the existing threaded YubiKey login dialog so we:
     # - don't freeze the UI
     # - keep the original UX (Insert → Touch, plus Backup/Recovery fallbacks)
+
     if mode in ("yk_hmac_gate", "yk_hmac_wrap"):
         # Build the most complete config we can.
         # - Public header is always safe (works for DPAPI/passwordless).
@@ -1720,7 +1715,7 @@ def _continue_after_factors(self, username: str) -> None:
             return
 
     # --- Case C: DB says ON but identity says OFF -> repair by re-setup (non-destructive)
-    # We *do not* bypass 2FA; we ask the user to re-enable now.
+    # We *do not* bypass 2FA; ask the user to re-enable now.
     reply = QMessageBox.question(
         self,
         self.tr("2FA Setup Required"),
@@ -1795,9 +1790,9 @@ def _maybe_show_release_notes(self, *args, **kwargs):
     return __maybe_show_release_notes(self)
 
 
-# =============================================================================
+# ==============================
 # ---  get selected entry ------
-# =============================================================================
+# ==============================
 
 
 def __init__default_values(self, *args, **kwargs):
@@ -2001,7 +1996,7 @@ def _bulk_preview_entries(self, entries: list[dict]) -> bool:
 
 
             editor = AddEntryDialog(self, target, getattr(self, "enable_breach_checker", False),
-                                    existing_entry=None, pro=None, user=self.currentUsername.text(), is_dev=is_dev())
+                                    existing_entry=None, pro=None, user=self.currentUsername.text(), is_dev=is_dev)
             if hasattr(editor, "category"):
                 editor.category = target
             for name in ("build_form", "_build_form", "rebuild_form", "on_category_changed"):
@@ -2047,9 +2042,9 @@ def _bulk_preview_entries(self, entries: list[dict]) -> bool:
     return dlg.exec() == QDialog.DialogCode.Accepted and chosen["ok"]
 
 
-# =============================================================================
+# ==============================
 # --- Password/Vault history ----------------
-# =============================================================================
+# ==============================
 
 # ---- Passkey store I/O used by passkeys_store.py ----
 
@@ -2745,9 +2740,9 @@ def verify_sensitive_action(
 
     return pwd if return_pw else True
 
-# =============================================================================
+# ==============================
 # --- bridge - extension bridge callbacks expected by ExtensionBridge ---------
-# =============================================================================
+# ==============================
 
 
 def import_share_packet(self, *args, **kwargs):
@@ -2940,9 +2935,9 @@ def export_csv(self, *args, **kwargs):
         QMessageBox.critical(self, self.tr("Export CSV"), msg)
 
 
-# =============================================================================
+# ==============================
 # --- auth export/import ----
-# =============================================================================
+# ==============================
 
 
 def import_user_catalog_encrypted(self, user_root: str) -> None:
@@ -3024,7 +3019,7 @@ def import_user_catalog_encrypted(self, user_root: str) -> None:
         )
         return
 
-    # Re-seal + reload + baseline via your existing helper
+    # Re-seal + reload + baseline via existing helpers
     try:
         self._on_catalog_saved(user_root)
     except Exception as e:
@@ -3433,9 +3428,9 @@ def on_toggle_extra_cloud_wrap(self, *args, **kwargs):
         self.set_status_txt(self.tr("Cloud wrap: done"))
 
 
-# =============================================================================
+# ==============================
 # --- cloud login help -------
-# =============================================================================
+# ==============================
 
 
 def get_credit_cards(self, *args, **kwargs) -> list[dict]:
@@ -3658,7 +3653,7 @@ def quick_share_qr(self, *args, **kwargs):
         ) != QMessageBox.Yes:
             return
 
-        # Block risky categories if your setting says so
+        # Block risky categories
         allow_risky = bool(getattr(self, "user_remove_risk", True))
         cat = (src.get("category") or src.get("Category") or "").strip()
         if (not allow_risky) and self._is_risky_category(cat):
@@ -3720,7 +3715,6 @@ def _cloud_sync_safe(self, user_key: bytes, interactive: bool = True) -> str:
 
     try:
         username = None
-        # Prefer your helper if present
         if hasattr(self, "_logged_in_username"):
             username = self._active_username()
         # Fallbacks
@@ -3867,9 +3861,9 @@ def quick_import_from_qr(self, *args, **kwargs):
         msg = self.tr("QR import failed:\n") + f"{e}"
         QMessageBox.critical(self, self.tr("Quick Import"), msg)
 
-# =============================================================================
-# --- Make share packet -------------------------------------------------------
-# =============================================================================
+# ==============================
+# --- Make share packet -------------
+# ==============================
 
 
 def _provider_exe_path(self, *args, **kwargs) -> str | None:
@@ -4202,7 +4196,7 @@ def show_qr_for_selected(self, *args, **kwargs):
         self.safe_messagebox_warning(self, "QR", "Select a row first.")
         return
 
-    # Pull row data using your existing helpers
+    # Pull row data using existing helpers
     entry = self._get_row_entry_dict(row)       # header->value map (unmasks where possible)
     category = (self._category_for_row(row) or "").strip().lower()
 
@@ -4264,7 +4258,7 @@ def show_qr_for_selected(self, *args, **kwargs):
     self.safe_messagebox_warning(self, "QR", "No suitable field found in this row to convert to QR.")
 
 
-# =============================================================================
+# ==============================
 # --- QR: show for selected row / Wi-Fi helper --------------------------------
 
 
@@ -4567,16 +4561,16 @@ def on_run_preflight_now_clicked(self, *args, **kwargs):
         ok = run_preflight_for_user(
             username=username,
             user_prefs_loader=self._load_user_preflight_overrides,  # if you have overrides; else lambda u: {}
-            dev_mode=False,
+            is_dev=is_dev,
             parent=self
         )
         log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('info')} run preflight for user returned: {ok}")
     except Exception as e:
         log.error(str(f"{kql.i('tool')} [ERROR] {kql.i('info')} run preflight for user error: {e}"))
 
-# =============================================================================
+# ==============================
 # --- auto sync
-# =============================================================================
+# ==============================
 
 
 def get_webfill_profiles(self, *args, **kwargs) -> list[dict]:
@@ -4747,7 +4741,7 @@ def on_export_audit_clicked(self, *args, **kwargs):
     if not os.path.splitext(path)[1]:
         path += ".txt"
 
-    # Fetch data directly from your source
+    # Fetch data directly from source
     try:
         events = read_audit_log(user)  # same API you use in load_audit_table
     except Exception as e:
@@ -4767,7 +4761,7 @@ def on_export_audit_clicked(self, *args, **kwargs):
 
             for e in events:
                 if "error" in e:
-                    # Preserve your tamper/invalid row style
+                    # Preserve tamper/invalid row style
                     ts = _san(e.get("timestamp", "")) or "✖"
                     event = "Invalid Entry"
                     desc = _san(e.get("error", ""))
@@ -4782,9 +4776,9 @@ def on_export_audit_clicked(self, *args, **kwargs):
         msg = self.tr("Failed to export:") + f"\n{e}"
         QMessageBox.critical(self, self.tr("Export Audit"), msg)
 
-# =============================================================================
+# ==============================
 # --- regenerate vault backup codes
-# =============================================================================
+# ==============================
 
 
 def _show_cloud_risk_modal(self, current_wrap: bool) -> tuple[bool, bool, bool]:
@@ -5155,7 +5149,7 @@ def one_time_mobile_transfer(self, *args, **kwargs):
     if not cloud_dir:
         return
 
-    # 3) Export using your full-backup helper (AES-GCM zip.enc)
+    # 3) Export using full-backup helper (AES-GCM zip.enc)
     try:
         ts = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
         # export_full_backup(username, password, out_dir) -> returns path string
@@ -5172,7 +5166,7 @@ def one_time_mobile_transfer(self, *args, **kwargs):
             "3) Enter the transfer password\n\n"
             "⚠️ For your security: delete the .zip.enc from your cloud after import.").format(written1=written)
         )
-        log_event_encrypted(username, "One-Time Mobile Transfer", f"{kql.i('ok')} package: {written}")
+        log_event_encrypted(username, "One-Time Mobile Transfer", f"{kql.i('ok')} package: {written} Time: {ts}")
     except Exception as e:
         QMessageBox.critical(self, self.tr("Mobile Transfer Failed"), f"❌ {e}")
 
@@ -5235,9 +5229,9 @@ def _on_editor_schema_saved(self, *args, **kwargs):
         log.error("[CAT] _on_editor_schema_saved outer error: %s", e)
 
 
-# =============================================================================
+# ==============================
 # --- login/App avatar
-# =============================================================================
+# ==============================
 # --- crop user photo + add shround + renderer (shared by login + app)
 
 
@@ -5300,5 +5294,3 @@ def _show_logout_warning(self, *args, **kwargs):
     else:
         # If they dismissed with OK, do nothing (timers continue counting down)
         pass
-
-# --- tick: guard against sleep/resume & keep countdown accurate

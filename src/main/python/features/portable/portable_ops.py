@@ -450,9 +450,9 @@ def _check_usb_alive(self, *args, **kwargs) -> None:
             os._exit(0)
 
 
-# =============================================================================
+# ==============================
 # --- mouse ---
-# =============================================================================
+# ==============================
 
 # might need to update with reset dont remove this or maybe one below only on needs keeping
 

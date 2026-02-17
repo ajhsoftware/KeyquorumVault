@@ -292,9 +292,9 @@ def get_assertion(*, rp_id: str, challenge: bytes,
         "signature": _b64u(signature),
     }
 
-# ----------------------------------------------------------------------
+# ----------------------------
 # Simple helpers for desktop UI (list / rename / delete)
-# ----------------------------------------------------------------------
+# ----------------------------
 def list_entries() -> list[Entry]:
     """
     Return a copy of all stored passkey entries.

@@ -43,8 +43,6 @@ from features.watchtower.watchtower_helpers import (
 from features.watchtower.watchtower_scan import stable_id_for_entry
 import string
 import secrets
-import hashlib
-import csv
 from typing import Callable, Iterable, Optional, List, Dict
 
 from qtpy.QtCore import QObject, QSettings, QThreadPool
@@ -173,9 +171,9 @@ class WatchtowerPanel(QObject):
             except Exception:
                 pass
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # Settings wiring
-    # ------------------------------------------------------------------
+    # ------------------------
 
     def set_settings_providers(
         self,
@@ -200,9 +198,9 @@ class WatchtowerPanel(QObject):
         self._set_ignored = set_ignored
         self._get_global_flags = get_global_flags
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # UI binding
-    # ------------------------------------------------------------------
+    # ------------------------
 
     def _bind_ui_from_mainwindow(self, mw: QWidget) -> None:
         """
@@ -289,9 +287,9 @@ class WatchtowerPanel(QObject):
                 ", ".join(missing),
             )
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # Settings helpers
-    # ------------------------------------------------------------------
+    # ------------------------
 
     def _settings(self) -> QSettings:
         """Return a QSettings instance for Watchtower defaults."""
@@ -378,9 +376,9 @@ class WatchtowerPanel(QObject):
         # Cancelled
         return False
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # Rules + ignored handling
-    # ------------------------------------------------------------------
+    # ------------------------
 
     def _default_rules(self) -> dict:
         return {
@@ -515,9 +513,9 @@ class WatchtowerPanel(QObject):
                 continue
         return False
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # Preflight + scanning
-    # ------------------------------------------------------------------
+    # ------------------------
 
     def _run_preflight(self) -> None:
         """
@@ -646,14 +644,17 @@ class WatchtowerPanel(QObject):
             max_age_days=self.max_age_days,
             weak_threshold=self.weak_threshold,
             enable_breach=bool(self.enable_breach_provider()),
-            enable_card_expiry=self.chk_cards,
-        )
+            enable_card_expiry=bool(self.chk_cards.isChecked()) if self.chk_cards else True,
+            enable_missing_2fa=bool(self.chk_2fa.isChecked()) if self.chk_2fa is not None else True,
+
+            )
         task.s.progress.connect(self._set_progress)
         task.s.finished.connect(self._on_finished)
         task.s.error.connect(self._on_error)
         # keep a reference to the task to prevent GC until it finishes
         self._current_task = task
         self.threadpool.start(task)
+
 
     def _set_progress(self, value: int) -> None:
         try:
@@ -686,9 +687,9 @@ class WatchtowerPanel(QObject):
         except Exception:
             pass
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # Table + summary rebuilding
-    # ------------------------------------------------------------------
+    # ------------------------
 
     def _rebuild_tables(self, issues: List[WTIssue]) -> None:
         # Clear tables
@@ -822,9 +823,9 @@ class WatchtowerPanel(QObject):
         except Exception:
             pass
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # Fix / ignore handlers
-    # ------------------------------------------------------------------
+    # ------------------------
 
     def _fix(self, entry_id: str) -> None:
         # Delegate to provided fix handler if any
@@ -912,9 +913,9 @@ class WatchtowerPanel(QObject):
         except Exception as e:
             log.error(f"[Watchtower] unignore button failed: {e}")
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # Summary + ID helpers
-    # ------------------------------------------------------------------
+    # ------------------------
 
     def _set_summary(
         self,
@@ -1064,7 +1065,6 @@ def _hibp_count(w, password: str) -> int:
         if not bool(getattr(w, "enable_breach_checker", False)):
             return 0
         try:
-            # preferred path in your tree
             from features.breach_check.breach_checker import check_password_breach
         except Exception:
             # fallback if it's not under auth/
@@ -1117,20 +1117,27 @@ def _iter_vault_entries(w):
 
     for i, r in enumerate(all_rows):
         try:
+           
             title = r.get("title") or r.get("site") or r.get("name") or r.get("Title") or r.get("Website") or ""
-            user  = r.get("username") or r.get("user") or r.get("email") or r.get("Username") or ""
-            url   = r.get("url") or r.get("origin") or r.get("website") or r.get("URL") or ""
-            pw    = r.get("password") or r.get("pwd") or r.get("pass") or r.get("secret") or ""
             cat   = r.get("category") or r.get("type") or r.get("Category") or ""
+            kind = _classify_kind(str(cat))
 
-            upd = (
-                r.get("pw_changed_at")
-                or r.get("updated_at")
-                or r.get("last_changed")
-                or r.get("Date")
-                or r.get("created_at")
-                or ""
-            )
+            # Username/URL only make sense for login entries
+            if kind == "credit_card":
+                user = ""
+                url = ""
+            else:
+                user  = r.get("username") or r.get("user") or r.get("email") or r.get("Username") or r.get("UserName") or "" 
+                url   = r.get("url") or r.get("origin") or r.get("website") or r.get("URL") or r.get("Website") or ""
+
+            pw = r.get("password") or r.get("pwd") or r.get("pass") or r.get("secret") or r.get("Password") or ""
+            upd = (r.get("pw_changed_at") or r.get("updated_at") or r.get("last_changed") or r.get("Date") or r.get("created_at") or "")
+
+            # Card expiry (pass through so watchtower_scan can evaluate it)
+            expiry = (
+                r.get("Expiry Date") or r.get("Expiry") or r.get("expiry") or r.get("expiry_date")
+                or r.get("Valid Thru") or r.get("Valid Through") or r.get("valid_thru")
+                or r.get("Exp") or r.get("exp") or "")
 
             rid = r.get("id") or r.get("_id") or r.get("row_id")
             if isinstance(rid, int):
@@ -1146,6 +1153,7 @@ def _iter_vault_entries(w):
                 "url": url,
                 "updated_at": upd,
                 "kind": _classify_kind(str(cat)),
+                "expiry": expiry,
                 "__wt_idx": i,
             }
         except Exception:
@@ -1157,7 +1165,7 @@ def _watchtower_generate_new_password_for(w, entry_id: str) -> None:
     Generate a strong new password for the given vault entry and update it.
 
     A confirmation dialog is presented to the user.  If the operation
-    succeeds, an informational message is shown.  Otherwise, an error
+succeeds, an informational message is shown.  Otherwise, an error
     message is displayed.  The `w` argument should be the main window
     instance with access to the current username and vault key, and with
     a `tr()` method for translations.

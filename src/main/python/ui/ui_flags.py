@@ -30,18 +30,15 @@ from qtpy.QtCore import QSettings, QUrl, Qt
 from qtpy.QtGui import QDesktopServices
 from qtpy.QtWidgets import (QMessageBox, QVBoxLayout, QDialog, QHBoxLayout, QLabel, QCheckBox, QDialogButtonBox,
                             QTextBrowser, QStyle, )
-
-
-# stored in auth/login_handler.py in your project
 try:
     from auth.login.login_handler import set_user_setting, get_user_setting
 except Exception:  # pragma: no cover
     set_user_setting = None
 
 
-# =============================================================================
+# ==============================
 # --- Maybe dont show again popups ---  Maybe Popups ---
-# =============================================================================
+# ==============================
 
 # --- reset hide flags
 def on_reset_hide_flags_clicked(w):
@@ -166,7 +163,7 @@ def _maybe_show_release_notes(w):
         if settings.value(key, False, type=bool):
             return
 
-        # --- HTML content ----------------------------------------------------
+        # --- HTML content ----------
         # --- Break text into properly translatable blocks --------------------------
 
         t_date = "<b>" + w.tr("Date") + ":</b>" + w.tr("10/12/2025") + "<br><br>"

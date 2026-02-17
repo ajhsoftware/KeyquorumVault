@@ -26,7 +26,7 @@ try:
 except Exception:
     pyotp = None
 
-# Use your vault APIs for CRUD
+# Use vault APIs for CRUD
 from vault_store.vault_store import load_vault, add_vault_entry, save_vault
 # --- local AES-GCM helpers just for field-wrapping the Base32 secret ---
 # (keeps the secret ciphertext even inside the decrypted in-memory vault)
@@ -36,9 +36,9 @@ except Exception:
     AESGCM = None
 from qtpy.QtCore import QCoreApplication
 
-# =======================================================================================
+# ==============================
 # ---------- helpers ----------
-# =======================================================================================
+# ==============================
 
 def _tr(text: str) -> str:
     return QCoreApplication.translate("authenticator_store", text)
@@ -77,9 +77,9 @@ def _unpack_secret(user_key: bytes, enc_b64: str) -> str:
 def _now() -> float:
     return time.time()
 
-# =======================================================================================
+# ==============================
 # ---------- public API (vault-backed) ----------
-# =======================================================================================
+# ==============================
 
 AUTH_CATEGORY_NAME = "Authenticator"
 
@@ -144,9 +144,9 @@ def add_authenticator(
     add_vault_entry(username, user_key, entry)
     return entry
 
-# =======================================================================================
+# ==============================
 # ---------- otpauth export (URI + QR image) ----------
-# =======================================================================================
+# ==============================
 
 def build_otpauth_uri(user_key: bytes, entry: dict) -> str:
     """
@@ -231,9 +231,9 @@ def export_otpauth_qr_bytes(user_key: bytes, entry: dict) -> bytes:
     except Exception as e:
         raise RuntimeError(_tr("No QR generator available. Install 'segno' or 'qrcode'.")) from e
 
-# =======================================================================================
+# ==============================
 # ---------- key migration (password change / salt rotation / change password) ----------
-# =======================================================================================
+# ==============================
 
 def rewrap_authenticator_entries(entries: list[dict], old_key: bytes, new_key: bytes):
     """
@@ -366,9 +366,9 @@ def get_current_code(user_key: bytes, entry: dict) -> Tuple[str, int]:
     except Exception:
         return ("—", 0)
 
-# =======================================================================================
+# ==============================
 # ---------- otpauth parsing + QR (image) ----------
-# =======================================================================================
+# ==============================
 
 def parse_otpauth_uri(uri: str) -> Optional[dict]:
     try:

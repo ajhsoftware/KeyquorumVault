@@ -42,9 +42,9 @@ from qtpy.QtCore import QCoreApplication
 
 def _tr(text: str) -> str:
     return QCoreApplication.translate("secure_audit", text)
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # Centralized paths
-# -----------------------------------------------------------------------------
+# -----------------------------------
 from app.paths import (
     audit_file,
     audit_mirror_file,
@@ -52,9 +52,9 @@ from app.paths import (
     tamper_log_file,
 )
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # Constants / helpers
-# -----------------------------------------------------------------------------
+# -----------------------------------
 
 #
 # The previous implementation stored a static application key (`APP_KEY`) and HMAC
@@ -134,9 +134,9 @@ def _fernet_for_user(username: str) -> Fernet:
     digest = hashlib.sha256(salt + u).digest()
     return Fernet(base64.urlsafe_b64encode(digest))
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # Tamper logs
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def log_manifest_tamper(reason: str, username: str | None = None) -> None:
     """Append a tamper-notice line to tamper_log_file(username)."""
     try:
@@ -147,9 +147,9 @@ def log_manifest_tamper(reason: str, username: str | None = None) -> None:
     except Exception as e:
         log.warning(f"[manifest] log failure: {e}")
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # Encrypted per-user audit log
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def get_audit_file_path(username: str) -> str:
     return str(audit_file(username))
 
@@ -200,9 +200,9 @@ def read_audit_log(username: str) -> list[dict[str, Any]]:
 def log_event(username: str, event: str, desc: str = "") -> None:
     append_audit_log(username, event, desc)
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # Tamper-evident chained ledger
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def _tail_json(path: Path) -> dict | None:
     if not path.exists():
         return None
@@ -288,9 +288,9 @@ def verify_audit(vault_salt: bytes, expected_anchor: str, username: str) -> bool
     good = hmac.new(key, (head + prev).encode(), hashlib.sha256).hexdigest()
     return hmac.compare_digest(mac, good) and (expected_anchor in ("", head) or head == expected_anchor)
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # Combined convenience
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def log_event_encrypted(username: str, label: str, value: str = "",
                         *, extra=None, anchor_store_cb=None):
     """Write encrypted event + optional ledger anchor."""
@@ -306,9 +306,9 @@ def log_event_encrypted(username: str, label: str, value: str = "",
         try: anchor_store_cb(label)
         except Exception: pass
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # Health / lockout
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def audit_health(username: str) -> tuple[bool, str]:
     p, m = audit_file(username), audit_mirror_file(username)
     if not p.exists():

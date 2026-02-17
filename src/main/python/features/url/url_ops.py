@@ -338,9 +338,9 @@ def open_url_with_warnings(self, raw_url: str) -> None:
                     self.tr("Could not open the browser.\n\nError: {err}").format(err=e),
                 )
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # Case 1: URL has NO scheme (no 'http://' or 'https://')
-    # ------------------------------------------------------------------
+    # ------------------------
     if "://" not in url:
         # If user chose "don't show again" before, always add https:// automatically
         try:
@@ -407,9 +407,9 @@ def open_url_with_warnings(self, raw_url: str) -> None:
         _open_final(final_url)
         return
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # Case 2: URL already has a scheme: http://, https://, etc.
-    # ------------------------------------------------------------------
+    # ------------------------
     qurl = QUrl(url)
     scheme = (qurl.scheme() or "").lower()
     final_url = url
@@ -562,7 +562,7 @@ def build_launch_install_menu(self, *args, **kwargs):
     for s in sections.values():
         s["items"].sort(key=lambda x: x[0].lower())
 
-    # ---- menu + helpers ------------------------------------------------------
+    # ---- menu + helpers ------------
     menu = QMenu(self.launch_download)
     menu.setSeparatorsCollapsible(False)
 

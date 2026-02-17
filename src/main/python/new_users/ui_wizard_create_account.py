@@ -37,8 +37,6 @@ import sys
 from pathlib import Path  
 import hashlib
 import secrets
-# ---
-from dev.dev import is_dev
 from auth.pw.password_utils import get_password_strength
 from auth.pw.password_generator import show_password_generator_dialog
 from new_users.account_creator import create_or_update_user
@@ -54,15 +52,13 @@ from ui_gen.emergency_kit_dialog import EmergencyKitDialog
 from app.basic import get_app_version
 from ui.ui_helpers import center_on_screen
 from security.baseline_signer import update_baseline
+from app.paths import APP_ROOT 
 
-# --- path ---
-APP_ROOT            = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))  # move to paths
-LICENSES_DIR        = APP_ROOT / "licenses"        # bundle your third-party notices here
+LICENSES_DIR    = APP_ROOT / "licenses"
 
-
-# =============================================================================
+# ==============================
 # --- ui load create account
-# =============================================================================
+# ==============================
     
 def create_account(w):
     """
@@ -86,14 +82,16 @@ def _mask_secret(s: str | None) -> str | None:
     if not s: return None
     return (s[:4] + ("*" * max(0, len(s) - 6)) + s[-2:]) if len(s) > 6 else "***"
 
-# =============================================================================
+
+# ==============================
 # --- (UI) Inline First-Run Wizard Create Account---
-# =============================================================================
+# ==============================
 class _GatePage(QWizardPage):
     # Consider the page complete only after we’ve actually created a user.
     def isComplete(self):
         w = self.wizard()
         return bool(getattr(w, "_created_user", None))
+
 
 class InlineOnboardingWizard(QWizard):
     
@@ -490,11 +488,11 @@ class InlineOnboardingWizard(QWizard):
         win_def_checkbox             = bool(settings.get("WinDefCheckbox", False))
         defender_quick_scan          = bool(settings.get("DefenderQuickScan", False))
 
-        # --- header --------------------------------------------------------------
+        # --- header --------------------
         hdr = QLabel(self.tr("You can turn these on now (you can change all of them later in Settings)."))
         hdr.setWordWrap(True)
 
-        # --- checkboxes ----------------------------------------------------------
+        # --- checkboxes ----------------
         self._cb_known = QCheckBox(self.tr("Enable known-process scan (block/allow list)"))
         self._cb_known.setChecked(known_scan)
         self._cb_known.setToolTip(self.tr("Warn/block if suspicious or disallowed processes are running before unlock."))
@@ -516,7 +514,7 @@ class InlineOnboardingWizard(QWizard):
         self._cb_win_def.setEnabled(is_windows)
         self._cb_def_quick.setEnabled(is_windows)
 
-        # --- numeric controls ----------------------------------------------------
+        # --- numeric controls ----------
         self._sp_lockout = QSpinBox()
         self._sp_lockout.setRange(3, 15)
         self._sp_lockout.setValue(lockout_threshold)
@@ -541,7 +539,7 @@ class InlineOnboardingWizard(QWizard):
         self._sp_logout.setSuffix(" sec")
         self._sp_logout.setToolTip(self.tr("Idle time before the app auto-locks."))
 
-        # --- layout --------------------------------------------------------------
+        # --- layout --------------------
         lay = QVBoxLayout(p)
         lay.addWidget(hdr)
 
@@ -679,3 +677,4 @@ class InlineOnboardingWizard(QWizard):
             for chunk in iter(lambda: f.read(65536), b""):
                 h.update(chunk)
         return h.hexdigest()
+

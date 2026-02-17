@@ -58,7 +58,7 @@ def _make_result(ok: bool, *, error: str | None = None,
     return {"ok": bool(ok), "error": error, "otpauth_uri": uri, "secret": secret,
             "backup_codes": backup_codes or [], "qr_png": qr_png}
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 
 def twofa_setup(parent, username: str, pwd: str | None = None) -> Dict[str, Any]:
     try:
@@ -181,7 +181,7 @@ def twofa_setup(parent, username: str, pwd: str | None = None) -> Dict[str, Any]
             return {"ok": False, "error": "Setup canceled"}
     except Exception as e:
         log.info(f"2FA Setup Error: {e}")
-# -----------------------------------------------------------------------------
+# -----------------------------------
 
 class TwoFAPopup(QDialog):
     def __init__(self, verify_callback, parent=None, title="Enter 2FA Code"):
@@ -238,7 +238,7 @@ class TwoFAPopup(QDialog):
     def _show_err(self, msg: str):
         self.err_label.setText(msg)
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 
 def prompt_2fa_for_user(parent, username: str) -> bool:
     username = (username or "").strip()

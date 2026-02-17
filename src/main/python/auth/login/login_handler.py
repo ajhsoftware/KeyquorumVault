@@ -40,9 +40,9 @@ from auth.identity_store import (
     get_login_backup_count_quick as id_login_count,
 )
 
-# =============================================================================
+# ==============================
 # Per-user DB I/O (no global user_db usage)
-# =============================================================================
+# ==============================
 
 def _udb_path(username: str) -> Path:
     from app.paths import user_db_file
@@ -80,9 +80,9 @@ def _write_user(username: str, rec: dict) -> bool:
         log.error("[login] write failed for %s: %s", username, e)
         return False
 
-# =============================================================================
+# ==============================
 # Username canonicalization (case-insensitive)
-# =============================================================================
+# ==============================
 
 def _canonical_username_ci(typed: str) -> str | None:
     """
@@ -102,9 +102,9 @@ def _canonical_username_ci(typed: str) -> str | None:
         pass
     return None
 
-# =============================================================================
+# ==============================
 # Public helpers used around the app
-# =============================================================================
+# ==============================
 
 def save_user_record_new(username: str, rec: dict) -> bool:
     """Writer: allowed to create dirs."""
@@ -346,15 +346,14 @@ def register_login_failure(username: str, max_attempts: int = 5, lock_minutes: i
 def reset_login_failures(username: str) -> None:
     save_login_fail_state(username, {"fail_count": 0, "lock_until": ""})
 
-# =============================================================================
+# ==============================
 # 2FA / backup-code API (identity store wrappers)
-# =============================================================================
+# ==============================
 
 from typing import Optional
 import json, os, base64, hashlib
 from pathlib import Path
 
-# import your AES-GCM helpers & KDFs
 from vault_store.key_utils import encrypt_key, decrypt_key
 from vault_store.kdf_utils import derive_key_argon2id_safe
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -512,10 +511,10 @@ def _decrypt_payload_with_cek(hdr: dict, cek: bytes) -> dict:
 
 def _encrypt_payload_with_cek(hdr: dict, cek: bytes, payload: dict) -> None:
     pt = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    hdr["payload_ct"] = encrypt_key(pt, cek)  # keep your canonical field
+    hdr["payload_ct"] = encrypt_key(pt, cek)
 
 def _hash_backup_code_plain(code: str) -> str:
-    # Use your existing scheme; this mirrors your current base64-encoded SHA256
+    # Use existing scheme; this mirrors current base64-encoded SHA256
     h = hashlib.sha256(code.strip().encode("utf-8")).digest()
     return base64.b64encode(h).decode("ascii")
 
@@ -665,9 +664,9 @@ def verify_2fa_code(username: str, code: str, password: str, *, window: int = 1)
         log.error(f"[2FA] verification failed: {e}")
         return False
 
-# =============================================================================
+# ==============================
 # Login
-# =============================================================================
+# ==============================
 
 def validate_login(username: str, password: str) -> bool:
     """

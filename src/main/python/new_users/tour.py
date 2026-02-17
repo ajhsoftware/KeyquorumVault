@@ -29,9 +29,9 @@ from qtpy.QtWidgets import (QApplication, QWidget, QLabel, QPushButton, QTabWidg
 from ui.ui_helpers import center_on_screen
 
 
-# =============================================================================
+# ==============================
 # --- UI Start
-# =============================================================================
+# ==============================
 
 def maybe_show_quick_tour(w, which: str = "core"):
     """"core": core_steps,
@@ -223,9 +223,9 @@ def maybe_show_quick_tour(w, which: str = "core"):
     tour.start()
 
 
-# =============================================================================
+# ==============================
 # --- (UI) Guided Tour / Coach Marks ---
-# =============================================================================
+# ==============================
 class _TourBubble(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)

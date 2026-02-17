@@ -14,9 +14,9 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 """
 
-# =============================================================================
+# ==============================
 # --- Main Values ---
-# =============================================================================
+# ==============================
 SITE_MAIN           = "https://www.ajhsoftware.uk",
 SITE_HELP           = "https://www.ajhsoftware.uk/keyquorum/kqhelp"
 SITE_SUPPORT        = "https://forms.gle/118nQkUeV5cZyFj27"
@@ -39,9 +39,9 @@ PWNEDPASSWORD       = "https://api.pwnedpasswords.com/range/"
 PWNEDEMAIL            = "https://haveibeenpwned.com/account/"
 CATEGORY_DOWN       = "https://www.ajhsoftware.uk/keyquorum/category"
 
-# =============================================================================
+# ==============================
 # --- App Hints Values ---
-# =============================================================================
+# ==============================
 URI_HINTS = {
     "netflix": "https://www.netflix.com",
     "disneyplus": "https://www.disneyplus.com",
@@ -52,9 +52,9 @@ URI_HINTS = {
     "plex": "https://app.plex.tv",
 }
 
-# =============================================================================
+# ==============================
 # --- Store IDs ---
-# =============================================================================
+# ==============================
 APP_ID = "9NCWWM5CMQ55"
 MSSTORE_ADDONS = {
     "month":    "9NB534N40VZV",
@@ -63,9 +63,9 @@ MSSTORE_ADDONS = {
 }
 
 STORE_REVIEW_URI = f"ms-windows-store://review/?ProductId={APP_ID}"
-# =============================================================================
+# ==============================
 # --- Open URL---
-# =============================================================================
+# ==============================
 URL_REGISTRY = {
     "REDDIT": REDDIT,
     "STORE_URL_CHROME": STORE_URL_CHROME,

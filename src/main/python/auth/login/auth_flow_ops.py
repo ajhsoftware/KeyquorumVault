@@ -28,17 +28,13 @@ from auth.identity_store import has_totp_quick, get_yubi_config, get_login_backu
 from auth.login.login_handler import ( validate_login, _canonical_username_ci, get_user_setting, reset_login_failures, get_user_record,)
 import socket
 from vault_store.authenticator_store import (add_from_otpauth_uri, add_authenticator, list_authenticators, build_otpauth_uri,)
-try:
-    from dev.dev import dev_cmd, is_dev
-except Exception:
-    dev_cmd = None
-    is_dev = False
 from features.clipboard.secure_clipboard import install_clipboard_guard
 from app.paths import (users_root, debug_log_paths, is_portable_mode, users_root, config_dir, icon_file)
 from app.basic import _UiBus
 from security.secure_audit import log_event_encrypted
 from auth.tfa.twofactor import has_recovery_wrap, get_wrapped_key_path
 from ui.ui_flags import maybe_warn_windows_clipboard
+from app.basic import is_dev
 try:
     import cv2  # OpenCV for QR decoding
 except Exception:
@@ -52,6 +48,7 @@ _MAIN = (
 )
 if _MAIN is not None:
     globals().update(_MAIN.__dict__)
+
 
 # Safety net: ensure Qt symbols exist even when __main__ differs (e.g., frozen builds)
 try:
@@ -140,7 +137,7 @@ def _save_remembered_username(username: str | None):
     else:
         s.remove("login/remembered_username")
 
-# --- Shared pre-login helpers -------------------------------------------------
+# --- Shared pre-login helpers -------
 def precheck_username_exists(typed: str):
     
     """Best-effort, READ-ONLY check to see if a username exists.
@@ -184,9 +181,9 @@ def tr(text: str) -> str:
     """Qt translation helper scoped to the Watchtower UI."""
     return QCoreApplication.translate("uiwatchtower", text)
 
-# =============================================================================
+# ==============================
 # --- DPAPI "Remember this device" UX helpers ---------------------------------
-# =============================================================================
+# ==============================
 
 def set_remember_checkbox(self, check=False):
     cb = self.rememberDeviceCheckbox
@@ -420,9 +417,9 @@ def _on_remember_device_toggled(self, checked: bool):
             pass
 
 
-# =============================================================================
+# ==============================
 # --- attempt login
-# ============================================================================= 
+# ============================== 
 
 def attempt_login(self, *args, **kwargs):
     """
@@ -490,10 +487,10 @@ def attempt_login(self, *args, **kwargs):
     except Exception:
         pass
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # --- DPAPI "Remember this device" quick unlock (Windows)
     # MUST run before any password validation or lockout logic
-    # ------------------------------------------------------------------
+    # ------------------------
     try:
         from auth.windows_hello.session import load_device_unlock
 
@@ -713,9 +710,9 @@ def attempt_login(self, *args, **kwargs):
     except Exception:
         log.exception("[LOGIN] dpapi-check crashed")
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # end DPAPI block
-    # ------------------------------------------------------------------
+    # ------------------------
 
     # Shared existence precheck (keeps UI typing checks and login in sync)
     try:
@@ -987,7 +984,7 @@ def attempt_login(self, *args, **kwargs):
     log.info(f"[PATHS] portable_root={portable_root()}")
     log.info(f"[PATHS] users_root={users_root()}")
 
-# --- PRELOGIN IDENTITY RESOLVER ---------------------------------------------
+# --- PRELOGIN IDENTITY RESOLVER ---
 def _show_pairing_dialog(self, token: str, port: int | None = None):
     
     if not token:
@@ -1180,16 +1177,16 @@ def _show_pairing_dialog(self, token: str, port: int | None = None):
     except AttributeError:
         dlg.exec_()
 
-# =============================================================================
-# --- dialog open other windows ---------------------------------------------
-# =============================================================================
+# ==============================
+# --- dialog open other windows ---
+# ==============================
 
 def successful_login(self, *args, **kwargs):
     log.info("[MIGRATE] successful_login reached ✅")
-    # ------------------------------------------------------------------
+    # ------------------------
     # Username MUST be stable after UI switches pages.
     # Prefer an explicitly provided username or session username, then UI.
-    # ------------------------------------------------------------------
+    # ------------------------
     username = (kwargs.get("username") or getattr(self, "current_username", None) or "").strip()
     if not username:
         try:
@@ -1208,9 +1205,9 @@ def successful_login(self, *args, **kwargs):
     # Persist session username IMMEDIATELY (auth tab relies on this)
     self.current_username = username
 
-    # -------------------------------------------------
+    # -------
     # Remember this device (Windows DPAPI) - store/clear device-bound unlock blob
-    # -------------------------------------------------
+    # -------
     try:
         from auth.windows_hello.session import save_device_unlock, clear_device_unlock
         from auth.login.login_handler import get_user_record, set_user_record
@@ -1323,9 +1320,9 @@ def successful_login(self, *args, **kwargs):
         except Exception:
             pass
 
-    # -------------------------------------------------
+    # -------
     # One-time migrations after password change / salt rotation / wrap change
-    # -------------------------------------------------
+    # -------
     log.info("[MIGRATE] login hook reached user=%r prev=%s new=%s",
             username,
             "YES" if getattr(self, "_prev_userKey", None) else "NO",
@@ -1406,7 +1403,6 @@ def successful_login(self, *args, **kwargs):
                 log.info("[MIGRATE][CATALOG] %s", msg)
 
                 if ok:
-                    # If your migrate function can’t tell “changed vs nothing”, treat ok as ok.
                     _add_result("User catalog overlay", "ok", msg)
                 else:
                     _add_result("User catalog overlay", "fail", msg)
@@ -1471,7 +1467,7 @@ def successful_login(self, *args, **kwargs):
             pass
 
     # passkey dev
-    if is_dev():
+    if is_dev:
         try:
             self._reload_passkeys_for_current_user()
         except Exception as e:
@@ -1565,9 +1561,9 @@ def successful_login(self, *args, **kwargs):
     except Exception:
         log.exception(f"{kql.i('err')} [S-LOGIN] hide login widget/container")
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # Authenticator Store (use session username; do NOT call _auth_reload)
-    # ------------------------------------------------------------------
+    # ------------------------
     try:
         self.set_status_txt(self.tr("Loading Authenticator"))
         if self.userKey:
@@ -1658,9 +1654,9 @@ def successful_login(self, *args, **kwargs):
     except Exception:
         pass
 
-    # -------------------------------------------------
+    # -------
     # Remember Last Username (Windows) - store/clear in QSettings
-    # -------------------------------------------------
+    # -------
     try:
         from qtpy.QtCore import QSettings
         cb_user = getattr(self, "remember_username", None)  # your checkbox objectName
@@ -1701,9 +1697,9 @@ def toggle_2fa_setting(self, checked: bool):
         log.debug(str(f"{kql.i('tool')} [WARN] {kql.i('warn')} user not found/reset"))
         return
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # WRAP warning (do NOT block by default): enabling TOTP does NOT bypass WRAP
-    # ------------------------------------------------------------------
+    # ------------------------
     if checked:
         yubi_mode = ""
         try:
@@ -1732,11 +1728,11 @@ def toggle_2fa_setting(self, checked: bool):
                 self.twoFACheckbox.blockSignals(False)
                 return
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # Sensitive re-auth: enabling/disabling 2FA needs the user's password
     # - enabling: 2FA isn't enabled yet, so don't require 2FA check
-    # - disabling: 2FA is enabled, so require it (if your gate supports it)
-    # ------------------------------------------------------------------
+    # - disabling: 2FA is enabled, so require it
+    # ------------------------
     try:
         password = self.verify_sensitive_action(
             username,
@@ -1747,7 +1743,7 @@ def toggle_2fa_setting(self, checked: bool):
             yubi_check=True,
         )
     except TypeError:
-        # Backward compatibility if your verify_sensitive_action() doesn't have require_password yet
+        # Backward compatibility if verify_sensitive_action() doesn't have require_password yet
         password = self.verify_sensitive_action(
             username,
             title=self.tr("Two-Factor Authentication"),
@@ -2103,9 +2099,9 @@ def on_select_usb_clicked(self):
     except Exception as e:
         QMessageBox.critical(w, w.tr("USB Selection Failed"), str(e))
 
-# =============================================================================
+# ==============================
 # --- breach/porned ----
-# =============================================================================
+# ==============================
 
 # --- check if email has been porned (item must be selected in table)
 def _show_login_rescue_both(self, username: str):
@@ -2509,10 +2505,10 @@ def _finish_login(self, username: str, master_key: bytes, yk_record: dict | None
         except Exception:
             pass
 
-        # Hide login panel, show main tabs (if your UI has these)
+        # Hide login panel, show main tabs
         try:
             if hasattr(self, "stackedWidget"):
-                # assume index 1 is the main app; adjust if different
+                # index 1 is the main app
                 self.stackedWidget.setCurrentIndex(1)
         except Exception:
             pass
@@ -2525,9 +2521,9 @@ def _finish_login(self, username: str, master_key: bytes, yk_record: dict | None
         # 6) Refresh controls that depend on login
         try: self.refresh_recovery_controls()
         except Exception: pass
-        try: self._auth_reload()         # if you have an authenticator tab
+        try: self._auth_reload()
         except Exception: pass
-        try: self._reload_table()        # if your vault table has a reload
+        try: self._reload_table()
         except Exception: pass
 
         # 7) Start/Reset session timers, clipboard guards, etc.
@@ -2548,13 +2544,13 @@ def _finish_login(self, username: str, master_key: bytes, yk_record: dict | None
         self._login_finalized = False
         QMessageBox.critical(self, self.tr("Login failed"), f"{e}")
 
-# =============================================================================
+# ==============================
 # --- Share Packets (unified paths; no CONFIG_DIR/AUTH_DIR) -------------------
-# =============================================================================
+# ==============================
 # from sharing import ensure_share_keys, make_share_packet, verify_and_decrypt_share_packet
 # from vault_store.add_entry_dialog import AddEntryDialog
 
-# --- Risk helpers -------------------------------------------------------------
+# --- Risk helpers -------------------
 
 def _auth_add_from_screen(self, *args, **kwargs):
     if not self._auth_require_login():

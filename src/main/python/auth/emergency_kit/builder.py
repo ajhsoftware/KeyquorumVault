@@ -49,7 +49,6 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-# Optional icon resolver from your app
 try:
     from app.paths import icon_file  # type: ignore
 except Exception:  # pragma: no cover

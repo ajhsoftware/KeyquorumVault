@@ -33,9 +33,9 @@ import datetime
 def _tr(text: str) -> str:
     return QCoreApplication.translate("frameless_window", text)
 
-# =======================================================================================
+# ==============================
 # Credits helpers
-# =======================================================================================
+# ==============================
 import os
 import json
 import logging
@@ -57,9 +57,9 @@ except Exception:
     # In dev mode or if ApplicationContext is unavailable, fall back to a hard-coded version string.
     APP_VERSION = "1.5.6"
 
-# ---------------------------------------------------------------------------
+# ---------------------------------
 # Static credits list (grouped by section)
-# ---------------------------------------------------------------------------
+# ---------------------------------
 SPECIAL_THANKS: dict[str, list[str]] = {
      _tr("Testers & Early Users"): [
         _tr("Testers and early users of Keyquorum Vault"),
@@ -93,9 +93,9 @@ def load_special_thanks() -> dict[str, list[str]]:
     return {section: names[:] for section, names in SPECIAL_THANKS.items()}
 
 
-# ---------------------------------------------------------------------------
+# ---------------------------------
 # Credits dialog (scrollable)
-# ---------------------------------------------------------------------------
+# ---------------------------------
 
 class CreditsDialog(QDialog):
     def __init__(self, parent=None, app_version: str = APP_VERSION):
@@ -193,9 +193,9 @@ class CreditsDialog(QDialog):
     """
         return html
 
-# =======================================================================================
+# ==============================
 # --- Main Window
-# =======================================================================================
+# ==============================
 
 class FramelessWindowMixin:
     _drag_pos: QPoint | None = None

@@ -29,7 +29,6 @@ import ctypes
 import time as _t
 from ctypes import wintypes
 from auth.pw.password_generator import show_password_generator_dialog
-from dev.dev import is_dev
 
 
 def _tr(text: str) -> str:
@@ -69,9 +68,9 @@ def cleanup_on_logout(w):
     w.backupAdvisor = None
     w.backupScheduler = None
 
-# ===============================================
+# ==============================
 # Default state reset
-# ===============================================
+# ==============================
 def __init__default_values(w):
     """
     Reset per-session variables to sensible defaults.  This should be
@@ -198,14 +197,13 @@ def __init__default_values(w):
         pass
 
 def _on_any_entry_changed(w):
-    # … your save/update logic …
     if getattr(w, "_backup_remind_mode", "both") in ("changes", "both"):
         if hasattr(w, "backupAdvisor") and w.backupAdvisor:
             w.backupAdvisor.note_change()
 
-# ===============================================
+# ==============================
 # --- software
-# ===============================================
+# ==============================
 
 def _init_software_root(w) -> str:
     # 1) from settings (if you persist this)
@@ -244,9 +242,9 @@ def _init_software_root(w) -> str:
     os.makedirs(root, exist_ok=True)
     return root
 
-# ===============================================
+# ==============================
 # --- open password gen
-# ===============================================
+# ==============================
 
 def open_generator(w):
     if w.pro_only:
@@ -255,9 +253,9 @@ def open_generator(w):
     w.set_status_txt(_tr("Opening Password Generator"))
     return show_password_generator_dialog(target_field=None, confirm_field=None)
 
-# ===============================================
+# ==============================
 # --- AutoFill - Desktop AppFill
-# ===============================================
+# ==============================
 
 # --- helper to load app on auto fill (better debug)
 
@@ -617,7 +615,6 @@ def logout_user(w, skip_backup=True):
         # --- turn OFF debug logging quietly & sync the checkbox without dialogs ---
         w._suppress_logging_toasts = True
         try:
-            apply_debug_flag(False, keep_console=is_dev())
             if hasattr(w, "debug_set_") and w.debug_set_:
                 blocker = QSignalBlocker(w.debug_set_)
                 try:
@@ -737,9 +734,9 @@ def logout_user(w, skip_backup=True):
         except Exception:
             pass
 
-# =============================================================
+# ==============================
 # --- timer logout
-# =============================================================
+# ==============================
 
 # --- tick: guard against sleep/resume & keep countdown accurate
 def _on_tick(w):
@@ -1036,9 +1033,9 @@ def _force_close_all_windows_except_main(w):
         pass
 
 
-# =============================================================
+# ==============================
 # --- show message to user
-# =============================================================
+# ==============================
 def safe_messagebox_question(w, *args, **kwargs):
     reset_logout_timer(w)
     return QMessageBox.question(*args, **kwargs)
@@ -1053,9 +1050,9 @@ def safe_messagebox_info(w, *args, **kwargs):
 
 
 
-# =============================================================================
+# ==============================
 # --- windows sleep, logout, ect (on evant logout user this making sure vault is always locked)
-# =============================================================================
+# ==============================
 
 WM_WTSSESSION_CHANGE = 0x02B1
 WTS_SESSION_LOCK = 0x7

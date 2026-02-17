@@ -32,9 +32,9 @@ from security.secure_audit import log_event_encrypted
 log = logging.getLogger("keyquorum")
 log.debug("[DEBUG] 🔐 Identity Store")
 
-# =============================================================================
+# ==============================
 # Dynamic path resolution (USB binding-aware)
-# =============================================================================
+# ==============================
 
 import base64, hashlib, json
 from pathlib import Path
@@ -44,9 +44,9 @@ from qtpy.QtCore import QCoreApplication
 def _tr(text: str) -> str:
     return QCoreApplication.translate("identity_store", text)
 
-# ===========================================================================
+# ==============================
 # --- forgot password rewrap: bind recovery wrapper
-# ===========================================================================
+# ==============================
 
 def bind_recovery_wrapper(username: str, password: str, master_key: bytes) -> None:
     """
@@ -93,9 +93,9 @@ def bind_recovery_wrapper(username: str, password: str, master_key: bytes) -> No
     n2, ct2 = _aes_enc(dmk, b"KQID-PAYLOAD", _canon(inner))
     _write_all(p, hdr, n2, ct2)
 
-# ===========================================================================
+# ==============================
 # --- forgot password rewrap (strict, no identity reset)
-# ===========================================================================
+# ==============================
 
 def bind_yubi_wrapper(username: str, master_key: bytes, wrap_kek: bytes) -> None:
     """
@@ -312,7 +312,7 @@ def _find_wrapper(hdr: dict, typ: str) -> dict:
             return w
     raise KeyError(f"wrapper '{typ}' not found")
 
-# ===========================================================================
+# ==============================
 # --- helpers
 
 def mk_hash_b64(mk: bytes) -> str:
@@ -366,9 +366,9 @@ def ensure_mk_hash_in_header(username: str, mk: bytes) -> None:
         # best-effort; never break login
         pass
 
-# =============================================================================
+# ==============================
 # Dynamic path resolution (USB binding-aware)
-# =============================================================================
+# ==============================
 
 from app.paths import (
     identities_file,
@@ -467,9 +467,9 @@ def ensure_identity_ready(typed_username: str) -> Tuple[str, str, bool]:
     return (str(target), username, target.exists())
 
 
-# =============================================================================
+# ==============================
 # File format
-# =============================================================================
+# ==============================
 
 MAGIC = b"KQID1"
 
@@ -509,15 +509,14 @@ def _read_header_nonce_ct(path: Path) -> tuple[dict, bytes, bytes]:
 def _write_all(path: Path, header: dict, payload_nonce: bytes, payload_ct: bytes) -> None:
     # ✅ ensure parent exists before atomic write
     path.parent.mkdir(parents=True, exist_ok=True)
-    #print(f"In write all data to identity_store: writeing values path:{path}\n header:{header}\npayload_nonce:{payload_nonce}\npayload_ct:{payload_ct}")
     blob = MAGIC + len(_canon(header)).to_bytes(4, "big") + _canon(header) + payload_nonce + payload_ct
     tmp = path.with_suffix(path.suffix + ".tmp")  # keep original suffix and add .tmp
     tmp.write_bytes(blob)
     os.replace(tmp, path)
 
-# =============================================================================
+# ==============================
 # Public API
-# =============================================================================
+# ==============================
 
 def create_or_open_with_password(username: str, password: str | bytes) -> tuple[bytes, dict, dict]:
     """
@@ -936,7 +935,7 @@ def set_yubi_config(
     nonce_b64: str | None = None,
     wrapped_b64: str | None = None,
     ykman_path: str | None = None,
-    mk_hash_b64: str | None = None,      # ← already in your signature
+    mk_hash_b64: str | None = None, 
     ykman_hash: str | None = None,
 ) -> None:
     p = _user_id_file(username, ensure_parent=True)

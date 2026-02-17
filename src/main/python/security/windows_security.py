@@ -25,7 +25,7 @@ import logging
 log = logging.getLogger("keyquorum")
 log_file = "[SYSTEM INFO]"
 
-# --- winreg (Windows only) ---------------------------------------------------
+# --- winreg (Windows only) ---------
 try:
     import winreg  # type: ignore[attr-defined]
 except ImportError:  # pragma: no cover (non-Windows)
@@ -59,7 +59,7 @@ def run_ps_hidden(cmd: str, timeout: int = 5) -> subprocess.CompletedProcess:
         startupinfo=startupinfo,
     )
 
-# --- Registry helper ---------------------------------------------------------
+# --- Registry helper ---------------
 def gettinginfo(hkeyc: int, keypath: str, key: str):
     """
     Simple registry reader.
@@ -89,7 +89,7 @@ def gettinginfo(hkeyc: int, keypath: str, key: str):
         return None
 
 
-# --- Command helper ----------------------------------------------------------
+# --- Command helper ----------------
 def calling_command(command: str) -> str:
     """
     Run a shell command and return stdout as text.
@@ -122,9 +122,9 @@ def _is_windows() -> bool:
     except Exception:
         return False
 
-# ---------------------------------------------------------------------------
+# ---------------------------------
 # TPM
-# ---------------------------------------------------------------------------
+# ---------------------------------
 def tpm_status():
     """
     Returns (text, good) for TPM presence/enablement.
@@ -159,9 +159,9 @@ def tpm_status():
 
     return ("TPM: Unknown", False)
 
-# ---------------------------------------------------------------------------
+# ---------------------------------
 # Secure Boot
-# ---------------------------------------------------------------------------
+# ---------------------------------
 def secure_boot_status() -> tuple[str, bool]:
     """
     Return (label, good_flag) for Secure Boot.
@@ -192,9 +192,9 @@ def secure_boot_status() -> tuple[str, bool]:
 
     return ("Unknown", False)
 
-# ---------------------------------------------------------------------------
+# ---------------------------------
 # Kernel DMA Protection
-# ---------------------------------------------------------------------------
+# ---------------------------------
 def kernel_dma_protection() -> tuple[str, bool]:
     """Return (label, good_flag) for Kernel DMA Protection."""
     if not _is_windows() or winreg is None:
@@ -214,9 +214,9 @@ def kernel_dma_protection() -> tuple[str, bool]:
         log.warning("%s kernel dma reg error: %s", log_file, e)
         return ("Unknown", False)
 
-# ---------------------------------------------------------------------------
+# ---------------------------------
 # Windows activation
-# ---------------------------------------------------------------------------
+# ---------------------------------
 def windows_activation_status() -> tuple[str, bool]:
     """Return (label, good_flag) for Windows activation."""
     if not _is_windows():

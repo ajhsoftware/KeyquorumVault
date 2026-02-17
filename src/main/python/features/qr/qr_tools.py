@@ -107,7 +107,7 @@ def _json_or_raw_to_obj(text):
         except Exception:
             return {"raw": text}
 
-# --- Multi-QR scan & assemble -----------------------------------------------
+# --- Multi-QR scan & assemble -----
 import base64, json
 
 def _detect_qr_part(obj: dict):
@@ -273,7 +273,7 @@ class QRScanDialog(QDialog):
 
 
 
-# ================== QR scanner (optional; uses OpenCV) ==================
+# ============================== QR scanner (optional; uses OpenCV) ==================
 try:
     import cv2  
 except Exception:
@@ -369,9 +369,8 @@ def scan_qr_json(parent=None, use_camera: bool = False):
             if data and (best is None or len(data) > len(best)):
                 best = data
         return best
-    # ----------------------------------------------------------
 
-    # --- Camera path (uses your QRScanDialog; cleanly closable) ---
+    # --- Camera path ---
     if use_camera:
         try:
             import cv2  # ensure OpenCV exists for capture
@@ -592,13 +591,13 @@ class QRPreviewDialog(QDialog):
 
 
 
-# ================== KQ share/ID QR helpers (compact + chunked) ==================
+# ============================== KQ share/ID QR helpers (compact + chunked) ==================
 import json, gzip, base64
 from typing import Dict, Any
 
 # Conservative chunk size (post-base64) for fast scanning on average phones
 _KQ_QR_PREFIX = "KQ1"          # protocol tag so scanners know how to reassemble
-_KQ_QR_CHUNK_BYTES = 900       # tune if you find your camera easily handles larger payloads
+_KQ_QR_CHUNK_BYTES = 900       # tune if camera easily handles larger payloads
 
 def _kq_qr_encode_obj(obj: Dict[str, Any]) -> bytes:
     """json -> gzip -> base64 bytes"""

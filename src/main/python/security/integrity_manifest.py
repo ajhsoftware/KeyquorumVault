@@ -14,7 +14,7 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 """
 
-# ---------------------------------------------------------------------
+# ---------------------------
 # App-wide manifest integrity verification (Ed25519 + SHA256).
 # Looks for signing artifacts under:
 #   <app_root>/_internal/resources/signing/{manifest.json, manifest.sig, public_key.pem}
@@ -23,7 +23,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # Usage in main.py (frozen and dev-safe):
 #   from integrity_manifest import verify_manifest_auto
 #   ok, msg = verify_manifest_auto(show_ui=True, parent=self)
-# ---------------------------------------------------------------------
+# ---------------------------
 
 from __future__ import annotations
 from pathlib import Path
@@ -44,7 +44,7 @@ except Exception:  # pragma: no cover
     QWidget = None  
 
 
-# ---------- Helpers -----------------------------------------------------------
+# ---------- Helpers -----------------
 
 def _sha256_file(p: Path) -> str:
     h = hashlib.sha256()
@@ -109,7 +109,7 @@ def _verify_signature(pub_pem: bytes, manifest_bytes: bytes, sig_bytes: bytes) -
         return False
 
 
-# ---------- Core API ----------------------------------------------------------
+# ---------- Core API ----------------
 
 def verify_manifest(app_root: Path,
                     *,

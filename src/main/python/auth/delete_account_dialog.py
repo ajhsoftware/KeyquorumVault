@@ -81,7 +81,7 @@ def _is_usb_bound(username: str) -> bool:
         pass
     return False
 
-# ---- Utilities ------------------------------------------------------------
+# ---- Utilities ------------------
 def _secure_wipe_file(path: Optional[Path | str]) -> None:
     """Best-effort overwrite (up to 1MB) + delete. SSDs may ignore overwrites; still fine."""
     try:
@@ -121,7 +121,6 @@ def _cloud_delete(self, username: str, logs: list[str]) -> None:
         eng = getattr(self, "sync_engine", None)
         cloud = {}
         try:
-            # prefer your login_handler's storage shape
             from auth.login.login_handler import get_user_cloud
             cloud = get_user_cloud(username)
         except Exception:
@@ -142,7 +141,7 @@ def _cloud_delete(self, username: str, logs: list[str]) -> None:
     except Exception as e:
         logs.append(_tr("cloud: error ") + f"✗ — {e}")
 
-# ---- Dialog ---------------------------------------------------------------
+# ---- Dialog ---------------------
 
 class DeleteAccountDialog(QDialog):
     def __init__(self, parent, username: str):
@@ -184,7 +183,7 @@ class DeleteAccountDialog(QDialog):
         self.btn_cancel.clicked.connect(self.reject)
         self.btn_ok.clicked.connect(self.accept)
 
-# ---- Public entry point ---------------------------------------------------
+# ---- Public entry point ---------
 def open_delete_account_dialog(self, username: str):
     """
     Hook this from your Settings/Delete button:
@@ -207,7 +206,7 @@ def open_delete_account_dialog(self, username: str):
         phrase=dlg.edit_phrase.text().strip()
     )
 
-# ---- Core deletion flow ---------------------------------------------------
+# ---- Core deletion flow ---------
 
 def _handle_delete_account(self, username: str, password: str, maybe_code: str, phrase: str):
     report: list[str] = []

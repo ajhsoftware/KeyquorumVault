@@ -179,9 +179,9 @@ class CatalogEditorUserDialog(QDialog):
         self._load_into_ui()
 
 
-    # -----------------------------------------------------------------------
+    # -----------------------------
     # Host lookup (walk parent chain to find MainWindow)
-    # -----------------------------------------------------------------------
+    # -----------------------------
     def _find_host_with(self, *attrs):
         """
         Walk up the parent chain to find a host object that has all of the
@@ -194,9 +194,9 @@ class CatalogEditorUserDialog(QDialog):
             host = host.parent()
         return None
 
-    # -----------------------------------------------------------------------
+    # -----------------------------
     # Encrypted export/import actions
-    # -----------------------------------------------------------------------
+    # -----------------------------
     def _on_export_encrypted(self):
         """
         Ask the host (MainWindow) to export this user's catalog using the
@@ -251,9 +251,9 @@ class CatalogEditorUserDialog(QDialog):
                 self.tr("Failed to import catalog") + f":\n{e}"
             )
 
-    # -----------------------------------------------------------------------
+    # -----------------------------
     # Tabs
-    # -----------------------------------------------------------------------
+    # -----------------------------
     
     def _init_clients_tab(self):
         lay = QVBoxLayout(self.clientsTab)
@@ -576,9 +576,9 @@ class CatalogEditorUserDialog(QDialog):
         """))
         layout.addWidget(browser)
 
-    # -----------------------------------------------------------------------
+    # -----------------------------
     # Helpers
-    # -----------------------------------------------------------------------
+    # -----------------------------
 
     def _is_email_only_client(self, data: dict) -> bool:
         """Return True if this client entry only contains email suggestions (no launch metadata)."""
@@ -604,9 +604,9 @@ class CatalogEditorUserDialog(QDialog):
             if table.item(r, c) and table.item(r, c).text().strip():
                 return False
         return True
-    # -----------------------------------------------------------------------
+    # -----------------------------
     # Search filter
-    # -----------------------------------------------------------------------
+    # -----------------------------
     def _filter_clients_table(self, text: str):
         query = (text or "").strip().lower()
         row_count = self.clientsTable.rowCount()
@@ -629,9 +629,9 @@ class CatalogEditorUserDialog(QDialog):
         if hasattr(self, "clientSearch"):
             self._filter_clients_table(self.clientSearch.text())
 
-    # -----------------------------------------------------------------------
+    # -----------------------------
     # Load + Save
-    # -----------------------------------------------------------------------
+    # -----------------------------
     def _load_into_ui(self):
         sort_on = self.clientsTable.isSortingEnabled()
         self.clientsTable.setSortingEnabled(False)
@@ -773,9 +773,9 @@ class CatalogEditorUserDialog(QDialog):
             QMessageBox.critical(self, self.tr("Error"), self.tr("Failed to save catalog") + f":\n{e}")
 
 
-    # -----------------------------------------------------------------------
+    # -----------------------------
     # Reset + restore
-    # -----------------------------------------------------------------------
+    # -----------------------------
     def _reset_to_defaults(self):
         try:
             # overwrite user catalog with built-ins and reload
@@ -833,9 +833,9 @@ class CatalogEditorUserDialog(QDialog):
         setc(4, src.get("installer", "") or "")
         setc(5, src.get("page", "") or "")
 
-    # -----------------------------------------------------------------------
+    # -----------------------------
     # Helpers
-    # -----------------------------------------------------------------------
+    # -----------------------------
     def _populate_emails(self, clients: dict):
         self.emailsTable.setRowCount(0)
         for k, v in (clients or {}).items():

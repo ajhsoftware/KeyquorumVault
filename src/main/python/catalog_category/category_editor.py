@@ -47,9 +47,9 @@ from qtpy.QtCore import QCoreApplication
 
 
 from app.paths import user_db_file
-# =============================================================================
+# ==============================
 # Per-user schema persistence (user_db.json under ...\Users\<user>\)
-# =============================================================================
+# ==============================
 
 def _read_user_db_for(uname: str) -> dict:
     p = user_db_file(uname)
@@ -246,9 +246,9 @@ def load_schema_for(uname: str) -> dict:
     _write_user_db_for(uname, db)
     return s
 
-# =============================================================================
+# ==============================
 # Defaults builder (delegates to category_fields for single source of truth)
-# =============================================================================
+# ==============================
 
 def _heuristic_sensitive(label: str) -> bool:
     lab = (label or "").lower()
@@ -261,9 +261,9 @@ def _build_schema_from_defaults() -> dict:
     # keep code path for callers that expect this helper
     return default_category_schema()
 
-# =============================================================================
+# ==============================
 # Background save infra
-# =============================================================================
+# ==============================
 
 class _SaveSignals(QObject):
     started = Signal()
@@ -285,9 +285,9 @@ class _SaveJob(QRunnable):
             ok, msg = False, str(e)
         self.signals.finished.emit(ok, msg)
 
-# =============================================================================
+# ==============================
 # Category Editor (pass uname from main)
-# =============================================================================
+# ==============================
 
 class CategoryEditor(QWidget):
     # ---------- category reminders (safe stub + logic) ----------
@@ -547,7 +547,7 @@ class CategoryEditor(QWidget):
         except Exception as e:
             return False, str(e)
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # UI build
     def _build_ui(self):
         root = QHBoxLayout(self)
@@ -1089,7 +1089,7 @@ class CategoryEditor(QWidget):
         if choice != QMessageBox.Yes:
             return
 
-        # --- Perform the restore ---------------------------------------------------
+        # --- Perform the restore ---------
         try:
             # utf-8-sig handles files with or without a BOM
             with open(path, "r", encoding="utf-8-sig") as f:
@@ -1239,9 +1239,9 @@ class CategoryEditor(QWidget):
             log.error(f"[RepairSchema] failed: {e}")
             QMessageBox.critical(self, self.tr("Error"), self.tr("Repair failed") + f":\n{e}")
 
-# =============================================================================
+# ==============================
 # External helpers used by MainWindow (unchanged signatures)
-# =============================================================================
+# ==============================
 
 def _fmt_now():
     from datetime import datetime

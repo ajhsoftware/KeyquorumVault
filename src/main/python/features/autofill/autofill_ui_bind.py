@@ -130,9 +130,9 @@ def _try_launch_from_catalog(w, username: str, client_key: str):
 def _tr(text: str) -> str:
     return QCoreApplication.translate("main", text)
 
-# =========================
+# ==============================
 # AutoFill: robust launcher
-# =========================
+# ==============================
 
 def _norm_str(x: str) -> str:
     return (x or "").strip()
@@ -344,9 +344,9 @@ def _sleep_ms(ms: int):
     QTimer.singleShot(ms, loop.quit)
     loop.exec()
 
-# =============================================================================
+# ==============================
 # --- Autofill helpers (V2) ----
-# =============================================================================
+# ==============================
 
 def _clear_and_type(control, text: str, is_password: bool = False):
     """

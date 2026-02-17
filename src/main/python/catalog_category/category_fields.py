@@ -99,7 +99,7 @@ PROTECTED_CATEGORIES = {
     AUTH_CATEGORY_NAME.lower(),
 }
 
-# ---------------------------------------------------------------------------
+# ---------------------------------
 #  Autofill canonical fields (multi-language label map)
 #
 #  Shape:
@@ -118,7 +118,7 @@ PROTECTED_CATEGORIES = {
 #
 #  This lets autofill / open-site logic keep working even when
 #  category fields are translated or imported in a different language.
-# ---------------------------------------------------------------------------
+# ---------------------------------
 
 AUTOFILL_FIELDS: Dict[str, Dict[str, list[str]]] = {
     "password": {

@@ -39,9 +39,9 @@ from app.paths import security_prefs_file
 
 log = logging.getLogger("keyquorum")
 
-# --------------------------------------------------------------------------- #
+# --------------------------------- #
 # Defaults
-# --------------------------------------------------------------------------- #
+# --------------------------------- #
 
 DEFAULTS = {
     "suspect_process_names": [
@@ -136,9 +136,9 @@ DEFAULTS = {
     },
 }
 
-# --------------------------------------------------------------------------- #
+# --------------------------------- #
 # File I/O helpers
-# --------------------------------------------------------------------------- #
+# --------------------------------- #
 
 def _atomic_write_json(path: Path, obj: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -162,9 +162,9 @@ def _read_json_safe(p: Path) -> dict:
         log.error(f"[prefs] read failed {p}: {e}")
     return {}
 
-# --------------------------------------------------------------------------- #
+# --------------------------------- #
 # Normalisation helpers
-# --------------------------------------------------------------------------- #
+# --------------------------------- #
 
 def _strip_exe_lower(s: str) -> str:
     s = (s or "").strip()
@@ -198,9 +198,9 @@ def _norm_username(u: Optional[str]) -> str:
         return v or "default"
     return "default"
 
-# --------------------------------------------------------------------------- #
+# --------------------------------- #
 # Per-user prefs load/save (via paths.security_prefs_file)
-# --------------------------------------------------------------------------- #
+# --------------------------------- #
 
 def _prefs_path(username: str) -> Path:
     # name_only=False to get the full file path; ensure_parent=True to create dirs
@@ -264,9 +264,9 @@ def save_prefs(update: dict, username: Optional[str]) -> None:
 
     _atomic_write_json(p, out)
 
-# --------------------------------------------------------------------------- #
+# --------------------------------- #
 # Widgets
-# --------------------------------------------------------------------------- #
+# --------------------------------- #
 
 class _ListEditor(QWidget):
     """Reusable one-column editor with Add/Delete (Enter to add, Delete to remove)."""
@@ -580,9 +580,9 @@ class _ToolNotesEditor(QWidget):
         return out
 
 
-# --------------------------------------------------------------------------- #
+# --------------------------------- #
 # Dialog
-# --------------------------------------------------------------------------- #
+# --------------------------------- #
 
 class SecurityPrefsDialog(QDialog):
     def __init__(self, username: str, parent=None):

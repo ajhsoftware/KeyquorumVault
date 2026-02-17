@@ -62,10 +62,10 @@ def estimate_strength_score(password: str) -> int:
 
     return max(0, min(100, int(score)))
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # Policy & symbols
-# -----------------------------------------------------------------------------
-# Keep symbols aligned with your generator; allow a few extras + £ for UK users.
+# -----------------------------------
+# Keep symbols aligned with generator; allow a few extras + £ for UK users.
 SYMBOLS = '!@#$%^&*()-_=+[]{}|:;\'",.<>/?`~\\£'
 
 # Build a safe character class for regex
@@ -102,9 +102,9 @@ def _store_password_hash(h: str | bytes) -> str:
             return h.hex()
     return str(h)
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # Core validators
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def validate_password_policy(password: str) -> bool:
     """
     Return True if `password` satisfies:
@@ -182,9 +182,9 @@ def validate_password(password: str) -> Dict[str, object]:
     return {"valid": False, "reason": reason, "strength": strength_level}
 
 
-# -----------------------------------------------------------------------------
+# -----------------------------------
 # UI helper (optional)
-# -----------------------------------------------------------------------------
+# -----------------------------------
 def toggle_password_visibility(field) -> None:
     """
     Toggle a QLineEdit between Password/Normal echo modes.

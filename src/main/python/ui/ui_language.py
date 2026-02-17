@@ -25,9 +25,9 @@ from app.paths import config_dir
 from qtpy.QtCore import QLocale, QTranslator
 from qtpy.QtWidgets import QMessageBox
 
-# =============================================================================
+# ==============================
 # --- ui link language
-# =============================================================================
+# ==============================
 
 # Single global language preference file
 lang_file = config_dir(None, ensure_parent=True) / "language.json"
@@ -50,9 +50,9 @@ def _load_ui_language() -> str:
     return ""
 
 
-# =========================================================================
+# ==============================
 # --- UI language preference (per-user) -----------------------------------
-# =========================================================================
+# ==============================
 
 def _init_language_from_file(w) -> None:
     """

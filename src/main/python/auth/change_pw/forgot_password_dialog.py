@@ -22,7 +22,7 @@ from qtpy.QtWidgets import QDialog, QMessageBox
 log = logging.getLogger("keyquorum")
 
 from ui_gen.forgot_password_ui import Ui_ForgotPasswordDialog
-# Core crypto + identity helpers ----------------------------------------------
+# Core crypto + identity helpers ----
 from auth.pw.utils_recovery import recovery_key_to_mk
 from auth.identity_store import get_public_header, mk_hash_b64, rewrap_with_new_password
 # Password policy + generator
@@ -38,9 +38,9 @@ from qtpy.QtCore import QCoreApplication
 def _tr(text: str) -> str:
     return QCoreApplication.translate("forgot_password_dialog", text)
 
-# ---------------------------------------------------------------------------
+# ---------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
+# ---------------------------------
 
 def _derive_mk_from_any_recovery_key(username: str, rk_str: str) -> bytes:
     """
@@ -69,7 +69,7 @@ def _derive_mk_from_any_recovery_key(username: str, rk_str: str) -> bytes:
     except Exception:
         pass
 
-    # Also try new format without normalization (in case your decoder already normalizes)
+    # Also try new format without normalization
     try:
         return recovery_key_to_mk(rk_raw)
     except Exception:
@@ -96,9 +96,9 @@ def _tick_idle_timer(parent):
         pass
 
 
-# ---------------------------------------------------------------------------
+# ---------------------------------
 # Dialog
-# ---------------------------------------------------------------------------
+# ---------------------------------
 
 class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
     """
@@ -135,7 +135,7 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
             except Exception:
                 pass
 
-    # --- UI helpers ---------------------------------------------------------
+    # --- UI helpers ---------------
 
     def open_password_generator(self) -> None:
         """Open password generator popup, if available."""
@@ -194,7 +194,7 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
 
 
 
-    # --- Core flow ----------------------------------------------------------
+    # --- Core flow ----------------
 
     def reset_password_backup_code(self) -> None:
         log.info("[ForgotPassword] ENTER reset_password_backup_code()")
@@ -512,7 +512,7 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
             except Exception as e:
                 return fail(_tr("Identity updated, but user record could not be saved."), e)
 
-            # --- 7) Success -------------------------------------------------
+            # --- 7) Success -------
             
             # --- 6b) Force Identity Store refresh (fix stale header / soft-state) ----
             stage = "identity_refresh"
@@ -904,7 +904,7 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
             except Exception as e:
                 return fail(_tr("Identity updated, but user record could not be saved."), e)
 
-            # --- 7) Success -------------------------------------------------
+            # --- 7) Success -------
             
             # --- 6b) Force Identity Store refresh (fix stale header / soft-state) ----
             stage = "identity_refresh"

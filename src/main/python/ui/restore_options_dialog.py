@@ -15,9 +15,9 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 from qtpy.QtWidgets import (QGroupBox,QDialog, QLabel, QDialogButtonBox, QVBoxLayout, QCheckBox,QRadioButton)    
 
-# =============================================================================
+# ==============================
 # --- (UI) restore options show ---
-# =============================================================================
+# ==============================
 class RestoreOptionsDialog(QDialog):
     """
     Lets the user choose which parts to restore and how to handle the user_db record.

@@ -14,7 +14,6 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 """
 
-# qt_backend_boot.py — import this FIRST in your main.py (before any Qt imports)
 # Forces QtPy to select the PySide6 backend (LGPL) for closed‑source distribution.
 #
 # Usage (top of main.py, before any Qt import):
@@ -29,5 +28,3 @@ from qtpy import API_NAME, PYSIDE6
 
 if not PYSIDE6:
     raise RuntimeError(f"QtPy backend is {API_NAME!r}, expected 'pyside6'")
-
-# (no further imports here)

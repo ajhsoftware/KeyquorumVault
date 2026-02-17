@@ -55,9 +55,9 @@ from app.paths import (
 from features.portable.portable_user_usb import (ensure_portable_layout, portable_root, install_binding_overrides,)
 from features.portable.portable_binding import set_user_usb_binding
 
-# =============================================================================
+# ==============================
 # Utility helpers
-# =============================================================================
+# ==============================
 def _bytestr(n: int) -> str:
     u = ["B","KB","MB","GB","TB"]
     i, f = 0, float(n)
@@ -80,9 +80,9 @@ def _copy_tree(src: Path, dst: Path, ignore=None):
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(src, dst, dirs_exist_ok=True, ignore=ignore)
 
-# =============================================================================
+# ==============================
 # Secure deletion
-# =============================================================================
+# ==============================
 def _movefileex_delete_on_reboot(path: Path) -> None:
     MOVEFILE_DELAY_UNTIL_REBOOT = 0x00000004
     try:
@@ -122,9 +122,9 @@ def _shred_file(p: Path, passes: int = 1) -> None:
         except Exception:
             pass
 
-# =============================================================================
+# ==============================
 # Drive picker (simplified; no auto-BitLocker prompts here)
-# =============================================================================
+# ==============================
 DRIVE_UNKNOWN = 0
 DRIVE_NO_ROOT_DIR = 1
 DRIVE_REMOVABLE = 2
@@ -231,9 +231,9 @@ def _probe_writable(path: Path) -> bool:
             pass
         return False
 
-# =============================================================================
+# ==============================
 # Encrypted app staging (portable app payload)
-# =============================================================================
+# ==============================
 PORTABLE_DIRNAME       = "KeyquorumPortable"
 PORTABLE_STAGE_SUFFIX  = ".staging"
 PORTABLE_APP_SUBDIR    = "app"
@@ -382,9 +382,9 @@ $s.Save()"""
         except Exception as e2:
             return False, f"shortcut failed: {e2}"
 
-# =============================================================================
+# ==============================
 # BUILD PORTABLE APP ONLY (no user data touched)
-# =============================================================================
+# ==============================
 def build_portable_app(parent, target_root: Path) -> bool:
     usb_base = Path(target_root)
     if not _probe_writable(usb_base):
@@ -438,7 +438,7 @@ def build_portable_app(parent, target_root: Path) -> bool:
                                 "You can now move user data separately.")
     return True
 
-# ======== Back-compat / utility helpers ========
+# ============================== Back-compat / utility helpers ========
 
 def wipe_portable(usb_root: Path, username: str | None = None) -> bool:
     """
@@ -472,9 +472,9 @@ def wipe_portable(usb_root: Path, username: str | None = None) -> bool:
         log.error(f"[PORTABLE] wipe_portable failed: {e}")
         return False
 
-# =============================================================================
+# ==============================
 # MOVE USER DATA ONLY (copy → verify → delete local)
-# =============================================================================
+# ==============================
 def _selective_copy_phase2_user_tree(src_root: Path, dst_root: Path, username: str) -> None:
     """
     Copy only the Phase-2 canonical locations for a user from src_root -> dst_root.
@@ -865,9 +865,9 @@ def _hard_delete_local_user_trees(username: str, roots: list[Path], dst_root: Pa
         except Exception as e:
             log.warning("[DEL] Failed to remove %s: %s", src_root, e)
 
-# =============================================================================
+# ==============================
 # RESTORE USER DATA (USB -> LOCAL; no deletion on USB)
-# =============================================================================
+# ==============================
 def _detect_portable_root(usb_root):
     """
     Try to detect the Keyquorum portable root folder on a given USB drive.

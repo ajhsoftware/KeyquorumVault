@@ -34,10 +34,10 @@ def rekey_vault(username: str, old_key: bytes, new_key: bytes) -> None:
       - This is a destructive re-encryption step. Callers should ensure a verified
         backup exists before migrating keys.
     """
-    from vault_store.vault_store import load_vault, save_vault  # adjust if your paths differ
+    from vault_store.vault_store import load_vault, save_vault
     if not isinstance(old_key, (bytes, bytearray)) or not isinstance(new_key, (bytes, bytearray)):
         raise TypeError("rekey_vault: keys must be bytes")
-    data = load_vault(username, bytes(old_key))      # raises if wrong key
+    data = load_vault(username, bytes(old_key)) # raises if wrong key
     save_vault(username, bytes(new_key), data)  
 
 def bytes_equal(a: bytes, b: bytes) -> bool:
@@ -81,7 +81,7 @@ def rekey_user_stores(username: str, old_key: bytes, new_key: bytes) -> dict:
     if not isinstance(old_key, (bytes, bytearray)) or not isinstance(new_key, (bytes, bytearray)):
         raise TypeError("rekey_user_stores: keys must be bytes")
 
-    # 1) Load + mutate vault -------------------------------------------------
+    # 1) Load + mutate vault -------
     try:
         from vault_store.vault_store import load_vault, save_vault
         data = load_vault(username, bytes(old_key))

@@ -7,7 +7,6 @@ from qtpy.QtWidgets import (
 )
 from qtpy.QtCore import Qt
 
-# Pull in your helpers (you already have these from earlier steps)
 from security.security_features import (
     # Recovery-Mode (convenience) helpers
     enable_windows_hello, disable_windows_hello,
@@ -35,7 +34,7 @@ class DeviceUnlockDialog(QDialog):
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(12)
 
-        # === Recovery-Mode group ===
+        # ============================== Recovery-Mode group ===
         g_rec = QGroupBox("Recovery-Mode: Convenience Unlock (Windows Hello & YubiKey)")
         v_rec = QVBoxLayout(g_rec); v_rec.setSpacing(8)
         self.lblRec = QLabel("Status: -"); self.lblRec.setStyleSheet("color:#666")
@@ -57,7 +56,7 @@ class DeviceUnlockDialog(QDialog):
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine); sep.setFrameShadow(QFrame.Shadow.Sunken)
         v_rec.addWidget(sep)
 
-        # === Max-Security group ===
+        # ============================== Max-Security group ===
         g_ms = QGroupBox("Maximum-Security: 2-of-2 (Password + Device)")
         v_ms = QVBoxLayout(g_ms); v_ms.setSpacing(8)
         self.lblMs = QLabel("Status: -"); self.lblMs.setStyleSheet("color:#666")
@@ -109,7 +108,7 @@ class DeviceUnlockDialog(QDialog):
 
     def _pwd_prompt(self, title: str) -> Optional[str]:
         """Tiny in-dialog password re-entry prompt (uses app’s if available)."""
-        # If your app already has _prompt_for_master_password, reuse it:
+        # Note: check _prompt_for_master_password
         if hasattr(self.app, "_prompt_for_master_password"):
             return self.app._prompt_for_master_password(title)
 
@@ -130,7 +129,7 @@ class DeviceUnlockDialog(QDialog):
     def _err(self, msg: str):  QMessageBox.critical(self, "Keyquorum", msg)
 
     def _mk(self) -> bytes:
-        # Uses your app's in-memory MK
+        # Uses app's in-memory MK
         return self.app._current_master_key_bytes()
 
     def _save_user_record(self):

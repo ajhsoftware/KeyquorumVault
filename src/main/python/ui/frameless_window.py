@@ -32,9 +32,9 @@ import datetime
 def _tr(text: str) -> str:
     return QCoreApplication.translate("frameless_window", text)
 
-# =======================================================================================
+# ==============================
 # Credits helpers
-# =======================================================================================
+# ==============================
 import os
 import json
 import logging
@@ -54,9 +54,9 @@ except Exception:
     # In dev mode or if ApplicationContext is unavailable, fall back to a hard-coded version string.
     APP_VERSION = "1.5.6"
 
-# ---------------------------------------------------------------------------
+# ---------------------------------
 # Static credits list (grouped by section)
-# ---------------------------------------------------------------------------
+# ---------------------------------
 SPECIAL_THANKS: dict[str, list[str]] = {
      _tr("Testers & Early Users"): [
         _tr("Testers and early users of Keyquorum Vault"),
@@ -91,9 +91,9 @@ def load_special_thanks() -> dict[str, list[str]]:
     return {section: names[:] for section, names in SPECIAL_THANKS.items()}
 
 
-# ---------------------------------------------------------------------------
+# ---------------------------------
 # Credits dialog (scrollable)
-# ---------------------------------------------------------------------------
+# ---------------------------------
 
 class CreditsDialog(QDialog):
     def __init__(self, parent=None, app_version: str = APP_VERSION):
@@ -191,9 +191,9 @@ class CreditsDialog(QDialog):
     """
         return html
 
-# =======================================================================================
+# ==============================
 # --- Main Window
-# =======================================================================================
+# ==============================
 
 class FramelessWindowMixin:
     _drag_pos: QPoint | None = None
@@ -311,25 +311,25 @@ class FramelessWindowMixin:
 
         title = self.tr("Keyquorum Vault")
         version_label = self.tr("Version:")
-        copyright_line = f"© {year} Anthony Hatton. " + self.tr("All rights reserved.")
+        copyright_line = f"© {year} Anthony Hatton. " + self.tr("Licensed under the GNU GPL-3.0.")
         qt_notice = "Qt® " + self.tr("is a registered trademark of The Qt Company Ltd.")
 
         links_title = self.tr("Links")
         website_label = self.tr("Website")
         support_label = self.tr("Support")
         open_licenses_label = self.tr("Open Licenses Folder")
-        open_license_cache_label = self.tr("Open License Cache")
         open_logs_label = self.tr("Open Logs Folder")
 
         oss_notice_1 = self.tr("This product includes open-source software. License notices and full texts " + 
             self.tr("are available in Menu ") + "→" + self.tr("Show Licenses and in the ") + "<b>" + self.tr("licenses") + "/</b>" + self.tr(" folder.")
         )
-
-        oss_notice_2 = self.tr("This product uses PySide6 (Qt for Python) under ") + "<b>" + self.tr("LGPL-3.0-only") + ";</b> " + self.tr("you may replace the LGPL libraries with compatible versions.")
-        
-
+        oss_notice_2 = self.tr(
+            "Keyquorum Vault is licensed under the GNU GPL-3.0.<br>"
+            "This product uses PySide6 (Qt for Python), which is licensed under LGPL-3.0-only.<br>"
+            "In accordance with the LGPL, you may replace the LGPL-covered libraries with compatible versions."
+        )
         text = (
-            f"<b>{title}</b> — {edition}<br>"
+            f"<b>{title}</b><br>"
             f"{version_label} {ver}<br>"
             f"{copyright_line.format(year=year)}<br><br>"
             f"{qt_notice}<br><br>"
@@ -337,7 +337,6 @@ class FramelessWindowMixin:
             f"• <a href=\"https://www.ajhsoftware.uk\">{website_label}</a><br>"
             f"• <a href=\"https://forms.gle/118nQkUeV5cZyFj27\">{support_label}</a><br>"
             f"• <a href=\"app:open_licenses\">{open_licenses_label}</a><br>"
-            f"• <a href=\"app:open_license_cache\">{open_license_cache_label}</a><br>"
             f"• <a href=\"app:open_logs\">{open_logs_label}</a><br><br>"
             f"{oss_notice_1}<br>"
             f"{oss_notice_2}"
@@ -354,12 +353,6 @@ class FramelessWindowMixin:
         lab.linkActivated.connect(self._about_link_handler)
         
         lay.addWidget(lab)
-
-
-        # Optional: show current license line
-        license_line = summary.get("text") or (self.tr("Pro — Microsoft Store entitlement") if edition=="Pro" and summary.get("provider")=="msstore" else self.tr("Free — Not activated"))
-        status = QLabel(self.tr("Status:") + f"{license_line}", dlg)
-        lay.addWidget(status)
 
         # Close button
         btns = QHBoxLayout()

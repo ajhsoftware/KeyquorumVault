@@ -64,9 +64,9 @@ class EmergencyKitDialog(QDialog):
         v.addLayout(btns)
 
         try:
-            from dev.dev import is_dev
+            from app.basic import is_dev
             # Diagnose
-            if is_dev():
+            if is_dev:
                 self.btn_diag = QPushButton(self.tr("Diagnose…"), self)
                 btns.addWidget(self.btn_diag)
                 self.btn_diag.clicked.connect(self._on_diag)
@@ -111,7 +111,7 @@ class EmergencyKitDialog(QDialog):
         lines.append(self.tr("• Never share this with anyone. Keyquorum will never ask for it."))
         return "\n".join(lines)
 
-    # --- Actions -----------------------------------------------------------
+    # --- Actions -----------------
 
 
     def _save_pdf_full_to_path(self, path: str, *, show_saved_message: bool = True) -> bool:
@@ -281,8 +281,6 @@ class EmergencyKitDialog(QDialog):
             details.append(f"qrcode (pkg ver): {qr_ver}")
         except Exception as e:
             details.append(f"qrcode import FAILED: {e}")
-
-        # Can we import your builder?
         try:
             from auth.emergency_kit.emergency_kit import build_emergency_kit_pdf  # noqa
             details.append(self.tr("emergency_kit import: OK"))

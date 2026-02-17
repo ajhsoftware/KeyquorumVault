@@ -38,9 +38,9 @@ def _tr(text: str) -> str:
     return QCoreApplication.translate("system_info", text)
 
 
-# ---------------------------------------------------------------------------
+# ---------------------------------
 # Small helpers
-# ---------------------------------------------------------------------------
+# ---------------------------------
 
 def _is_windows() -> bool:
     try:
@@ -60,9 +60,9 @@ def _creationflags_no_window() -> int:
         return 0
 
 
-# ---------------------------------------------------------------------------
+# ---------------------------------
 # Basic system info
-# ---------------------------------------------------------------------------
+# ---------------------------------
 
 def get_basic_system_info() -> Dict[str, Any]:
     """
@@ -109,7 +109,7 @@ def get_basic_system_info() -> Dict[str, Any]:
     except Exception as e:
         log.warning("[system_info] basic system info failed: %s", e)
 
-    # Windows 11 23H2+ detection from your capabilities helper
+    # Windows 11 23H2+ detection
     try:
         import features.passkeys.capabilities as cap
         info["is_win11_23h2_plus"] = bool(cap.is_windows11_23h2_plus())
@@ -119,9 +119,9 @@ def get_basic_system_info() -> Dict[str, Any]:
     return info
 
 
-# ---------------------------------------------------------------------------
+# ---------------------------------
 # Windows Update status
-# ---------------------------------------------------------------------------
+# ---------------------------------
 
 def _powershell_available() -> bool:
     """
@@ -253,9 +253,9 @@ def get_windows_update_status(max_stale_days: int = 90) -> Dict[str, Any]:
         result["error"] = msg
         return result
 
-# ---------------------------------------------------------------------------
+# ---------------------------------
 # Windows Clipboard History / Cloud Clipboard
-# ---------------------------------------------------------------------------
+# ---------------------------------
 
 def get_clipboard_history_state() -> tuple[str, bool]:
     """

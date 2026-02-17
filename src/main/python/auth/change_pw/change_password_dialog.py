@@ -122,7 +122,7 @@ class ChangePasswordDialog(QDialog, Ui_SecurePasswordChangeDialog):
 
         return False
 
-    # --- Main handler -------------------------------------------------------
+    # --- Main handler -------------
     def try_change_password(self):
         try:
             parent = self.parent()

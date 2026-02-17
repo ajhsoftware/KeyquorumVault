@@ -29,9 +29,9 @@ log = logging.getLogger("keyquorum")
 from features.backup_advisor.backup_advisor import BackupAdvisor
 
 
-# ===============================================
+# ==============================
 # --- Backup Advisor
-# ===============================================
+# ==============================
 
 def init__backup_avisor(w):
     qs = QSettings("AJH Software", "Keyquorum Vault")

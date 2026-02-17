@@ -61,9 +61,9 @@ def integrity_check_and_prompt(self, username: str) -> bool:
     self.reset_logout_timer()
     self.set_status_txt(self.tr("Checking integrity…"))
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # 1) Assemble inputs: salt + tracked file set
-    # ------------------------------------------------------------------
+    # ------------------------
     try:
         
         salt_for_baseline = _load_vault_salt_for(username)
@@ -84,9 +84,9 @@ def integrity_check_and_prompt(self, username: str) -> bool:
         log.error(f"[INTEGRITY] setup error: {e}")
         return True
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # 2) Run verification
-    # ------------------------------------------------------------------
+    # ------------------------
     try:
         changed, missing, new_, mac_ok = verify_baseline(
             username, salt_for_baseline, files
@@ -122,18 +122,18 @@ def integrity_check_and_prompt(self, username: str) -> bool:
         self.set_status_txt(self.tr("Baseline OK"))
         return True
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # 3) Build details text for "Show Details"
-    # ------------------------------------------------------------------
+    # ------------------------
     details_text = (
         self._format_list("CHANGED", changed)
         + self._format_list("MISSING", missing)
         + self._format_list("NEW", new_)
     )
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # 4) Interactive warning dialog with Copy / Quit / Update / Proceed
-    # ------------------------------------------------------------------
+    # ------------------------
     while True:
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Warning)
@@ -205,7 +205,7 @@ def integrity_check_and_prompt(self, username: str) -> bool:
         except Exception:
             pass
 
-        # --- Actions ---------------------------------------------------
+        # --- Actions ---------
         if clicked is btn_copy:
             try:
                 QApplication.clipboard().setText(details_text)
@@ -254,7 +254,7 @@ def integrity_check_and_prompt(self, username: str) -> bool:
         if clicked is btn_go:
             return True
 
-# =============================================================================
+# ==============================
 # --- preflight---
 
 # --- add to serecty preflight check list
@@ -289,7 +289,6 @@ def enable_breach_checker_change(self, checked) -> None:
             pass
         return
 
-    # Helper: read prior consent timestamp (if your project has get_user_setting; else treat as None)
     try:
         prior_ack_ts = get_user_setting(username, "hibp_ack_ts") or 0
     except Exception:

@@ -61,9 +61,9 @@ log = logging.getLogger("keyquorum")
 import app.kq_logging as kql
 
 
-# =============================================================================
+# ==============================
 # --- Bridge / Allowed Origins (unified paths) ---
-# =============================================================================
+# ==============================
 
 # Default allowed origins (e.g., browser extensions)
 _DEFAULT_ORIGINS = {
@@ -141,9 +141,9 @@ def remove_allowed_origin(origin: str) -> set[str]:
     return load_allowed_origins()
 
 
-# =============================================================================
+# ==============================
 # --- Browser  Extensions  ---
-# =============================================================================
+# ==============================
 
 # --- Local Server Set
 appref = None  # set start_bridge_server
@@ -156,8 +156,9 @@ ALLOWED_ORIGINS = refresh_allowed_origins(force=True)
 _ALLOW_METHODS = "GET, POST, OPTIONS"
 _ALLOW_HEADERS = "Content-Type, Authorization, X-Auth-Token, X-KQ-Token"
 # --- http/https (note: make option in setting to allow/block http sites)
+
 try:
-    from dev.dev import is_dev
+    from app.basic import is_dev
     if is_dev:
         ALLOW_LOCAL_HTTP  = True  # True in dev HTTP Mode
     else:
@@ -308,7 +309,7 @@ def on_vault_diagButton_clicked(self, *args, **kwargs):
 # ---- Single, definitive bridge handler ----
 class _BridgeHandler(BaseHTTPRequestHandler):
 
-    # --- Passkeys bridge endpoints ----------------------------------------------
+    # --- Passkeys bridge endpoints ----
 
     def _b64url_decode(self, s: str) -> bytes:
         s = (s or "").strip()
@@ -347,7 +348,7 @@ class _BridgeHandler(BaseHTTPRequestHandler):
         if not self._require_unlocked(app):
             return {"ok": False, "error": "vault_locked"}, 423
 
-        # decode inputs (use your _b64url_decode helpers)
+        # decode inputs (use _b64url_decode helpers)
         rp_id     = (body.get("rpId") or "").strip().lower()
         user_id_b = self._b64url_decode(body.get("userId", ""))
         challenge = self._b64url_decode(body.get("challenge", ""))
@@ -359,8 +360,6 @@ class _BridgeHandler(BaseHTTPRequestHandler):
         cred = create_credential(
             rp_id=rp_id,
             user_id=user_id_b,
-            # include challenge only if your store expects it:
-            # challenge=challenge,
             alg=alg,
             resident_key=rk,
             require_uv=(uv == "required"),
@@ -1047,11 +1046,6 @@ class _BridgeHandler(BaseHTTPRequestHandler):
             except Exception:
                 pass
 
-# ---------------------------------------------------------------------------
-# Methods to bind on your main window class via simple assignment, or paste
-# their bodies into your class if you prefer.
-
-
 def show_entry_context_menu(self, pos) -> None:
     """
     Right-click context menu:
@@ -1066,7 +1060,6 @@ def show_entry_context_menu(self, pos) -> None:
     if not getattr(self, "vaultTable", None):
         return
 
-    # ---------- helpers ----------
     def select_row_under_cursor() -> int:
         try:
             idx = self.vaultTable.indexAt(pos)
@@ -1279,8 +1272,7 @@ def show_entry_context_menu(self, pos) -> None:
     # ▶ Software actions
     if current_category.lower() == "software":
         # --- resolve software root for relative paths ---
-        # Set this once in your app init: self.software_root = r"C:\Keyquorum\software" (example)
-        software_root = getattr(self, "software_root", None)
+        from app.paths import software_dir as software_root
 
         def _expand_path(p: str) -> str:
             if not p:
@@ -1348,7 +1340,6 @@ def show_entry_context_menu(self, pos) -> None:
 
         exec_path = _pick(entry, "exec")
         key_path  = _pick(entry, "key")
-
         act_run = menu.addAction("▶ Run Executable")
         act_open_folder = menu.addAction("🗂 Open Executable Folder")
         act_open_key = menu.addAction("🔑 Open Key Path")
@@ -1418,7 +1409,7 @@ def show_entry_context_menu(self, pos) -> None:
     global_pos = self.vaultTable.viewport().mapToGlobal(pos)
     menu.exec(global_pos)
 
-# =============================================================================
+# ==============================
 # --- get current column index clicked
 
 
@@ -1451,7 +1442,7 @@ def _move_row_to_category_full(self, row: int, new_type: str) -> str:
         except Exception:
             pass
 
-        # load source entry + global index used by your persistence layer
+        # load source entry + global index
         try:
             entries = load_vault(self.currentUsername.text(), self.userKey)
             try:
@@ -1466,7 +1457,7 @@ def _move_row_to_category_full(self, row: int, new_type: str) -> str:
         # create dialog for target category
         try:
             dlg = AddEntryDialog(self, new_type, self.enable_breach_checker, pro=None,
-            user=self.currentUsername.text(),is_dev=is_dev())
+            user=self.currentUsername.text(),is_dev=is_dev)
             dlg.setWindowTitle(self.tr("Move Entry: {row1} → {new}").format(row1=self._category_for_row(row), new=new_type))
         except Exception as e:
             log.error(str(f"{kql.i('update')} [ERROR] {kql.i('err')} Could not Move AddEntryDialog: {e}"))
@@ -1776,7 +1767,7 @@ def show_trash_manager(self):                                                   
     username = self.currentUsername.text()
     key = self.userKey
 
-    # --- helpers -----------------------------------------------------
+    # --- helpers -----------
 
     def _selected_uid():
         r = tbl.currentRow()
@@ -1853,7 +1844,7 @@ def show_trash_manager(self):                                                   
             pass
         return trash
 
-    # --- dialog ------------------------------------------------------
+    # --- dialog ------------
     dlg = QDialog(self)
     dlg.setWindowTitle(self.tr("Trash (kept up to 30 days)"))
     dlg.resize(820, 420)
@@ -2139,7 +2130,7 @@ def _preview_full_entry(self, entry: dict, sequential: bool = False) -> bool:
                 getattr(self, "enable_breach_checker", False),
                 existing_entry=None,
                 user=self.currentUsername.text(),
-                is_dev=is_dev(),
+                is_dev=is_dev,
             )
             if hasattr(editor, "category"):
                 editor.category = target
@@ -2324,7 +2315,7 @@ def open_add_entry_dialog(self, *args, **kwargs):
         QMessageBox.warning(self, self.tr("Add Entry"), self.tr("Unlock your vault first."))
         return
 
-    # free-limit gate (keep your existing policy)
+    # free-limit gate (keep existing policy)
     try:
         current = load_vault(username, self.userKey) or []
         if not self.can_add_entry():
@@ -2338,7 +2329,7 @@ def open_add_entry_dialog(self, *args, **kwargs):
         self,
         category,
         self.enable_breach_checker,
-        user=username,is_dev=is_dev(),
+        user=username,is_dev=is_dev,
     )
     self._track_window(dlg)
 
@@ -2696,7 +2687,7 @@ def user_field_meta_for_category(self, category: str) -> list[dict]:
     return out
    
 
-# =============================================================================
+# ==============================
 # --- on double item click edit that item 
 
 
@@ -2952,6 +2943,8 @@ def load_vault_table(self, *args, **kwargs):
         row_index = 0
         password_map = {}
         self.reset_logout_timer()
+        if all_entries:
+            sample = all_entries[0]
 
         for idx, entry in enumerate(all_entries):
             if entry.get("category", "Passwords").lower() != category.lower():
@@ -3163,9 +3156,9 @@ def import_vault_with_password(self, *args, **kwargs):
             ),
         )
 
-# =============================================================================
+# ==============================
 # --- export/import software folder only (Not part of full backup) ------------------
-# =============================================================================
+# ==============================
 
 
 def _autofill_split_flow(self, entry, *, hwnd=None, title_re: str = "", pid=None) -> bool:
@@ -3398,9 +3391,8 @@ def delete_selected_vault_entry(self, *args, **kwargs):
         log.error(str(f"{kql.i('vault')} [ERROR] {kql.i('err')} deleting vault entry: {e}"))
         QtWidgets.QMessageBox.warning(self, self.tr("Error"), self.tr("Failed to delete the selected entry. Please try again."))
 
-# ------------------------------------------------------------------
+# ------------------------
 # --- update tabe when category is changed
-
 
 def _quick_move_row_to_category(self, row: int, new_type: str) -> bool:
     """Move without opening the edit dialog: auto-map fields, set category, persist."""
@@ -3417,7 +3409,6 @@ def _quick_move_row_to_category(self, row: int, new_type: str) -> bool:
         except Exception:
             pass
         
-        # Load current entry using your app’s index model
         try:
             entries = load_vault(self.currentUsername.text(), self.userKey)
             try:
@@ -3723,7 +3714,6 @@ def _trash_preview_for_entry(self, e: dict) -> dict:                            
     cat = _norm(e.get("category") or e.get("Category"))
     keys = {k.lower() for k in e.keys()}
 
-    # --- map your UI categories → kinds
     cat_l = (cat.lower() if cat else "")
     cat_map = {
         "passwords":        "login",
@@ -4048,8 +4038,8 @@ def import_vault_custom(self, *args, **kwargs):
         msg = self.tr("{ok} Restore completed\n{err}").format(ok=kql.i('err'), err=e)
         QMessageBox.critical(self, self.tr("Import Failed"), msg)
 
-# ==================================================
-# --- Auto-categorize & normalize CSV ---------------------------------------------
+# ==============================
+# --- Auto-categorize & normalize CSV ---
 
 
 
@@ -4096,7 +4086,6 @@ def _ensure_category_exists_from_import(self, category: str) -> bool:
         # Build default fields for a new category
         fields = None
         try:
-            # Prefer app-specific defaults that match your grids
             fields = self._default_fields_for_category(name)
         except Exception:
             fields = None
@@ -4837,7 +4826,7 @@ def _do_vault_schema_refresh(self, *args, **kwargs):
         self._vault_loading = False
 
     
-# =============================================================================
+# ==============================
 # --- edit current item entry
 
 

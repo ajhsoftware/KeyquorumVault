@@ -262,7 +262,7 @@ class PasswordHistoryDialog(QDialog):
         buttons.addWidget(btnClose)
         layout.addLayout(buttons)
 
-    # ---- internals -------------------------------------------------
+    # ---- internals -------
 
     def _parse_iso(self, ts: str):
         if not ts:
@@ -337,7 +337,6 @@ class AddEntryDialog(QDialog):
         AddEntryDialog(self, category=current_category)
     """
     def __init__(self, parent=None, category=None, enable_breach_checker=True, existing_entry=None, user=None, is_dev=False, *args, **kwargs):
-        log.info(f"[UI ADD] Add Entry category={category}, enable_breach_checker={enable_breach_checker}, user={user}, is_dev{is_dev}")
         super().__init__(parent)
         self.setWindowTitle(self.tr("Add Entry"))
         self.setMinimumWidth(460)
@@ -810,7 +809,6 @@ class AddEntryDialog(QDialog):
             )
             return
 
-        # reuse your existing prefill API (keeps your schema labels)
         try:
             self.prefill_from_dict(mapped)
         except Exception:
@@ -1045,7 +1043,6 @@ class AddEntryDialog(QDialog):
             elif hasattr(self, "existing_entry") and isinstance(self.existing_entry, dict):
                 hist = list(self.existing_entry.get("password_history") or [])
             else:
-                # Fallback: your existing resolver (if you already have it)
                 if hasattr(self, "_resolve_existing_history"):
                     hist = list(self._resolve_existing_history() or [])
         except Exception:
@@ -1425,9 +1422,9 @@ class AddEntryDialog(QDialog):
     def result_entry(self) -> dict | None:
         return self._last_entry
 
-    # -------------------------------------------------------
+    # -------------
     # Prefill helpers
-    # -------------------------------------------------------
+    # -------------
     def prefill_from_dict(self, data: dict[str, object] | None) -> None:
         """
         Prefill the dynamic entry fields from a plain mapping.

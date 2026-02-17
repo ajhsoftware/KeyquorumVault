@@ -23,9 +23,9 @@ import traceback
 from security.preflight import run_preflight_checks
 
 
-# =============================================================================
+# ==============================
 # --- prefligh safe ---
-# =============================================================================
+# ==============================
 def safe_preflight() -> tuple[bool, str]:
     """
     Call run_preflight_checks() safely.
@@ -33,7 +33,6 @@ def safe_preflight() -> tuple[bool, str]:
     Returns: (ok, reason)
     """
     try:
-        # try the simple style (bool or (ok, reason))
         result = run_preflight_checks()
         if isinstance(result, tuple) and len(result) >= 1:
             ok = bool(result[0])
@@ -43,7 +42,6 @@ def safe_preflight() -> tuple[bool, str]:
     except Exception as e:
         # capture full traceback for debug.log
         tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))
-        # Use single quotes inside kql.i() to avoid nested double-quote syntax errors
         log.error(str(f"{kql.i('err')} [ERROR] 🛑 Preflight checks crashed:\n{tb}"))
         return False, f"Preflight crashed: {e}"
 

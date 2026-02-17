@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>614</width>
-    <height>902</height>
+    <height>904</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -3232,31 +3232,6 @@ Always manually confirm that your OS, antivirus, drivers, and browsers are up to
                </widget>
               </item>
               <item>
-               <widget class="QPushButton" name="rateUsButton">
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-                  <horstretch>0</horstretch>
-                  <verstretch>0</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>0</width>
-                  <height>26</height>
-                 </size>
-                </property>
-                <property name="toolTip">
-                 <string>Open the Microsoft Store to leave a rating or review. Thank you!</string>
-                </property>
-                <property name="styleSheet">
-                 <string notr="true">padding:2;</string>
-                </property>
-                <property name="text">
-                 <string>Rate Keyquorum Vault ⭐</string>
-                </property>
-               </widget>
-              </item>
-              <item>
                <widget class="QPushButton" name="check_baseline_2">
                 <property name="minimumSize">
                  <size>
@@ -3313,7 +3288,7 @@ Always manually confirm that your OS, antivirus, drivers, and browsers are up to
            <item>
             <widget class="QStackedWidget" name="stackedWidget">
              <property name="currentIndex">
-              <number>0</number>
+              <number>2</number>
              </property>
              <widget class="QWidget" name="page_3">
               <layout class="QVBoxLayout" name="verticalLayout_17">
@@ -3336,7 +3311,7 @@ Always manually confirm that your OS, antivirus, drivers, and browsers are up to
                       <rect>
                        <x>0</x>
                        <y>0</y>
-                       <width>428</width>
+                       <width>355</width>
                        <height>352</height>
                       </rect>
                      </property>
@@ -4218,7 +4193,7 @@ For maximum security, use an encrypted USB drive.</string>
                    <rect>
                     <x>0</x>
                     <y>0</y>
-                    <width>327</width>
+                    <width>451</width>
                     <height>569</height>
                    </rect>
                   </property>
@@ -5884,7 +5859,7 @@ Restore: Lets you bring that folder back into your vault environment from a prev
                       <rect>
                        <x>0</x>
                        <y>0</y>
-                       <width>66</width>
+                       <width>85</width>
                        <height>66</height>
                       </rect>
                      </property>
@@ -5956,7 +5931,7 @@ Restore: Lets you bring that folder back into your vault environment from a prev
                    <rect>
                     <x>0</x>
                     <y>0</y>
-                    <width>73</width>
+                    <width>85</width>
                     <height>66</height>
                    </rect>
                   </property>
@@ -5986,8 +5961,8 @@ Restore: Lets you bring that folder back into your vault environment from a prev
                        <rect>
                         <x>0</x>
                         <y>0</y>
-                        <width>46</width>
-                        <height>604</height>
+                        <width>71</width>
+                        <height>574</height>
                        </rect>
                       </property>
                       <layout class="QVBoxLayout" name="verticalLayout_46">

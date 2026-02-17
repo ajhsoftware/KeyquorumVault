@@ -35,9 +35,9 @@ from qtpy.QtWidgets import QMessageBox, QCheckBox
 from qtpy.QtCore import QCoreApplication
 
 
-# =============================================================================
+# =============================
 # --- language
-# =============================================================================
+# =============================
 
 def _tr(text: str) -> str:
     # context name can be anything stable, e.g. "MainWindow" or "Keyquorum"

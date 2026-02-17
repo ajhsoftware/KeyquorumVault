@@ -310,7 +310,7 @@ def apply_theme2(self, theme: str, persist: bool = True):
         if self.centralWidget(): self.centralWidget().update()
         self.update()
 
-        # Sync native Windows title bar to the palette we just applied
+        # Sync native Windows title bar to the palette just applied
         try:
             pal_now = app.palette()
             cap = pal_now.color(QPalette.ColorRole.Window)
@@ -334,7 +334,6 @@ def apply_theme2(self, theme: str, persist: bool = True):
             pal_now = app.palette()
             extra = self._bars_qss(pal_now, getattr(self, "_force_black_header", False)) + self._titlebar_btn_qss()
             combined_css = (app.styleSheet() or "") + "\n" + extra
-            # feed into your touch-aware CSS pipeline
             self._set_theme_stylesheet(combined_css)
         except Exception:
             pass

@@ -29,9 +29,9 @@ def _tr(text: str) -> str:
     return QCoreApplication.translate("main", text)
 
 
-# =============================================================================
+# ==============================
 # --- BackupAdvisor: prompt user to back up after N changes ---
-# =============================================================================
+# ==============================
 class BackupAdvisor:
     """
     Tracks vault changes and politely prompts for a backup after N changes.

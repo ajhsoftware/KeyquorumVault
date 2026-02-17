@@ -75,9 +75,9 @@ _VER   = 1
 _SALT_LEN  = 16
 _NONCE_LEN = 12
 
-# =============================================================================
+# ==============================
 # Core path helpers expected by account_creator / main
-# =============================================================================
+# ==============================
 
 def get_vault_path(username: str, ensure_parent:bool = False) -> str:
     """Absolute path to the encrypted vault file, ensuring parent dir exists."""
@@ -147,9 +147,9 @@ def _aes_dec(key: bytes,
     aead = AESGCM(key)
     return aead.decrypt(nonce, ct, aad)
 
-# ============================================================================
+# ==============================
 # --- Vault unwrap/rewrap 
-# ============================================================================
+# ==============================
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
@@ -217,9 +217,9 @@ def unwrap_vault_key_dmk(username: str, dmk: bytes) -> bytes:
     vk = _aes_dec(dmk, b"KQID-VK", nonce, ct)
     return vk
 
-# =============================================================================
+# ==============================
 # AES-GCM envelope (vault content)
-# =============================================================================
+# ==============================
 
 def save_encrypted(plaintext_obj: Any, path: str, key: bytes) -> None:
     data = json.dumps(plaintext_obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -245,9 +245,9 @@ def load_encrypted(path: str, key: bytes):
     pt = decryptor.update(ct) + decryptor.finalize()
     return json.loads(pt.decode("utf-8"))
 
-# =============================================================================
+# ==============================
 # Vault CRUD
-# =============================================================================
+# ==============================
 
 def _verify_vault_owner(vault_path: str, username: str, auto_claim=True) -> bool:
     """
@@ -392,9 +392,9 @@ def _identity_fingerprint(username: str) -> str | None:
     except Exception:
         return None
 
-# =============================================================================
+# ==============================
 # --- simple password-wrapped export/import for the vault blob # --- vault only 
-# =============================================================================
+# ==============================
 
 def export_vault_with_password(
     username: str,
@@ -707,7 +707,7 @@ def export_full_backup(username: str, *args) -> str:
     ts = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     out_fp = out_dir / (f"{username}_full_backup_{ts}.zip.enc" if password else f"{username}_full_backup_{ts}.zip")
     if password:
-        enc = _enc_backup_bytes(password, plain_zip)  # existing helper in your module
+        enc = _enc_backup_bytes(password, plain_zip)
         out_fp.write_bytes(enc)
     else:
         out_fp.write_bytes(plain_zip)
@@ -927,9 +927,9 @@ def export_vault_csv(
 
     buf = io.StringIO()
 
-    # -------------------------------------------------------------------------
+    # -------------------------------
     # Keyquorum (App-native) – embed category schema
-    # -------------------------------------------------------------------------
+    # -------------------------------
     if tf.startswith("keyquorum"):
         # App-native, category-aware (best for round-trips). Include marker + optional schema.
         headers = _collect_union_headers(vault_data)
@@ -983,9 +983,9 @@ def export_vault_csv(
                 row.setdefault("KQ_SCHEMA", "")
             w.writerow({k: row.get(k, "") for k in headers})
 
-    # -------------------------------------------------------------------------
+    # -------------------------------
     # Other formats unchanged
-    # -------------------------------------------------------------------------
+    # -------------------------------
     elif tf in ("google chrome", "microsoft edge", "google", "chrome", "edge"):
         headers = ["name", "url", "username", "password"]
         w = csv.DictWriter(buf, fieldnames=headers)

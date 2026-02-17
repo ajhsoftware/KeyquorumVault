@@ -55,12 +55,13 @@ from new_users.tour import maybe_show_quick_tour
 from features.backup_advisor.ui_backup_bind import init__backup_avisor
 from features.autofill.autofill_ui_bind import on_autofill_to_app_clicked
 from auth.logout.logout_flow import logout_user
-from dev.dev import is_dev
 from features.url.main_url import MSSTORE_ADDONS
 from app.basic import _UiBus
 from security.baseline_signer import update_baseline
 from features.security_center.security_center_ui import _run_security_center_scan, on_security_open_integrity_clicked
 import webbrowser
+from app.basic import is_dev
+
 
 def bind_all(w):
     find_all(w)
@@ -142,9 +143,9 @@ def apply_remembered_username_to_login_screen(w):
 
 
 def init_buttons(w):
-    # =============================================================================
+    # ==============================
     # --- settings menu buttons
-    # =============================================================================
+    # ==============================
 
     getattr(w, 'restHidden', None) and w.restHidden.clicked.connect(lambda: on_reset_hide_flags_clicked(w))   # - reset all hiden flages (must update when adding new ones)
     w.newBug.clicked.connect(lambda: _maybe_show_release_notes(w))                # - show whats new/bug
@@ -157,9 +158,9 @@ def init_buttons(w):
     w.categoryeditor_.clicked.connect(w.categury_load_schema)                     # - load schema
     w.sync_button.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(7))     # - cloud sync 
     
-    w.clear_passwordless.clicked.connect(w.clear_passwordless_unlock_on_this_device) # - clear passwordless
-    w.deleteAccountButton.clicked.connect(lambda: w.open_delete_account_dialog(w, (w.currentUsername.text() or "").strip())) #- delete user
-    w.clear_username.clicked.connect(w.clear_remembered_username)
+    w.clear_passwordless.clicked.connect(w.clear_passwordless_unlock_on_this_device)    # - clear passwordless
+    w.deleteAccountButton.clicked.connect(lambda: w.open_delete_account_dialog(w, (w.currentUsername.text() or "").strip()))    # - delete user
+    w.clear_username.clicked.connect(w.clear_remembered_username)    
     
     try:
         from features.url.main_url import SITE_SUPPORT_ME
@@ -167,9 +168,9 @@ def init_buttons(w):
     except Exception as e:
         pass 
 
-    # =============================================================================
+    # ==============================
     # --- Login/Out 
-    # =============================================================================
+    # ==============================
     # - Login Screen Button
     w.createAccountButton.clicked.connect(lambda: create_account(w))
     w.loginButton.clicked.connect(w.attempt_login)
@@ -190,9 +191,9 @@ def init_buttons(w):
     # - Logout Screen Button
     w.logoutButton.clicked.connect(lambda: logout_user(w, skip_backup=False))
 
-    # =============================================================================
+    # ==============================
     # --- backup restore
-    # =============================================================================
+    # ==============================
     w.exportVaultButton.clicked.connect(w.export_vault)                                                   # - backup
     w.importVaultButton.clicked.connect(w.import_vault_custom)                                            # - restore full data
     w.exportWithPasswordButton.clicked.connect(lambda: w.export_vault_with_password(skip_ask=False))      # - export with password
@@ -200,9 +201,9 @@ def init_buttons(w):
     w.backup_software.clicked.connect(w.backup_software_folder)                                           # - export software
     w.restore_software.clicked.connect(w.restore_software_folder)                                         # - import software
 
-    # =============================================================================
+    # ==============================
     # --- Portable
-    # =============================================================================
+    # ==============================
     w.btnMoveToUSB.clicked.connect(w.action_move_user_to_usb)                     # - move user to usb
     w.btnMoveBack.clicked.connect(w.action_move_user_from_usb)                    # - move user back from usb
     try:
@@ -217,9 +218,9 @@ def init_buttons(w):
         except Exception:
             pass            # - create porable (build/rebuild)
 
-    # =============================================================================
+    # ==============================
     # --- security/prefs
-    # =============================================================================
+    # ==============================
     # --- Login (per-user) controls ---
     w.preflight_config.clicked.connect(w.open_security_prefs)
     w.enableWinDefCheckbox_.toggled.connect(w.on_enable_WinDefCheckbox_toggled)
@@ -242,9 +243,9 @@ def init_buttons(w):
     w.regen_key_1.clicked.connect(lambda: w.on_generate_recovery_key_clicked("login"))
     w.regen_key_2fa_2.clicked.connect(lambda: w.on_generate_recovery_key_clicked("2fa"))
     
-    # =============================================================================
+    # ==============================
     # --- vault table
-    # =============================================================================
+    # ==============================
     w.openSite.clicked.connect(w.on_open_site_clicked)                            # - open site item
     w.addEntryButton.clicked.connect(w.open_add_entry_dialog)                     # - vault add item
     w.editEntryButton.clicked.connect(w.handle_edit_button)                       # - vault edit item
@@ -258,9 +259,9 @@ def init_buttons(w):
     w.qrshow_.clicked.connect(w.show_qr_for_selected)                             # - qrcode show
     w.softdelete_.clicked.connect(w.show_trash_manager)                           # - link to show show soft delete
     w.reminder_btn.clicked.connect(w.open_reminders_dialog)                       # - windows reminder
-    # =============================================================================
+    # ==============================
     # --- other
-    # =============================================================================
+    # ==============================
 
     w.ontop_.toggled.connect(w.on_enable_ontop_toggled)                           # - enable/disable ontop
     w.debug_set_.toggled.connect(w.enable_debug_logging_change)                   # - enable/disable debuging
@@ -273,9 +274,9 @@ def init_buttons(w):
     w.import_csv_entries_bn.clicked.connect(w.import_csv_entries)                 # - import csv 
     w.export_csv_entries_bn.clicked.connect(w.export_csv)                         # - export csv 
     w.password_generator.clicked.connect(w.open_generator)                        # -  password gen button
-    # -----------------------------------------------------------------
+    # -----------------------
     # --- Cloud Sync ----------------
-    # -----------------------------------------------------------------
+    # -----------------------
     w.on_sync_now.clicked.connect(w.on_button_sync_cloud)                         # - 
     w.select_cloud.clicked.connect(w.on_select_cloud_vault)                       # - 
     w.move_vault_to_cloud.clicked.connect(w.on_copy_vault_to_cloud)               # - 
@@ -285,16 +286,16 @@ def init_buttons(w):
     w.autosync_.clicked.connect(w.on_autosync_clicked)                            # - auto sync to cloud
     w.tuchmode_.toggled.connect(w.save_to_user_on_touch)
     w.tuchmode_2.toggled.connect(w.on_touch_mode_toggled_set)
-    # -----------------------------------------------------------------
+    # -----------------------
     # --- First time boot/tour button----------------
-    # -----------------------------------------------------------------
+    # -----------------------
     w.bowser_btn_2.clicked.connect(lambda: maybe_show_quick_tour(w, "core"))
     w.bowser_btn_3.clicked.connect(lambda: maybe_show_quick_tour(w, "authenticator"))
     w.bowser_btn_4.clicked.connect(lambda: maybe_show_quick_tour(w, "audit"))
     w.bowser_btn_7.clicked.connect(lambda: maybe_show_quick_tour(w, "backup"))
-    # -----------------------------------------------------------------
+    # -----------------------
     # --- Passkey ----------------
-    # -----------------------------------------------------------------
+    # -----------------------
     import features.passkeys.passkeys_windows as pkwin
     import features.passkeys.capabilities as cap
     w.btnEnablePasskeyProvider.clicked.connect(
@@ -313,13 +314,13 @@ def init_buttons(w):
     w.btnPasskeyEnable.clicked.connect(lambda: w._set_selected_passkey_disabled(False))
     w.btnPasskeyRename.clicked.connect(w._rename_selected_passkey)
     w.pair_passkey.clicked.connect(w.launch_passkey_manager_with_token)
-    # -----------------------------------------------------------------
+    # -----------------------
     # --- catalog ----------------
-    # -----------------------------------------------------------------
+    # -----------------------
     w.catalog_edit_.clicked.connect(w.open_catalog_editor)
-    # -----------------------------------------------------------------
+    # -----------------------
     # --- Security Center tab ----------------
-    # -----------------------------------------------------------------
+    # -----------------------
     w.securityRefreshButton.clicked.connect(lambda: _run_security_center_scan(w))        
     w.securityOpenIntegrityButton.clicked.connect(lambda: on_security_open_integrity_clicked(w))
     w.securityPreflightConfigButton.clicked.connect(w.open_security_prefs)
@@ -328,14 +329,14 @@ def init_buttons(w):
     w.exportWithPasswordButton_2.clicked.connect(lambda: w.export_vault_with_password(skip_ask=False))      # - export with password
     w.exportVaultButton_2.clicked.connect(w.export_vault)
     w.exportVaultButton_3.clicked.connect(w.export_vault)
-    # -----------------------------------------------------------------
+    # -----------------------
     # --- bridge ----------------
-    # -----------------------------------------------------------------
+    # -----------------------
     if hasattr(w, "bridgeEnableSwitch") and w.bridgeEnableSwitch:
         w.bridgeEnableSwitch.toggled.connect(w._on_bridge_toggle)
-    # -----------------------------------------------------------------
+    # -----------------------
     # --- authenticator ----------------
-    # -----------------------------------------------------------------
+    # -----------------------
     w.btnAuthAdd.clicked.connect(w._auth_add_manual)
     w.btnAuthAddQR.clicked.connect(w._auth_add_from_qr)
     w.btnAuthAddScreen.clicked.connect(w._auth_add_from_screen)
@@ -347,9 +348,9 @@ def init_buttons(w):
     w.btnAuthSafeExport.clicked.connect(w._auth_export_safe)
     w.btnAuthSafeImport.clicked.connect(w._auth_import_safe)
 
-    # ------------------------------------------------------------------
+    # ------------------------
     # Watchtower scan button
-    # ------------------------------------------------------------------
+    # ------------------------
     btn = getattr(w, "scan_btn", None)
     if btn is not None:
         try:
@@ -505,9 +506,9 @@ def init_text_change(w):
 
 
 def init_menu_list(w):
-    # -----------------------------------------------------------------
+    # -----------------------
     # --- browser menu ----------------
-    # -----------------------------------------------------------------
+    # -----------------------
     menu = QMenu(w.bowser_btn)                                                                           # - set button as qmenu
     menu.addAction(w.actionInstall_Extension)                                                            # - add to menu
     menu.addAction(w.actionPair_Browser_Token)                                                           # - add to menu
@@ -521,9 +522,9 @@ def init_menu_list(w):
     w.actionExtension_Help.triggered.connect(lambda: open_url("SITE_BROWSER", default_=True))            # - Help 
     w.bowser_btn.setDefaultAction(w.actionPair_Browser_Token)                                         # - make button click run action
 
-    # -----------------------------------------------------------------
+    # -----------------------
     # --- shared ----------------
-    # -----------------------------------------------------------------
+    # -----------------------
     menu2 = QMenu(w.share_)                                                                              # - set button as qmenu
     menu2.addAction(w.actionMake_Share_Packet)                                                           # - add to menu
     menu2.addAction(w.actionImport_Share_Packet)                                                         # - add to menu
@@ -539,9 +540,9 @@ def init_menu_list(w):
     w.action_quick_scan_qr.triggered.connect(w.quick_import_from_qr)                                  # - share qr package
     w.actionQuick_Export_Scan_Only.triggered.connect(w.quick_export_scan_only)
         
-    # -----------------------------------------------------------------
+    # -----------------------
     # --- Breach menu ----------------
-    # -----------------------------------------------------------------
+    # -----------------------
     menu3 = QMenu(w.bowser_btn)                                                                          # - set button as qmenu
     menu3.addAction(w.actionCheck_Email)                                                                 # - add to menu
     menu3.addAction(w.actionCheck_Password)                                                              # - add to menu
@@ -551,9 +552,9 @@ def init_menu_list(w):
     w.actionCheck_Email.triggered.connect(w.check_selected_email_breach)                              # - load browser
     w.breach_check_.setDefaultAction(w.actionCheck_Email)                                             # - make button click run action
 
-    # -----------------------------------------------------------------
+    # -----------------------
     # --- launch/install menu ----------------
-    # -----------------------------------------------------------------
+    # -----------------------
     w.build_launch_install_menu() 
 
 
@@ -728,7 +729,7 @@ def _wire_spin(spin, handler, cast=float):
 
 def init__default(w):
     """Default UI/runtime values."""
-    if not is_dev():
+    if not is_dev:
         w.mainTabs.setTabEnabled(2, False)
     # ----- default values / sets -----
     w._yk_gate_satisfied = False

@@ -23,9 +23,16 @@ from qtpy.QtCore import Signal as pyqtSignal, Slot as pyqtSlot
 import os, sys
 from auth.logout.logout_flow import logout_user
 
-# =============================================================================
+# ==============================
+# --- Dev Set
+# ==============================
+# set to True For Dev
+is_dev = True
+DEBUG_ON = True
+
+# ==============================
 # --- brighe ui ---
-# ============================================================================== 
+# ============================== 
 # UI bus: run callables on the GUI thread (queued connection).
 class _UiBus(QObject):
     call = pyqtSignal(object)
@@ -38,9 +45,9 @@ class _UiBus(QObject):
         except Exception: pass
 
 
-# =============================================================================
+# ==============================
 # --- App Helpers ---
-# =============================================================================
+# ==============================
 def get_app_version():
     try:
         from fbs_runtime.application_context.qtpy import ApplicationContext # type: ignore
@@ -53,10 +60,10 @@ def get_app_version():
         return APP_VERSION
 
 
-# ==============================================================================
+# ==============================
 # --- Restart App ---
-# ==============================================================================
-def _restart_application2(w):
+# ==============================
+def _restart_application(w):
     """
     Attempt to restart the application in-place.
     Works for both dev (python main.py) and frozen .exe.

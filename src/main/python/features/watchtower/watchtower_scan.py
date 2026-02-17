@@ -65,6 +65,23 @@ class _Signals(QObject):
 def _norm(s: str) -> str:
     return (s or "").strip()
 
+def _parse_bool(v) -> bool:
+    if isinstance(v, bool):
+        return v
+    if v is None:
+        return False
+    if isinstance(v, (int, float)):
+        return bool(v)
+
+    s = str(v).strip().lower()
+
+    if s in ("true", "yes", "y", "1", "enabled", "on"):
+        return True
+
+    if s in ("false", "no", "n", "0", "disabled", "off", ""):
+        return False
+
+    return False
 
 def stable_id_for_entry(e: dict) -> str:
     """Stable identifier derived from non-secret entry content."""
@@ -150,6 +167,7 @@ class ScanTask(QRunnable):
         weak_threshold: int,
         enable_breach: bool,
         enable_card_expiry: bool = True,
+        enable_missing_2fa: bool = True,
         card_warn_days: int = 30,
     ):
         super().__init__()
@@ -162,6 +180,7 @@ class ScanTask(QRunnable):
         self.weak_threshold = int(weak_threshold or 0)
         self.enable_breach = bool(enable_breach)
         self.enable_card_expiry = bool(enable_card_expiry)
+        self.enable_missing_2fa = bool(enable_missing_2fa)
         self.card_warn_days = int(card_warn_days or 30)
 
     def _mk_eid(self, e: dict, i: int) -> str:
@@ -206,19 +225,39 @@ class ScanTask(QRunnable):
         return out
 
     def _find_expiry_label(self, e: dict) -> Optional[str]:
-        # Prefer canonical expiry mapping if present
+
+        # 1️⃣ Prefer canonical mapping first
         for label in e.keys():
             try:
-                if canonical_autofill_key(label) in ("expiry", "expiry_date", "card_expiry"):
+                key = canonical_autofill_key(label)
+                if key in ("expiry_date", "expiry date", "card_expiry"):
                     return label
             except Exception:
                 pass
-        # Fallback: substring heuristic
+
+        # 2️⃣ Exact schema match (safe)
         for label in e.keys():
-            low = (str(label) or "").strip().lower()
-            if "expir" in low:
+            low = str(label).strip().lower()
+
+            if low in {
+                "expiry date",
+                "exp",
+                "exp date",
+                "valid thru",
+                "valid through",
+                "card expiry"
+            }:
                 return label
+
+        # 3️⃣ Safe fallback (must contain expiry but NOT password)
+        for label in e.keys():
+            low = str(label).strip().lower()
+
+            if "expiry" in low and "password" not in low:
+                return label
+
         return None
+
 
     def run(self):
         try:
@@ -237,25 +276,72 @@ class ScanTask(QRunnable):
                 canon = self._canon_map(e)
 
                 pw = _get_password(e)
-                has_password_field = ("password" in canon) or bool(pw)
+
+                is_card = (str(e.get("kind") or "").lower() == "credit_card")
+                # Only treat as "login-like" if it really looks like a password login entry
+                has_password_field = ("password" in canon) or ("Password" in e) or bool(pw)
 
                 # -------- Username / URL applicability --------
-                # Many non-login records may contain empty placeholders; only enforce
-                # username/site when it looks like a login record (has password)
-                # OR explicitly has both user+site fields with some content.
-                if "username" in canon and has_password_field:
-                    username = _norm(str(e.get(canon["username"]) or ""))
-                    if not username:
-                        issues.append(WTIssue("Missing Username", eid, title, "No username set.", 1))
+                # Skip these checks for card entries (they usually don't have usernames/URLs)
+                if not is_card:
+                    if "username" in canon and has_password_field:
+                        username = _norm(str(e.get(canon["username"]) or ""))
+                        if not username:
+                            issues.append(WTIssue("Missing Username", eid, title, "No username set.", 1))
 
-                if ("site" in canon or "url" in canon) and has_password_field:
-                    label = canon.get("site") or canon.get("url")
-                    url = _norm(str(e.get(label) or ""))
-                    if not url:
-                        issues.append(WTIssue("Missing URL", eid, title, "No login URL set.", 1))
-                    elif url.lower().startswith("http://"):
-                        issues.append(WTIssue("Insecure URL (HTTP)", eid, title,
-                                             f"Uses HTTP instead of HTTPS ({url}).", 2))
+                    if has_password_field:
+                        # Prefer normalised URL (from watchtower.py)
+                        url = _norm(str(e.get("url") or ""))
+
+                        # Fallbacks (in case older data / other paths didn't normalise)
+                        if not url:
+                            url = _norm(str(
+                                e.get("Website") or e.get("website") or e.get("URL") or e.get("url") or ""
+                            ))
+
+                        if not url:
+                            issues.append(WTIssue("Missing URL", eid, title, "No login URL set.", 1))
+                        elif url.lower().startswith("http://"):
+                            issues.append(
+                                WTIssue(
+                                    "Insecure URL (HTTP)",
+                                    eid,
+                                    title,
+                                    f"Uses HTTP instead of HTTPS ({url}).",
+                                    2
+                                )
+                            )
+
+                    # -------- Missing 2FA (per-entry flag) --------
+                    # Only for login-type entries (not cards) and only if the user enabled this rule.
+                    if self.enable_missing_2fa and (not is_card) and has_password_field:
+                        twofa_raw = None
+
+                        # Try canonical mapping first
+                        for label in e.keys():
+                            try:
+                                ck = canonical_autofill_key(label)
+                            except Exception:
+                                ck = None
+                            if ck in ("2fa", "twofa", "totp", "otp", "has_totp", "two_factor", "2fa_enabled", "2FA Enabled"):
+                                twofa_raw = e.get(label)
+                                break
+
+                        # Fallback: label name contains "2fa" / "totp"
+                        if twofa_raw is None:
+                            for label in e.keys():
+                                low = str(label).strip().lower()
+                                if "2fa" in low or "totp" in low or "two-factor" in low or "two factor" in low:
+                                    twofa_raw = e.get(label)
+                                    break
+
+                        # Only warn if field exists and is explicitly false
+                        if twofa_raw is not None:
+                            if not _parse_bool(twofa_raw):
+                                issues.append(
+                                    WTIssue("Missing 2FA", eid, title, "2FA is disabled for this login.", 2)
+                                )
+
 
                 # -------- Password age/strength/reuse --------
                 if pw:
@@ -283,8 +369,10 @@ class ScanTask(QRunnable):
                     pwh = hashlib.sha256(pw.encode("utf-8")).hexdigest()
                     pwd_groups.setdefault(pwh, []).append({"eid": eid, "title": title})
 
+                
+
                 # -------- Card expiry checks (field-driven) --------
-                if self.enable_card_expiry:
+                if self.enable_card_expiry and (e.get("kind") == "credit_card"):
                     exp_label = self._find_expiry_label(e)
                     if exp_label:
                         exp_val = _norm(str(e.get(exp_label) or ""))
