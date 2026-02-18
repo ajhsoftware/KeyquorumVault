@@ -46,6 +46,17 @@ See `CONTRIBUTING.md`.
 ## Security
 Please report security issues privately (see `SECURITY.md`).
 
+## Security Model
+
+Keyquorum is designed as an offline-first vault:
+
+- No automatic cloud sync
+- No hidden network services
+- Encryption keys remain local to the device
+- Optional integrations (e.g., breach checks) are user-initiated
+
+All vault encryption occurs locally using authenticated encryption (AES-GCM).
+
 ## Future architecture direction
 
 Keyquorum’s long-term goal is to move security-critical vault logic into a native core
