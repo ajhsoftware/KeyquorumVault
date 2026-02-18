@@ -54,5 +54,9 @@ def get_device_fingerprint():
     }
     # canonicalize & hash
     canon = json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+    # SECURITY NOTE:
+    # SHA256 used for device fingerprinting (non-secret identifier).
+    # Not used for password hashing.
     fp = hashlib.sha256(canon).hexdigest()
     return fp, data  # return both: hashed id + context (you can log only hashed id)

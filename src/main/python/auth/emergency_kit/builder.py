@@ -190,7 +190,12 @@ def build_emergency_kit_pdf(
         elements.append(Paragraph(_tr("Recovery Key (one-time)"), H2))
         elements.append(_highlight_box(f"<font size=12><b>{_esc(recovery_key)}</b></font>"))
         elements.append(Spacer(1, 6))
+
         # Fingerprint (first 16 hex chars of SHA-256)
+        # SECURITY NOTE:
+        # This is a non-secret display fingerprint of the Recovery Key.
+        # It is NOT used for password hashing or authentication.
+        # Static analyzers may flag SHA256 usage generically.
         try:
             fp16 = hashlib.sha256(recovery_key.encode("utf-8")).hexdigest()[:16]
             elements.append(Paragraph(_tr("Fingerprint ") + f"(SHA-256, first 16): <b>{fp16}</b>", SMALL))
@@ -291,6 +296,9 @@ def _build_kit_payload(
     Security note: we do NOT include any TOTP secret material in this payload.
     """
     try:
+        # SECURITY NOTE:
+        # Recovery key fingerprint (SHA-256) for kit identification only.
+        # Not used as a password hashing mechanism.
         rk_fp = hashlib.sha256(recovery_key.encode("utf-8")).hexdigest() if recovery_key else None
     except Exception:
         rk_fp = None

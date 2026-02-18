@@ -18,6 +18,7 @@ import base64, re
 import logging
 import traceback
 from qtpy.QtWidgets import QDialog, QMessageBox
+import hmac, hashlib
 
 log = logging.getLogger("keyquorum")
 
@@ -41,6 +42,19 @@ def _tr(text: str) -> str:
 # ---------------------------------
 # Helpers
 # ---------------------------------
+
+# ---------------------------------------------------------------------------
+# SECURITY NOTE:
+# This is HKDF-style key separation using HMAC-SHA256.
+# It derives independent subkeys from an already-strong key (vk/new_vk).
+# This is NOT used for password hashing / storage.
+# (Static analyzers may flag "sha256" usage generically.)
+# ---------------------------------------------------------------------------
+
+def _hkdf_subkey(user_key: bytes, info: bytes) -> bytes:
+    salt0 = b"\x00" * 32
+    prk = hmac.new(salt0, user_key, hashlib.sha256).digest()
+    return hmac.new(prk, info + b"\x01", hashlib.sha256).digest()
 
 def _derive_mk_from_any_recovery_key(username: str, rk_str: str) -> bytes:
     """
@@ -197,9 +211,8 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
     # --- Core flow ----------------
 
     def reset_password_backup_code(self) -> None:
-        log.info("[ForgotPassword] ENTER reset_password_backup_code()")
+        log.info("[ForgotPassword] ENTER reset_password()")
         stage = "start"
-
 
         # --- Recovery warning confirmation ----------------------------
         if not self._confirm_recovery_warning():
@@ -424,15 +437,11 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
 
                     # - Trash (soft delete): encrypted under HKDF(user_key,'trash'), so must be rewrapped.
                     try:
-                        import os, json, hmac, hashlib
+                        import os, json
                         from pathlib import Path
                         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
                         from app.paths import trash_path, vault_dir
 
-                        def _hkdf_subkey(user_key: bytes, info: bytes) -> bytes:
-                            salt0 = b"\x00" * 32
-                            prk = hmac.new(salt0, user_key, hashlib.sha256).digest()
-                            return hmac.new(prk, info + b"\x01", hashlib.sha256).digest()
 
                         # trash file = {vault_dir}/{username}_trash.bin, JSON encrypted via sync.engine if present
                         tpath = Path(trash_path(username))
@@ -468,21 +477,16 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
 
                     # - Passkeys store: encrypted blob passkeys_store.json with AES-GCM subkey
                     try:
-                        import os, hmac, hashlib
+                        import os
                         from pathlib import Path
                         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
                         from app.paths import vault_dir
 
-                        def _hkdf_subkey2(user_key: bytes, info: bytes) -> bytes:
-                            salt0 = b"\x00" * 32
-                            prk = hmac.new(salt0, user_key, hashlib.sha256).digest()
-                            return hmac.new(prk, info + b"\x01", hashlib.sha256).digest()
-
                         pdir = Path(vault_dir(username))
                         pk_path = pdir / "passkeys_store.json"
                         if pk_path.exists():
-                            old_sk = _hkdf_subkey2(vk, b"passkeys-store:aesgcm-32")
-                            new_sk = _hkdf_subkey2(new_vk, b"passkeys-store:aesgcm-32")
+                            old_sk = _hkdf_subkey(vk, b"passkeys-store:aesgcm-32")
+                            new_sk = _hkdf_subkey(new_vk, b"passkeys-store:aesgcm-32")
                             raw = pk_path.read_bytes()
                             if raw and len(raw) > 12:
                                 nonce, ct = raw[:12], raw[12:]
@@ -774,17 +778,12 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
                     except Exception as e_hist:
                         log.warning("[ForgotPassword] pw_hist clear skipped: %r", e_hist)
                     
-                    # - Trash (soft delete): encrypted under HKDF(user_key,'trash'), so must be rewrapped.
+                    # - Trash (soft delete): encrypted under HKDF(vault_key,'trash'), so must be rewrapped.
                     try:
-                        import os, json, hmac, hashlib
+                        import os, json
                         from pathlib import Path
                         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
                         from app.paths import trash_path, vault_dir
-                    
-                        def _hkdf_subkey(user_key: bytes, info: bytes) -> bytes:
-                            salt0 = b"\x00" * 32
-                            prk = hmac.new(salt0, user_key, hashlib.sha256).digest()
-                            return hmac.new(prk, info + b"\x01", hashlib.sha256).digest()
                     
                         # trash file = {vault_dir}/{username}_trash.bin, JSON encrypted via sync.engine if present
                         tpath = Path(trash_path(username))
@@ -820,21 +819,16 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
                     
                     # - Passkeys store: encrypted blob passkeys_store.json with AES-GCM subkey
                     try:
-                        import os, hmac, hashlib
+                        import os
                         from pathlib import Path
                         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
                         from app.paths import vault_dir
                     
-                        def _hkdf_subkey2(user_key: bytes, info: bytes) -> bytes:
-                            salt0 = b"\x00" * 32
-                            prk = hmac.new(salt0, user_key, hashlib.sha256).digest()
-                            return hmac.new(prk, info + b"\x01", hashlib.sha256).digest()
-                    
                         pdir = Path(vault_dir(username))
                         pk_path = pdir / "passkeys_store.json"
                         if pk_path.exists():
-                            old_sk = _hkdf_subkey2(vk, b"passkeys-store:aesgcm-32")
-                            new_sk = _hkdf_subkey2(new_vk, b"passkeys-store:aesgcm-32")
+                            old_sk = _hkdf_subkey(vk, b"passkeys-store:aesgcm-32")
+                            new_sk = _hkdf_subkey(new_vk, b"passkeys-store:aesgcm-32")
                             raw = pk_path.read_bytes()
                             if raw and len(raw) > 12:
                                 nonce, ct = raw[:12], raw[12:]

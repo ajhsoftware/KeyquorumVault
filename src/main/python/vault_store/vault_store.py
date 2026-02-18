@@ -358,20 +358,37 @@ def seed_vault(username: str, vault_path: str, key: bytes):
     save_encrypted(empty_vault, vault_path, key)
     return True
 
-def _dec_backup_bytes(password: str, enc: bytes) -> bytes:
-    if AESGCM is None:
-        raise RuntimeError("encrypted backups require 'cryptography' (pip install cryptography)")
-    if not enc.startswith(_MAGIC) or len(enc) < 4+1+_SALT_LEN+_NONCE_LEN+1:
-        raise ValueError("invalid backup format")
-    ver = enc[4]
-    if ver != _VER:
-        raise ValueError(f"unsupported backup version {ver}")
-    off = 5
-    salt  = enc[off:off+_SALT_LEN];  off += _SALT_LEN
-    nonce = enc[off:off+_NONCE_LEN]; off += _NONCE_LEN
-    ct    = enc[off:]
-    key = _derive_key_export(password, salt)
-    return AESGCM(key).decrypt(nonce, ct, _MAGIC + bytes([ver]))
+def _dec_backup_bytes(password: str, blob: bytes) -> bytes:
+    """
+    Expects bytes: MAGIC | salt(16) | nonce(12) | AESGCM(ciphertext+tag)
+    Raises ValueError on malformed header or wrong password.
+    """
+    if not isinstance(blob, (bytes, bytearray)) or len(blob) < len(_KQBK_MAGIC) + _SALT_LEN + _NONCE_LEN + 16:
+        raise ValueError("Backup file is too short or corrupted")
+
+    blob = bytes(blob)  # normalize
+
+    off = 0
+    magic = blob[off:off + len(_KQBK_MAGIC)]
+    off += len(_KQBK_MAGIC)
+
+    if magic != _KQBK_MAGIC:
+        raise ValueError("Not a Keyquorum backup or unknown format")
+
+    salt = blob[off:off + _SALT_LEN]
+    off += _SALT_LEN
+
+    nonce = blob[off:off + _NONCE_LEN]
+    off += _NONCE_LEN
+
+    ct = blob[off:]
+    key = _kdf_key(password, salt)
+    aead = AESGCM(key)
+
+    try:
+        return aead.decrypt(nonce, ct, _KQBK_MAGIC)  # AAD = magic
+    except Exception:
+        raise ValueError("Backup decryption failed (wrong password or corrupted file)")
 
 def _identity_fingerprint(username: str) -> str | None:
     """
@@ -603,27 +620,6 @@ def _enc_backup_bytes(password: str, plain: bytes) -> bytes:
     ct    = aead.encrypt(nonce, plain, _KQBK_MAGIC)   # AAD = magic
     return _KQBK_MAGIC + salt + nonce + ct
 
-def _dec_backup_bytes(password: str, blob: bytes) -> bytes:
-    """
-    Expects bytes: MAGIC | salt(16) | nonce(12) | AESGCM(ciphertext+tag)
-    Raises ValueError on malformed header or wrong password.
-    """
-    if not isinstance(blob, (bytes, bytearray)) or len(blob) < len(_KQBK_MAGIC) + _SALT_LEN + _NONCE_LEN + 16:
-        raise ValueError("Backup file is too short or corrupted")
-    off   = 0
-    magic = blob[off:off+len(_KQBK_MAGIC)]; off += len(_KQBK_MAGIC)
-    if magic != _KQBK_MAGIC:
-        raise ValueError("Not a Keyquorum backup or unknown format")
-    salt  = blob[off:off+_SALT_LEN]; off += _SALT_LEN
-    nonce = blob[off:off+_NONCE_LEN]; off += _NONCE_LEN
-    ct    = blob[off:]
-    key   = _kdf_key(password, salt)
-    aead  = AESGCM(key)
-    try:
-        return aead.decrypt(nonce, ct, _KQBK_MAGIC)   # AAD = magic
-    except Exception:
-        # Wrong password or tampered data
-        raise ValueError("Backup decryption failed (wrong password or corrupted file)")
 
 def export_full_backup(username: str, *args) -> str:
     """

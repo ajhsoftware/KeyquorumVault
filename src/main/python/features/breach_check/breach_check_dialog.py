@@ -60,6 +60,10 @@ class BreachCheckWorker(QThread):
                 self.resultReady.emit(0)
                 return
 
+            # SHA1 is required for HIBP k-Anonymity API.
+            # This is NOT used for password storage.
+            # Ref: https://haveibeenpwned.com/API/v3#SearchingPwnedPasswordsByRange
+
             sha1 = hashlib.sha1(self._pwd.encode("utf-8")).hexdigest().upper()
             prefix, suffix = sha1[:5], sha1[5:]
             url = f"{PWNEDPASSWORD}{prefix}"

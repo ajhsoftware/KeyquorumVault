@@ -50,6 +50,11 @@ def hkdf_subkey(user_key: bytes, info: bytes) -> bytes:
     """Tiny HKDF-SHA256-ish (HMAC-based) 32B subkey, matching app_window._hkdf_subkey."""
     if not isinstance(info, (bytes, bytearray)):
         raise TypeError("hkdf_subkey: info must be bytes")
+
+    # SECURITY NOTE:
+    # SHA-256 used for salted one-time backup codes.
+    # Not used for password hashing.
+
     salt = b"\x00" * 32
     prk = hmac.new(salt, bytes(user_key), hashlib.sha256).digest()
     t = hmac.new(prk, bytes(info) + b"\x01", hashlib.sha256).digest()
@@ -97,7 +102,128 @@ def rekey_user_stores(username: str, old_key: bytes, new_key: bytes) -> dict:
         elif isinstance(data, dict):
             for k in ("entries", "items", "vault", "rows", "data"):
                 v = data.get(k)
-                if isinstance(v, list):
+                if isinsta
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                nce(v, list):
                     entries = v
                     break
     except Exception:

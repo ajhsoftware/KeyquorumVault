@@ -3664,11 +3664,17 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         return str(vault_file(username, ensure_parent=True))
 
     def _sha256_file(self, path: str) -> str:
-        h = hashlib.sha256()
+        """
+        Compute SHA256 of a file for integrity verification.
+
+        SECURITY NOTE:
+        Used strictly for file integrity checks (not password hashing).
+        """
+        hasher = hashlib.sha256()
         with open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(1<<20), b""):
-                h.update(chunk)
-        return h.hexdigest()
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                hasher.update(chunk)
+        return hasher.hexdigest()
 
     def _set_cloud_cfg(self, *args, **kwargs):
         from app.misc_ops import _set_cloud_cfg as _impl
@@ -5412,15 +5418,30 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         self._enc_json_write(self._pwcache_path(username, True), key, obj)
 
     def _pwlast_put(self, username: str, user_key: bytes, entry_id: str, old_pw: str):
-        """Store exactly ONE plaintext (the last one) for this entry."""
-        if not (entry_id and old_pw):
+        """
+        Store exactly ONE previous password for this entry.
+
+        SECURITY NOTE:
+        The previous password is stored only inside the encrypted pw-cache file
+        (written via _enc_json_write using a derived subkey). This supports a
+        single-step restore/undo if a password change breaks something.
+
+        We also store a keyed HMAC tag (instead of raw SHA256(password)) for
+        safe comparisons/reuse checks without relying on weak "hash a secret" patterns.
+        """
+        if not (entry_id and old_pw and user_key):
             return
+
         d = self._pwlast_load(username, user_key)
+
+        tag = hmac.new(user_key, old_pw.encode("utf-8"), hashlib.sha256).hexdigest()
+
         d[str(entry_id)] = {
             "ts": dt.datetime.now().isoformat(timespec="seconds"),
-            "hash": hashlib.sha256(old_pw.encode("utf-8")).hexdigest(),
-            "pw": old_pw,
+            "tag": tag,     # for compare/reuse checks
+            "pw": old_pw,   # for restore (encrypted at rest in pw-cache)
         }
+
         self._pwlast_save(username, user_key, d)
 
     def _pwlast_get(self, username: str, user_key: bytes, entry_id: str, *, max_age_days: int = 90) -> str | None:
@@ -5636,7 +5657,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
     def restore_from_trash_uid(self, username: str, key: bytes, uid: str) -> bool:       # - restore from trash using uid
         if not self._require_unlocked():
-            return
+            return False
         try:
             trash = self._trash_load(username, key) or []
             picked_i = -1
@@ -5671,7 +5692,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         Useful when the trashed item has no persistent id.
         """
         if not self._require_unlocked():
-            return
+            return False
         try:
             trash = self._trash_load(username, key) or []
             if not (0 <= int(index_in_trash) < len(trash)):
@@ -5701,7 +5722,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         Restore a trashed item by persistent id (id/_id/row_id) or fingerprint ('fp:...').
         """
         if not self._require_unlocked():
-            return
+            return False
         try:
             trash = self._trash_load(username, key) or []
             picked = None
@@ -5718,16 +5739,29 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
             # fingerprint fallback
             if picked is None and str(match_id).startswith("fp:"):
-                def _norm(s): return (s or "").strip().lower()
+                def _norm(s): 
+                    return (s or "").strip().lower()
+
                 for i, e in enumerate(trash):
                     t = _norm(e.get("title") or e.get("site") or e.get("name"))
                     u = _norm(e.get("username") or e.get("user"))
                     url = _norm(e.get("url") or e.get("origin"))
                     pw = e.get("password") or e.get("Password") or ""
-                    pwh = hashlib.sha256((pw or "").encode("utf-8")).hexdigest()
-                    fp  = "fp:" + hashlib.sha256(f"{t}|{u}|{url}|{pwh}".encode("utf-8")).hexdigest()
-                    if fp == str(match_id):
-                        picked = e; picked_i = i
+
+                    # SECURITY NOTE:
+                    # Use keyed HMAC fingerprint instead of raw SHA256 hashing.
+                    # This is for deterministic restore matching, not password hashing.
+                    msg = f"{t}|{u}|{url}|{pw}".encode("utf-8")
+
+                    fp = "fp:" + hmac.new(
+                        key,
+                        msg,
+                        hashlib.sha256
+                    ).hexdigest()
+
+                    if hmac.compare_digest(fp, str(match_id)):
+                        picked = e
+                        picked_i = i
                         break
 
             if picked is None:
@@ -6662,7 +6696,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
     def save_card_from_bridge(self, payload: dict) -> bool:
         if not self._require_unlocked(): 
-            return
+            return False
         try:
             name  = payload.get("name") or payload.get("cardholder") or ""
             number = payload.get("number") or ""

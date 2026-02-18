@@ -59,6 +59,14 @@ def check_password_breach(
     try:
         if not isinstance(password, str) or password == "":
             return 0  # treat empty as not breached (and avoid network)
+
+        # ---------------------------------------------------------------------------
+        # SECURITY NOTE:
+        # SHA1 is intentionally used here for Have I Been Pwned (HIBP) k-Anonymity API.
+        # The HIBP password range API requires SHA1 hashes as part of its protocol.
+        # This hash is NOT used for password storage or authentication.
+        # Ref: https://haveibeenpwned.com/API/v3#SearchingPwnedPasswordsByRange
+        # ---------------------------------------------------------------------------
         sha1 = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
         prefix, suffix = sha1[:5], sha1[5:]
         url = f"{PWNEDPASSWORD}{prefix}"

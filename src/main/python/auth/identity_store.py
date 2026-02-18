@@ -315,8 +315,13 @@ def _find_wrapper(hdr: dict, typ: str) -> dict:
 # ==============================
 # --- helpers
 
+# SECURITY NOTE:
+# SHA-256 is used here only to compute a public fingerprint of the Master Key.
+# This is not password hashing and not used for authentication.
+
 def mk_hash_b64(mk: bytes) -> str:
     return base64.b64encode(hashlib.sha256(mk).digest()).decode("ascii")
+
 
 def get_public_header(username: str) -> dict | None:
     """
@@ -646,6 +651,9 @@ def replace_backup_codes(username: str, password: str, codes_plain: list[str]) -
             from vault_store.kdf_utils import derive_key_argon2id_safe
             h_bytes = derive_key_argon2id_safe(c, salt, length=32)
         except Exception:
+            # SECURITY NOTE:
+            # Legacy fallback for backup codes if Argon2id derivation fails.
+            # Uses salted SHA-256 for backwards compatibility only.
             h_bytes = hashlib.sha256(salt + c.encode("utf-8")).digest()
         hashes.append(_b64e(h_bytes))
     inner["twofa"]["backup_code_hashes"] = hashes
@@ -978,6 +986,9 @@ def get_yubi_config_public(username: str) -> dict | None:
     # Only return if at least mode present
     return out if out.get("mode") else None
 
+# SECURITY NOTE:
+# Compare public MK fingerprint (SHA-256) from header meta.
+# This is not password hashing.
 def verify_recovery_key(username: str, recovery_key: str) -> bool:
     """
     Passwordless verification of a Recovery Key.
@@ -991,7 +1002,11 @@ def verify_recovery_key(username: str, recovery_key: str) -> bool:
             from auth.pw.utils_recovery import recovery_key_to_mk
             import base64, hashlib
             mk = recovery_key_to_mk(recovery_key)
-            return hashlib.sha256(mk).digest() == base64.b64decode(mkh)
+            import hmac
+            return hmac.compare_digest(
+                hashlib.sha256(mk).digest(),
+                base64.b64decode(mkh)
+)
     except Exception:
         pass
 

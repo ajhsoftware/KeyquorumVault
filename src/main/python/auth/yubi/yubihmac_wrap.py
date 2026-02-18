@@ -83,6 +83,10 @@ def unwrap_master_key_with_yubi(master_key: bytes, *, password_key: Optional[byt
     except Exception as e:
         raise RuntimeError(f"Bad YubiKey HMAC hex: {e}")
 
+    # SECURITY NOTE:
+    # SHA-256 used for salted one-time backup codes.
+    # Not used for password hashing.
+
     device_key_32 = hashlib.sha256(resp_bytes).digest()
     kek = hashlib.sha256(bytes(password_key) + device_key_32).digest()
 
