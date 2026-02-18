@@ -78,3 +78,13 @@ Keyquorum Vault is licensed under the **GNU General Public License v3.0 or later
 See `LICENSE`.
 
 Third‑party licensing notes are in `THIRD_PARTY_NOTICES.md`.
+
+## Browser Extension
+
+The official browser extension is available at:
+
+👉 https://github.com/ajhsoftware/Keyquorum-Browser-Extension
+
+The extension integrates with the desktop application to provide
+secure autofill capabilities within supported browsers.
+
