@@ -36,7 +36,8 @@ ARGON2_MEMORY_KIB  = 256_000   # ~256 MB
 ARGON2_PARALLELISM = 2
 ARGON2_KEY_LEN     = 32
 
-def derive_key_argon2id(
+
+def _derive_key_argon2id_python(
     password: str,
     salt: bytes,
     length: int = ARGON2_KEY_LEN,
@@ -60,27 +61,79 @@ def derive_key_argon2id(
         type=Type.ID,
     )
 
+from native.native_core import get_core
+
+def derive_key_argon2id(password: str, salt: bytes) -> bytes:
+    """
+    Fast path: use native core if available, else Python Argon2id.
+    """
+    core = get_core()
+    if core:
+        pw_buf = bytearray(password, "utf-8")
+        try:
+            key = core.derive_vault_key(pw_buf, salt)
+        finally:
+            core.secure_wipe(pw_buf)
+        return bytes(key)
+
+    # Fallback to Python Argon2
+    return _derive_key_argon2id_python(password, salt)
+
+
 def derive_key_argon2id_safe(
     password: str,
     salt: bytes,
-    length: int = ARGON2_KEY_LEN,
-    time_cost: int = ARGON2_TIME_COST,
-    memory_kib: int = ARGON2_MEMORY_KIB,
-    parallelism: int = ARGON2_PARALLELISM,
+    *,
     min_memory_kib: int = 64_000,  # ~64 MB floor
 ) -> bytes:
     """
-    Same as derive_key_argon2id, but if the machine can't allocate the requested
-    memory, it automatically falls back by halving memory until it succeeds.
+    Safe mode: try native first (fast). If native isn't available, use Python Argon2id.
+    If Python runs out of memory, automatically reduce Argon2 memory_cost until it succeeds.
+
+    NOTE: The native DLL uses fixed Argon2 parameters compiled into the DLL,
+    so we cannot reduce memory on the native path without changing the DLL API.
     """
-    mkib = int(memory_kib)
+    core = get_core()
+    if core:
+        # Native path (fixed memory params in DLL)
+        pw_buf = bytearray(password, "utf-8")
+        try:
+            key = core.derive_vault_key(pw_buf, salt)
+        finally:
+            core.secure_wipe(pw_buf)
+        return bytes(key)
+
+    # Python adaptive path
+    mkib = int(ARGON2_MEMORY_KIB)
     while True:
         try:
-            return derive_key_argon2id(password, salt, length, time_cost, mkib, parallelism)
+            return _derive_key_argon2id_python(
+                password=password,
+                salt=salt,
+                length=ARGON2_KEY_LEN,
+                time_cost=ARGON2_TIME_COST,
+                memory_kib=mkib,
+                parallelism=ARGON2_PARALLELISM,
+            )
         except MemoryError:
             mkib //= 2
-            if mkib < min_memory_kib:
-                # last attempt with the floor; if it still fails, raise
-                return derive_key_argon2id(password, salt, length, time_cost, min_memory_kib, parallelism)
+            if mkib < int(min_memory_kib):
+                # last attempt at floor; if it still fails, let it raise
+                return _derive_key_argon2id_python(
+                    password=password,
+                    salt=salt,
+                    length=ARGON2_KEY_LEN,
+                    time_cost=ARGON2_TIME_COST,
+                    memory_kib=int(min_memory_kib),
+                    parallelism=ARGON2_PARALLELISM,
+                )
 
 
+#  attempt_login doesn’t need pw_str
+def derive_key_argon2id_from_buf(pw_buf: bytearray, salt: bytes) -> bytes:
+    core = get_core()
+    if core:
+        key = core.derive_vault_key(pw_buf, salt)
+        return bytes(key)
+    # fallback (creates one unavoidable copy)
+    return _derive_key_argon2id_python(bytes(pw_buf).decode("utf-8"), salt)

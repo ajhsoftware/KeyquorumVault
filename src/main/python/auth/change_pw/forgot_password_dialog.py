@@ -14,7 +14,7 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 """
 
-import base64, re
+import base64
 import logging
 import traceback
 from qtpy.QtWidgets import QDialog, QMessageBox
@@ -43,6 +43,39 @@ def _tr(text: str) -> str:
 # Helpers
 # ---------------------------------
 
+def _normalize_alnum_upper_ascii_to_str(s: str, *, max_len: int | None = None) -> str:
+    """Return only ASCII A-Z0-9 from *s*, uppercased, with minimal extra string copies.
+
+    Note: In PySide6/Qt, widget .text() returns a Python str (immutable). We can't
+    prevent that initial allocation, but we can avoid creating *additional* str
+    copies via regex / .upper() chains by normalising into a mutable bytearray
+    first and decoding once at the end.
+    """
+    if not s:
+        return ""
+    out = bytearray()
+    for ch in s:
+        o = ord(ch)
+        # 0-9
+        if 48 <= o <= 57:
+            out.append(o)
+        # A-Z
+        elif 65 <= o <= 90:
+            out.append(o)
+        # a-z -> A-Z
+        elif 97 <= o <= 122:
+            out.append(o - 32)
+
+        if max_len is not None and len(out) >= max_len:
+            break
+
+    try:
+        return out.decode("ascii")
+    finally:
+        # best-effort wipe of the mutable buffer
+        for i in range(len(out)):
+            out[i] = 0
+
 # ---------------------------------------------------------------------------
 # SECURITY NOTE:
 # This is HKDF-style key separation using HMAC-SHA256.
@@ -66,16 +99,13 @@ def _derive_mk_from_any_recovery_key(username: str, rk_str: str) -> bytes:
       • LEGACY format (urlsafe-base64, no checksum).
     """
 
-    rk_str = (rk_str or "").strip()
-    
-    if not rk_str:
+    rk_str = (rk_str or "")
+    if not rk_str.strip():
         raise ValueError(_tr("Recovery Key is required"))
 
-    # Keep original for legacy base64url decoding (because '-' and '_' are valid there)
-    rk_raw = rk_str.strip()
-
-    # 1) New format: normalize for base32+checksum (remove separators)
-    rk_norm = re.sub(r"[^A-Za-z0-9]", "", rk_raw).upper()
+    # NOTE: Avoid regex + .upper() chains which create multiple immutable str copies.
+    # Normalise into a mutable buffer (bytearray) first, then decode once.
+    rk_norm = _normalize_alnum_upper_ascii_to_str(rk_str)
 
     # Try new format first (normalized)
     try:
@@ -85,13 +115,13 @@ def _derive_mk_from_any_recovery_key(username: str, rk_str: str) -> bytes:
 
     # Also try new format without normalization
     try:
-        return recovery_key_to_mk(rk_raw)
+        return recovery_key_to_mk(rk_str)
     except Exception:
         pass
 
     # 2) Legacy urlsafe-base64 format (do NOT strip '-' '_' here)
     try:
-        s = rk_raw.strip()
+        s = rk_str.strip()
         pad = (-len(s)) % 4
         mk = base64.urlsafe_b64decode(s + ("=" * pad))
         if len(mk) != 32:

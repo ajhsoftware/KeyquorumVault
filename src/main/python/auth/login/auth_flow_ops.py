@@ -20,6 +20,7 @@ import sys as _sys
 import re as _re
 import datetime as dt 
 from vault_store.vault_store import _dec_backup_bytes, load_vault, seed_vault
+from vault_store.kdf_utils import derive_key_argon2id_from_buf
 import http.client, json
 import app.kq_logging as kql
 import logging
@@ -471,10 +472,29 @@ def attempt_login(self, *args, **kwargs):
     except Exception:
         return ""
 
+    # Optional: native core wipe helper (safe fallback)
+    try:
+        from native.native_core import get_core
+    except Exception:
+        def get_core():
+            return None
+
     log.debug(str(f"{kql.i('auth')} -> {kql.i('info')} [LOGIN] Attempting user login"))
 
     typed_username = (self.usernameField.text() or "").strip()
-    password = (self.passwordField.text() or "")
+
+    # Capture password once, then clear UI ASAP to reduce lifetime
+    pw_str = (self.passwordField.text() or "")
+    try:
+        self.passwordField.clear()
+    except Exception:
+        pass
+
+    # Build a single mutable buffer (used for wiping; future: derive directly from this)
+    try:
+        pw_buf = bytearray(pw_str.encode("utf-8"))
+    except Exception:
+        pw_buf = bytearray()
 
     # --- Autofill remembered username on fresh login screen
     try:
@@ -504,7 +524,7 @@ def attempt_login(self, *args, **kwargs):
         except Exception:
             remember_on = False
 
-        if typed_username and password.strip() == "" and remember_on:
+        if typed_username and (pw_str.strip() == "") and remember_on:
             log.info("[LOGIN] dpapi-check user=%s pw_empty=1 remember=1", typed_username)
 
             # Resolve canonical username (case-insensitive) BEFORE user_db lookup
@@ -552,10 +572,6 @@ def attempt_login(self, *args, **kwargs):
                 except Exception:
                     pass
 
-                # Attempt to unwrap the device-unlock blob.  A non-empty
-                # bytes result indicates a v2 record containing the
-                # password‑derived KEK (\_pw_kek).  Legacy v1 blobs return
-                # ``None`` and are ignored.
                 res = load_device_unlock(rec)
 
                 try:
@@ -566,8 +582,7 @@ def attempt_login(self, *args, **kwargs):
                 except Exception:
                     pass
 
-                
-                # Normalize return shape from load_device_unlock(rec)
+                # Normalize return shape
                 ok = False
                 data = None
                 msg = ""
@@ -589,19 +604,17 @@ def attempt_login(self, *args, **kwargs):
                 else:
                     ok, data, msg = False, None, f"unexpected return type={type(res).__name__}"
 
-                # -------------------------
                 # v3 bundle (vault_kek + identity_kek)
-                # -------------------------
                 if ok and isinstance(data, dict) and data.get("vault_kek") and data.get("identity_kek"):
                     log.info("[LOGIN] dpapi-unlock OK (bundle) user=%s", lookup_name)
 
-                    self._pw_kek = bytes(data["vault_kek"])          # vault password context
-                    self._identity_kek = bytes(data["identity_kek"]) # identity password context
+                    self._pw_kek = bytes(data["vault_kek"])
+                    self._identity_kek = bytes(data["identity_kek"])
 
                     # 2FA expects a "password-like" value -> use identity_kek
                     self.current_password = self._identity_kek
 
-                    # Decide YubiKey mode from PUBLIC identity header (no password required)
+                    # Decide YubiKey mode from PUBLIC identity header
                     yk_mode = ""
                     try:
                         from auth.identity_store import get_yubi_config_public
@@ -610,8 +623,6 @@ def attempt_login(self, *args, **kwargs):
                     except Exception:
                         yk_mode = ""
 
-                    # If WRAP is enabled, DO NOT set the vault master key yet.
-                    # The YubiKey factor must unwrap it first.
                     if yk_mode == "yk_hmac_wrap":
                         try:
                             if hasattr(self, "userKey"):
@@ -624,7 +635,6 @@ def attempt_login(self, *args, **kwargs):
                             pass
                         log.info("[LOGIN] dpapi-yubi mode=wrap action=require_yubi")
                     else:
-                        # For non-wrap accounts, the vault key can be derived directly from _pw_kek.
                         self.userKey = self._pw_kek
                         try:
                             self._login_requires_yubi_wrap = False
@@ -636,17 +646,13 @@ def attempt_login(self, *args, **kwargs):
                         self._yk_completed = False
                     except Exception:
                         pass
+
                     self._continue_after_factors(lookup_name)
                     return
 
-                # -------------------------
                 # v2 legacy (vault_kek only)
-                # -------------------------
                 if ok and isinstance(data, (bytes, bytearray)) and data:
-                    # v2: only vault password-context is present; 2FA cannot run in passwordless mode.
                     try:
-                        # Determine if this account needs extra password-context material.
-                        # WRAP requires identity_kek (v3 bundle) for passwordless flows.
                         from auth.identity_store import has_totp_quick, get_yubi_config_public
                         totp_on = bool(has_totp_quick(lookup_name))
                         try:
@@ -660,7 +666,6 @@ def attempt_login(self, *args, **kwargs):
                         wrap_on = False
 
                     if wrap_on or totp_on:
-                        # v2 DPAPI only stores vault_kek; WRAP and TOTP need the extra identity_kek.
                         QMessageBox.information(
                             self,
                             self.tr("Remembered device needs upgrade"),
@@ -671,14 +676,11 @@ def attempt_login(self, *args, **kwargs):
                                 "upgrade this device token."
                             ),
                         )
-                        # Fall through to normal password login.
                     else:
                         log.info("[LOGIN] dpapi-unlock OK (legacy) user=%s", lookup_name)
                         self._pw_kek = bytes(data)
-                        # For legacy mode, downstream flows should not assume identity password context.
                         self.current_password = None
 
-                        # v2 legacy gives us vault KEK directly; treat as unlocked master context
                         self.userKey = self._pw_kek
                         try:
                             self._login_requires_yubi_wrap = False
@@ -689,18 +691,19 @@ def attempt_login(self, *args, **kwargs):
                             self._yk_completed = False
                         except Exception:
                             pass
+
                         self._continue_after_factors(lookup_name)
                         return
 
-                # Fail / unsupported
                 log.warning(
                     "[LOGIN] dpapi-unlock FAIL user=%s err=%s",
                     lookup_name,
                     msg or ("no v2 blob" if not res else "unknown"),
                 )
+
         else:
             # Optional debug to confirm why DPAPI path didn't run
-            if typed_username and password.strip() == "":
+            if typed_username and (pw_str.strip() == ""):
                 log.info(
                     "[LOGIN] dpapi-skip user=%s pw_empty=1 remember=%s",
                     typed_username,
@@ -714,7 +717,7 @@ def attempt_login(self, *args, **kwargs):
     # end DPAPI block
     # ------------------------
 
-    # Shared existence precheck (keeps UI typing checks and login in sync)
+    # Shared existence precheck
     try:
         exists, canon = precheck_username_exists(typed_username)
         self._login_user_exists = bool(exists)
@@ -728,20 +731,18 @@ def attempt_login(self, *args, **kwargs):
 
     # ensure salt is defined for the outer scope
     salt: bytes = b""
-    _aw('_maybe_install_binding_for', lambda *a, **k: None)(typed_username)  # usb attempt to bind
+    _aw('_maybe_install_binding_for', lambda *a, **k: None)(typed_username)
 
     # ---------- READ-ONLY PHASE ----------
     from app.paths import read_only_paths
     with read_only_paths(True):
         canonical = None
 
-        # 1) USB binding resolution (case-insensitive), but DO NOT create anything
         try:
             from features.portable.portable_user_usb import install_binding_overrides
         except Exception:
             install_binding_overrides = None
 
-        # 2) Fallback: global CI resolver (respects overrides if installed)
         if canonical is None:
             try:
                 canonical = _canonical_username_ci(typed_username)
@@ -764,18 +765,13 @@ def attempt_login(self, *args, **kwargs):
 
         username = canonical
 
-        # Load the user's vault salt (required for Argon2id key derivation).
-        # NOTE: This must happen BEFORE we derive the password KEK.
         from app.paths import salt_file
-
         try:
             sp = salt_file(username, ensure_parent=False)
             salt = sp.read_bytes() if sp.exists() else b""
         except Exception:
             salt = b""
 
-        # Argon2 requires a minimum salt length (argon2-cffi enforces this).
-        # If the salt is missing/corrupt, fail gracefully with a clear message.
         if not isinstance(salt, (bytes, bytearray)):
             try:
                 salt = bytes(salt)
@@ -799,7 +795,7 @@ def attempt_login(self, *args, **kwargs):
             self.passwordField.clear()
             return
 
-        # IMPORTANT: reload login_handler after possible overrides
+        # Reload login_handler after possible overrides
         try:
             import importlib
             import auth.login.login_handler as _lh_mod
@@ -811,7 +807,6 @@ def attempt_login(self, *args, **kwargs):
         except Exception as e:
             log.debug(str(f"{kql.i('warn')} [LOGIN] Could not reload login_handler: {e}"))
 
-        # Lockout prefs (read-only from user_db)
         def _int_or(def_val, raw):
             try:
                 return int(raw if raw is not None else def_val)
@@ -822,7 +817,6 @@ def attempt_login(self, *args, **kwargs):
         window_mins   = _int_or(10, get_user_setting(username, "lockout_window_mins", 10))
         cooldown_mins = _int_or(5,  get_user_setting(username, "lockout_cooldown_mins", 5))
 
-        # Gate BEFORE password check
         if threshold > 0:
             locked, attempts_left, mins_left = audit_is_locked_out(username, threshold, window_mins, cooldown_mins)
             if locked:
@@ -853,7 +847,7 @@ def attempt_login(self, *args, **kwargs):
                 log.info(f"{kql.i('auth')} -> {kql.i('info')} [LOGIN] Not locked. {attempts_left} attempts left (user: {username})")
 
         # Password validation (read-only)
-        if not validate_login(username, password):
+        if not validate_login(username, pw_str):
             try:
                 append_audit_log(username, "login_attempt", "fail")
             except Exception:
@@ -906,53 +900,66 @@ def attempt_login(self, *args, **kwargs):
             self.passwordField.setPlaceholderText(self.tr("Incorrect credentials!"))
             return
 
-        # ---------- WRITE-ALLOWED PHASE ----------
+    # ---------- WRITE-ALLOWED PHASE ----------
     self.set_status_txt(self.tr("Password ok"))
 
-    # Keep password briefly (some identity flows still need it)
-    self.current_password = password
+    # IMPORTANT: do NOT keep plaintext password around
+    self.current_password = None
 
-    # Derive password KEK
-    self._pw_kek = derive_key_argon2id(password, salt)
-
-    # Derive identity-store password context KEK (needed for DPAPI v3 bundle and WRAP flows)
-    # IMPORTANT: Identity Store uses its own per-file password wrapper salt (stored in the identity header),
-    # which is different from the vault salt. If we derive with the wrong salt, decrypt will fail (InvalidTag).
-    self._identity_kek = None
     try:
-        import base64
-        import auth.identity_store as _ids
+        # Derive vault KEK (pw_kek)
+        # NOTE: old self._pw_kek = derive_key_argon2id(pw_str, salt)
+        self._pw_kek = derive_key_argon2id_from_buf(pw_buf, salt)
 
-        salt_b = None
-        try:
-            _pfn = getattr(_ids, "_user_id_file", None)
-            _hfn = getattr(_ids, "_read_header", None)
-            if callable(_pfn) and callable(_hfn):
-                _p = _pfn(username, ensure_parent=False)
-                if _p and hasattr(_p, "exists") and _p.exists():
-                    _hdr = _hfn(_p) or {}
-                    _wr = (_hdr.get("wrappers") or []) if isinstance(_hdr, dict) else []
-                    for _w in _wr:
-                        if isinstance(_w, dict) and str(_w.get("type") or "").strip().lower() == "password":
-                            _sb64 = str(_w.get("salt") or "").strip()
-                            if _sb64:
-                                # tolerate missing padding
-                                salt_b = base64.b64decode(_sb64 + "===")
-                            break
-        except Exception:
-            salt_b = None
-
-        if salt_b:
-            self._identity_kek = derive_key_argon2id(password, salt_b)
-        else:
-            # Fallback: derive using vault salt (legacy / unexpected identity header)
-            self._identity_kek = derive_key_argon2id(password, salt)
-    except Exception:
+        # Derive identity-store KEK using identity wrapper salt if present
         self._identity_kek = None
-    self._identity_kek = getattr(self, "_identity_kek", None)
+        try:
+            import base64
+            import auth.identity_store as _ids
+
+            salt_b = None
+            try:
+                _pfn = getattr(_ids, "_user_id_file", None)
+                _hfn = getattr(_ids, "_read_header", None)
+                if callable(_pfn) and callable(_hfn):
+                    _p = _pfn(username, ensure_parent=False)
+                    if _p and hasattr(_p, "exists") and _p.exists():
+                        _hdr = _hfn(_p) or {}
+                        _wr = (_hdr.get("wrappers") or []) if isinstance(_hdr, dict) else []
+                        for _w in _wr:
+                            if isinstance(_w, dict) and str(_w.get("type") or "").strip().lower() == "password":
+                                _sb64 = str(_w.get("salt") or "").strip()
+                                if _sb64:
+                                    salt_b = base64.b64decode(_sb64 + "===")
+                                break
+            except Exception:
+                salt_b = None
+
+            # NOTE: old: self._identity_kek = derive_key_argon2id(pw_str, salt_b or salt)
+            self._identity_kek = derive_key_argon2id_from_buf(pw_buf, salt_b or salt)
+        except Exception:
+            self._identity_kek = None
+
+        # Downstream flows should use identity_kek instead of plaintext password
+        if self._identity_kek:
+            self.current_password = self._identity_kek
+
+    finally:
+        # Drop plaintext string reference ASAP
+        pw_str = None
+
+        # Wipe mutable password buffer
+        try:
+            core = get_core()
+            if core:
+                core.secure_wipe(pw_buf)
+            else:
+                for i in range(len(pw_buf)):
+                    pw_buf[i] = 0
+        except Exception:
+            pass
 
     # For password-only accounts, the derived key IS the master key.
-    # Some factor flows (or older builds) call successful_login() assuming self.userKey exists.
     try:
         if not hasattr(self, "userKey") or self.userKey in (None, b"", bytearray()):
             self.userKey = self._pw_kek
@@ -962,10 +969,6 @@ def attempt_login(self, *args, **kwargs):
         except Exception:
             pass
 
-    # Clear plaintext ASAP
-    password = None
-
-    # Continue into remaining login factors (YubiKey / TOTP / backup codes)
     try:
         self._yk_completed = False
     except Exception:
@@ -973,16 +976,7 @@ def attempt_login(self, *args, **kwargs):
 
     self._continue_after_factors(username)
     return
-    try:
-        from security.secure_audit import record_login_success
-        record_login_success(username)
-    except Exception:
-        pass
 
-    from app.paths import is_portable_mode, portable_root, users_root
-    log.info(f"[PATHS] portable_mode={is_portable_mode()}")
-    log.info(f"[PATHS] portable_root={portable_root()}")
-    log.info(f"[PATHS] users_root={users_root()}")
 
 # --- PRELOGIN IDENTITY RESOLVER ---
 def _show_pairing_dialog(self, token: str, port: int | None = None):
@@ -2368,13 +2362,6 @@ def update_login_picture(self, *args, **kwargs) -> None:
         if not typed:
             lbl.setText(self.tr("No Account"))
             return
-
-        # Handle dev commands first
-        try:
-            if dev_cmd(self, typed):
-                return
-        except Exception as e:
-            log.debug(f"[DEV_CMD] ignored error: {e}")
 
         # Canonicalize username
         try:

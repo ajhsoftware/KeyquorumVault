@@ -36,8 +36,9 @@ STORE_URL_CHROME    = "https://chromewebstore.google.com/detail/keyquorum-autofi
 STORE_URL_EDGE      = ""  # optional: https://microsoftedge.microsoft.com/addons/detail/<ID> 
 WATCH               = ""
 PWNEDPASSWORD       = "https://api.pwnedpasswords.com/range/"
-PWNEDEMAIL            = "https://haveibeenpwned.com/account/"
+PWNEDEMAIL          = "https://haveibeenpwned.com/account/"
 CATEGORY_DOWN       = "https://www.ajhsoftware.uk/keyquorum/category"
+SITE_GITHUB         = "https://github.com/ajhsoftware/KeyquorumVault/"
 
 # ==============================
 # --- App Hints Values ---

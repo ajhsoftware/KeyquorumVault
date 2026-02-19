@@ -58,6 +58,47 @@ from ui.restore_options_dialog import RestoreOptionsDialog
 # --- log ---
 import logging
 log = logging.getLogger("keyquorum")
+
+
+# ---------------------------------------------------------------------------
+# UI-string handling helpers
+# ---------------------------------------------------------------------------
+def _kq_strip_ws(s: str) -> str:
+    """Strip leading/trailing whitespace with a single pass over indices.
+
+    This still returns a Python `str` (Qt/PySide gives us str), but avoids
+    chaining `.strip().lower()` etc. in hot paths which can create extra
+    intermediate strings.
+    """
+    if not s:
+        return ""
+    i = 0
+    j = len(s)
+    while i < j and s[i].isspace():
+        i += 1
+    while j > i and s[j - 1].isspace():
+        j -= 1
+    return s[i:j]
+
+
+def _kq_norm_header(s: str) -> str:
+    """Normalise header/candidate text for comparisons: strip + lowercase.
+
+    Implemented to avoid `.strip().lower()` chaining (two allocations) where possible.
+    """
+    s = _kq_strip_ws(s)
+    if not s:
+        return ""
+    # Fast-path ASCII lowercasing without creating multiple intermediate strings.
+    out_chars = []
+    for ch in s:
+        o = ord(ch)
+        if 65 <= o <= 90:  # A-Z
+            out_chars.append(chr(o + 32))
+        else:
+            # For non-ASCII, fall back to per-char lower()
+            out_chars.append(ch.lower())
+    return "".join(out_chars)
 import app.kq_logging as kql
 
 
@@ -485,7 +526,7 @@ class _BridgeHandler(BaseHTTPRequestHandler):
             hh = table.horizontalHeader()
             for i in range(table.columnCount()):
                 item = table.horizontalHeaderItem(i)
-                headers.append((item.text() if item else "").strip().lower())
+                headers.append(_kq_norm_header(item.text() if item else ""))
         except Exception:
             for i in range(table.columnCount()):
                 headers.append("")
@@ -495,7 +536,7 @@ class _BridgeHandler(BaseHTTPRequestHandler):
         for canon, alts in (synonyms or {}).items():
             idx = -1
             for candidate in [canon, *alts]:
-                c = (candidate or "").strip().lower()
+                c = _kq_norm_header(candidate or "")
                 for i, h in enumerate(headers):
                     if h == c:
                         idx = i
@@ -507,7 +548,7 @@ class _BridgeHandler(BaseHTTPRequestHandler):
         def get_text(r, c):
             try:
                 item = table.item(r, c)
-                return (item.text() if item else "").strip()
+                return _kq_strip_ws(item.text() if item else "")
             except Exception:
                 return ""
 
@@ -1099,9 +1140,9 @@ def show_entry_context_menu(self, pos) -> None:
         try:
             for col in range(self.vaultTable.columnCount()):
                 header_item = self.vaultTable.horizontalHeaderItem(col)
-                header_label = (header_item.text().strip() if header_item else f"Column {col}").strip()
+                header_label = _kq_strip_ws(header_item.text() if header_item else f"Column {col}")
                 item = self.vaultTable.item(row, col)
-                entry[header_label] = _read_item_value(item).strip()
+                entry[header_label] = _kq_strip_ws(_read_item_value(item))
         except Exception:
             pass
         return entry
@@ -3980,9 +4021,9 @@ def import_vault_custom(self, *args, **kwargs):
     # Guess/collect username
     m = _re.match(r"^(?P<user>.+?)_full_backup_\d{8}-\d{6}\.zip(\.enc)?$", base)
     guessed_user = m.group("user") if m else None
-    username = (self.currentUsername.text().strip()
-                if hasattr(self, "currentUsername") and self.currentUsername.text().strip()
-                else (guessed_user or ""))
+    cur_u = (self.currentUsername.text() if hasattr(self, "currentUsername") else "")
+    cur_u = _kq_strip_ws(cur_u)
+    username = (cur_u if cur_u else (guessed_user or ""))
     if not username:
         username, ok = QInputDialog.getText(self, self.tr("Restore Username"), self.tr("Restore into username:"))
         if not ok or not username.strip():
@@ -4457,9 +4498,9 @@ def import_vault(self, *args, **kwargs):
     m = _re.match(r"^(?P<user>.+?)_full_backup_\d{8}-\d{6}\.zip(\.enc)?$", base)
     guessed_user = m.group("user") if m else None
 
-    username = (self.currentUsername.text().strip()
-                if hasattr(self, "currentUsername") and self.currentUsername.text().strip()
-                else (guessed_user or ""))
+    cur_u = (self.currentUsername.text() if hasattr(self, "currentUsername") else "")
+    cur_u = _kq_strip_ws(cur_u)
+    username = (cur_u if cur_u else (guessed_user or ""))
 
     if not username:
         username, ok = QInputDialog.getText(self, self.tr("Restore Username"),

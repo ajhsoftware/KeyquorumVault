@@ -45,7 +45,7 @@ from vault_store.key_utils import derive_key_argon2id
 from auth.login.login_handler import _read_user_salt
 from auth.tfa.twofa_dialog import twofa_setup
 from auth.tfa.twofactor import enable_recovery_2of2_wrap
-from features.url.main_url import SITE_SUPPORT
+from features.url.main_url import SITE_SUPPORT, SITE_GITHUB
 from auth.login.login_handler import get_user_setting, set_user_setting
 from auth.yubi.yubikeydialog import YubiKeySetupDialog
 from ui_gen.emergency_kit_dialog import EmergencyKitDialog
@@ -609,16 +609,16 @@ class InlineOnboardingWizard(QWizard):
             msg = (
                 "<b>Welcome to Keyquorum Vault!</b><br><br>"
                 "Your account has been created successfully.<br><br>"
-                "Enjoy secure password management — and if you’d like more features, such as "
-                "storing more than 50 items per category, integrated authenticator, unlocked settings, and much more, "
-                "consider upgrading to <b>Pro</b>.<br><br>"
+                "Keyquorum Vault is free and open-source, built with a focus on privacy, security, and offline-first design.<br><br>"
+                f"Project source code and updates are available on GitHub: "
+                f"<a href='{SITE_GITHUB}'>{SITE_GITHUB}</a><br><br>"
                 f"If you run into any issues, please contact support at "
-                f"<a href='{SITE_SUPPORT}'>{SITE_SUPPORT}</a>. We’ll aim to resolve problems as quickly as possible.<br><br>"
-                "<b>Important:</b> make regular backups of your vault and keep them offline for safety.<br><br>"
+                f"<a href='{SITE_SUPPORT}'>{SITE_SUPPORT}</a>.<br><br>"
+                "<b>Important:</b> Make regular backups of your vault and store them offline for maximum safety.<br><br>"
                 "When reporting a bug, please include helpful details (screenshots, what happened and when, and relevant logs). "
-                "Logs are filtered to avoid sensitive data, but it’s still wise to skim them before sharing.<br><br>"
-                "Feedback — good or bad — is always welcome via the support channel above. "
-                "It helps us prioritize improvements and new features."
+                "Logs are filtered to avoid sensitive data, but it’s still wise to review them before sharing.<br><br>"
+                "Feedback — good or bad — is always welcome. It helps improve Keyquorum for everyone."
+
             )
         
         

@@ -27,6 +27,14 @@ try:
 except Exception:
     AESGCM = None  # we'll guard for this below
 
+# --- Native core (optional) ---
+try:
+    from native.native_core import get_core  # type: ignore
+except Exception:  # native core not available
+    def get_core():
+        return None
+
+
 log = logging.getLogger("keyquorum")
 # --- single source of truth (Phase 2 paths) ---
 from app.paths import (
@@ -241,9 +249,24 @@ def load_encrypted(path: str, key: bytes):
     iv  = base64.b64decode(obj["iv"])
     tag = base64.b64decode(obj["tag"])
     ct  = base64.b64decode(obj["vault_data"])
-    decryptor = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend()).decryptor()
-    pt = decryptor.update(ct) + decryptor.finalize()
+
+    core = get_core()
+    if core:
+        key_ba = bytearray(key)
+        try:
+            pt_buf = core.decrypt_vault(key_ba, iv, ct, tag)
+            try:
+                pt = bytes(pt_buf)
+            finally:
+                core.secure_wipe(pt_buf)
+        finally:
+            core.secure_wipe(key_ba)
+    else:
+        decryptor = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend()).decryptor()
+        pt = decryptor.update(ct) + decryptor.finalize()
+
     return json.loads(pt.decode("utf-8"))
+
 
 # ==============================
 # Vault CRUD
@@ -1038,4 +1061,3 @@ def export_vault_csv(
         out_file.write_bytes(csv_bytes)
 
     return str(out_file)
-

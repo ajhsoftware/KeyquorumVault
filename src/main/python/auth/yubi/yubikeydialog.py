@@ -210,7 +210,7 @@ class _YkEnableWorker(QThread):
                     # use Argon2id function
                     from vault_store.kdf_utils import derive_key_argon2id
                 except Exception:
-                    from vault_store.kdf_utils import derive_key_argon2id  # fallback if you have it
+                    from vault_store.kdf_utils import derive_key_argon2id 
                 password_key = derive_key_argon2id(self.password or "", user_salt)  # 32B
 
                 # 2) Touch YubiKey with a fresh WRAP salt (we will store this salt)
