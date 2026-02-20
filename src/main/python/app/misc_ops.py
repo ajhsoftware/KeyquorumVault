@@ -247,7 +247,7 @@ def import_csv_entries(self, *args, **kwargs):
 
     # ---- load current vault ----
     try:
-        entries = load_vault(self.currentUsername.text(), self.userKey)
+        entries = load_vault(self.currentUsername.text(), getattr(self, 'core_session_handle', None) or self.userKey)
     except Exception as e:
         log.error(f"[DEBUG] Failed to load vault before CSV import: {e}")
         QMessageBox.critical(self, self.tr("Import Failed"), f"Vault open error:\n{e}")
@@ -439,7 +439,7 @@ def import_csv_entries(self, *args, **kwargs):
 
         if added > 0 or updated > 0 or unchanged > 0:
             self.reset_logout_timer()
-            save_vault(self.currentUsername.text(), self.userKey, entries)
+            save_vault(self.currentUsername.text(), getattr(self, 'core_session_handle', None) or self.userKey, entries)
             msg = self.tr("{ok} Import complete\n• New: {add}\n• Updated: {update}\n• Unchanged: {unchange}").format(ok=kql.i('ok'), add=added, update=updated,unchange=unchanged)
             QMessageBox.information(
                 self, self.tr("Import Successful"),
@@ -923,7 +923,7 @@ def save_credential_ui(self, payload: dict) -> bool:
     except Exception:
         current_user_name = ""
     try:
-        entries = load_vault(current_user_name, self.userKey) or []
+        entries = load_vault(current_user_name, getattr(self, 'core_session_handle', None) or self.userKey) or []
     except Exception:
         entries = []
 
@@ -2016,13 +2016,13 @@ def _bulk_preview_entries(self, entries: list[dict]) -> bool:
                 new_entry["Date"] = dt.datetime.now().strftime("%Y-%m-%d")
 
                 try:
-                    entries_cur = load_vault(username, self.userKey) or []
+                    entries_cur = load_vault(username, getattr(self, 'core_session_handle', None) or self.userKey) or []
                 except TypeError:
                     entries_cur = load_vault(username) or []
 
                 entries_cur.append(new_entry)
                 try:
-                    save_vault(username, self.userKey, entries_cur)
+                    save_vault(username, getattr(self, 'core_session_handle', None) or self.userKey, entries_cur)
                 except TypeError:
                     save_vault(username, entries_cur)
 
@@ -2567,7 +2567,7 @@ def make_share_packet(self, *args, **kwargs):
         # Load vault + map selection
         try:
             try:
-                all_entries = load_vault(username, self.userKey) or []
+                all_entries = load_vault(username, getattr(self, 'core_session_handle', None) or self.userKey) or []
             except TypeError:
                 all_entries = load_vault(username) or []
             idx_map = getattr(self, "current_entries_indices", None)
@@ -3634,7 +3634,7 @@ def quick_share_qr(self, *args, **kwargs):
         # Load vault + map current row
         try:
             try:
-                all_entries = load_vault(username, self.userKey) or []
+                all_entries = load_vault(username, getattr(self, 'core_session_handle', None) or self.userKey) or []
             except TypeError:
                 all_entries = load_vault(username) or []
             idx_map = getattr(self, "current_entries_indices", None)
@@ -4359,7 +4359,7 @@ def quick_export_scan_only(self, *args, **kwargs):
         # Only single-item quick QR (keep it small/predictable)
         try:
             try:
-                all_entries = load_vault(username, self.userKey) or []
+                all_entries = load_vault(username, getattr(self, 'core_session_handle', None) or self.userKey) or []
             except TypeError:
                 all_entries = load_vault(username) or []
             idx_map = getattr(self, "current_entries_indices", None)

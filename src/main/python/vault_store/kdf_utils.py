@@ -63,6 +63,27 @@ def _derive_key_argon2id_python(
 
 from native.native_core import get_core
 
+
+
+def _derive_key_argon2id_python_bytes(
+    password_bytes: bytes,
+    salt: bytes,
+    length: int = ARGON2_KEY_LEN,
+    time_cost: int = ARGON2_TIME_COST,
+    memory_kib: int = ARGON2_MEMORY_KIB,
+    parallelism: int = ARGON2_PARALLELISM,
+) -> bytes:
+    """Python fallback Argon2id that accepts bytes (avoids creating a str copy)."""
+    return hash_secret_raw(
+        secret=password_bytes,
+        salt=salt,
+        time_cost=time_cost,
+        memory_cost=memory_kib,
+        parallelism=parallelism,
+        hash_len=length,
+        type=Type.ID,
+    )
+
 def derive_key_argon2id(password: str, salt: bytes) -> bytes:
     """
     Fast path: use native core if available, else Python Argon2id.
@@ -136,4 +157,4 @@ def derive_key_argon2id_from_buf(pw_buf: bytearray, salt: bytes) -> bytes:
         key = core.derive_vault_key(pw_buf, salt)
         return bytes(key)
     # fallback (creates one unavoidable copy)
-    return _derive_key_argon2id_python(bytes(pw_buf).decode("utf-8"), salt)
+    return _derive_key_argon2id_python_bytes(bytes(pw_buf), salt)

@@ -56,6 +56,10 @@ ENV/
 
 # Visual Studio
 .vs/
+*.user
+*.suo
+*.VC.db
+*.VC.VC.opendb
 
 # VS Code
 .vscode/
@@ -107,3 +111,18 @@ config.local.json
 
 KeyquorumPortable/
 userdata/
+
+# ===============================
+# MSVC build outputs
+# ===============================
+x64/
+Win32/
+Debug/
+Release/
+*.pdb
+*.ilk
+*.obj
+*.ipdb
+*.iobj
+*.lib
+*.exp

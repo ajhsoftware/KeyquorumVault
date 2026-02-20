@@ -5293,7 +5293,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         try:
             try:
-                all_entries = load_vault(username, self.userKey) or []
+                all_entries = load_vault(username, getattr(self, 'core_session_handle', None) or self.userKey) or []
             except TypeError:
                 all_entries = load_vault(username) or []
         except Exception:
@@ -10420,7 +10420,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             if not username or not getattr(self, "userKey", None):
                 return []
 
-            entries = load_vault(username, self.userKey) or []
+            entries = load_vault(username, getattr(self, 'core_session_handle', None) or self.userKey) or []
             filtered: list[dict] = []
 
             for e in entries:

@@ -1,0 +1,7 @@
+Argon2 Notice
+
+Argon2 is a password hashing scheme (winner of the Password Hashing Competition).
+The Argon2 reference implementation is available under CC0 1.0 Universal (Public Domain Dedication).
+
+This project may use implementations of Argon2 via third-party libraries (for example, argon2-cffi which is MIT-licensed).
+See THIRD_PARTY_NOTICES for the exact packages used in your build.

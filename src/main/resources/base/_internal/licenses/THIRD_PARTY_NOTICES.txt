@@ -3,6 +3,9 @@
 This product includes open‑source software. Full license texts are bundled in `licenses/SPDX_LICENSES/`.
 Per‑package original license files are under `licenses/SPDX_LICENSES/vendors/`.
 
+Keyquorum Vault is licensed under the GNU General Public License v3.0 (GPL-3.0).
+See LICENSE for full text.
+
 | Package | Version | License (SPDX) | Notes |
 |---|---:|---|---|
 | `altgraph` | 0.17.4 | MIT |  |
@@ -15,7 +18,6 @@ Per‑package original license files are under `licenses/SPDX_LICENSES/vendors/`
 | `click` | 8.2.1 | BSD-3-Clause |  |
 | `colorama` | 0.4.6 | BSD-3-Clause |  |
 | `cryptography` | 45.0.7 | BSD-3-Clause |  |
-| `fbs` | 1.2.2 | MIT | Build-time tool only; not redistributed | |
 | `fido2` | 2.0.0 | BSD-2-Clause | |
 | `filelock` | 3.19.1 | Unlicense |  |
 | `hidapi` | 0.14.0.post4 | MIT OR BSD-3-Clause OR GPL-3.0-or-later | Wrapper tri-licensed; upstream HIDAPI is BSD-3 |
@@ -36,13 +38,12 @@ Per‑package original license files are under `licenses/SPDX_LICENSES/vendors/`
 | `pluggy` | 1.6.0 | MIT |  |
 | `pycparser` | 2.23 | BSD-3-Clause |  |
 | `Pygments` | 2.19.2 | BSD-2-Clause |  |
-| `pyinstaller` | 6.16.0 | Apache-2.0 | with exception |
+| `pyinstaller` | 6.16.0 | Apache-2.0 WITH PyInstaller exception | |
 | `pyinstaller-hooks-contrib` | 2025.8 | MIT |  |
 | `pyotp` | 2.9.0 | MIT |  |
 | `PySide6` | 6.9.2 | LGPL-3.0-only |  |
 | `PySide6_Addons` | 6.9.2 | LGPL-3.0-only |  |
 | `PySide6_Essentials` | 6.9.2 | LGPL-3.0-only |  |
-| `pytest` | 8.4.2 | MIT |  |
 | `pywin32` | 311 | BSD-3-Clause |  |
 | `pywin32-ctypes` | 0.2.3 | BSD-3-Clause |  |
 | `qasync` | 0.28.0 | MIT |  |
@@ -57,3 +58,17 @@ Per‑package original license files are under `licenses/SPDX_LICENSES/vendors/`
 | `winsdk` | 1.0.0b10 | MIT |  |
 | `yubikey-manager` | 5.8.0 | BSD-2-Clause |  |
 | `zipp` | 3.23.0 | MIT |  |
+
+
+## Build / Development Tools (Not Redistributed)
+| `pytest` | 8.4.2 | MIT |  |
+| `fbs` | 1.2.2 | MIT | Build-time tool only; not redistributed | |
+
+
+## OpenSSL
+
+This product includes software developed by the OpenSSL Project
+for use in the OpenSSL Toolkit (https://www.openssl.org/).
+
+OpenSSL is licensed under the Apache License, Version 2.0.
+See licenses/apache-2.0.txt for full license text.

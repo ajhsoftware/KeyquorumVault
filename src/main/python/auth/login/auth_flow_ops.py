@@ -959,15 +959,42 @@ def attempt_login(self, *args, **kwargs):
         except Exception:
             pass
 
-    # For password-only accounts, the derived key IS the master key.
+    # Decide whether this login requires YubiKey WRAP.
+    # If WRAP is enabled, we must NOT treat pw_kek as the vault master key.
+    _yk_mode = ""
     try:
-        if not hasattr(self, "userKey") or self.userKey in (None, b"", bytearray()):
-            self.userKey = self._pw_kek
+        _yk_mode, _ = yk_twofactor_enabled(username, password_or_kek=getattr(self, "current_password", None))
+        _yk_mode = (_yk_mode or "").strip().lower()
     except Exception:
+        _yk_mode = ""
+
+    try:
+        self._login_requires_yubi_wrap = (_yk_mode == "yk_hmac_wrap")
+    except Exception:
+        pass
+
+    # For password-only accounts, the derived key IS the master key.
+    # For WRAP accounts, keep the vault locked until YubiKey completes (master key is produced there).
+    if not getattr(self, "_login_requires_yubi_wrap", False):
         try:
-            self.userKey = self._pw_kek
+            if not hasattr(self, "userKey") or self.userKey in (None, b"", bytearray()):
+                self.userKey = self._pw_kek
         except Exception:
-            pass
+            try:
+                self.userKey = self._pw_kek
+            except Exception:
+                pass
+    else:
+        # Ensure we don't accidentally unlock with the wrong key context.
+        try:
+            if hasattr(self, "userKey"):
+                delattr(self, "userKey")
+        except Exception:
+            try:
+                self.userKey = None
+            except Exception:
+                pass
+
 
     try:
         self._yk_completed = False
@@ -2437,14 +2464,12 @@ def update_login_picture(self, *args, **kwargs) -> None:
     except Exception as e:
         log.error(f"[LOGIN PIC] update failed: {e}")
 
-def _finish_login(self, username: str, master_key: bytes, yk_record: dict | None = None) -> None:       # - Finalize a successful login (called from _on_yk_login_ok)
+def _finish_login(self, username: str, master_key: bytes, yk_record: dict | None = None) -> None:
     """
     Single place to finalize login after all factors (password + YubiKey/recovery) succeed.
-    - Sets self.userKey
-    - Resets lockouts
-    - Updates integrity baseline
-    - Loads/initializes vault UI
-    - Switches screens and starts timers
+    - Preferred: opens a native DLL session from master_key (WRAP DLL-reliant)
+    - Backward compatible: falls back to self.userKey bytes if DLL/session unavailable
+    - Abort login if vault decrypt fails (never silently show empty vault)
     """
     try:
         # 0) If you already had a legacy finisher, call it instead (keeps old behavior)
@@ -2453,34 +2478,117 @@ def _finish_login(self, username: str, master_key: bytes, yk_record: dict | None
                 getattr(self, legacy)(username, master_key, yk_record or {})
                 return
 
-        # 1) Set live session key
+        # 1) Validate master key
         if not isinstance(master_key, (bytes, bytearray)) or not master_key:
             raise ValueError("Missing/invalid master key after YubiKey step.")
-        self.userKey = bytes(master_key)  # keep as bytes
 
-        # 2) Audit + lockout reset (best-effort)
+        # 2) Preferred: open DLL session from master key (key stays inside native core)
+        self.core_session_handle = None
+        used_session = False
+
+        try:
+            try:
+                from native.native_core import get_core
+            except Exception:
+                get_core = None
+
+            core = get_core() if callable(get_core) else None
+
+            if core and hasattr(core, "open_session_from_key"):
+                mk_ba = bytearray(master_key)  # wipeable temp
+                try:
+                    self.core_session_handle = core.open_session_from_key(mk_ba)
+                    used_session = bool(self.core_session_handle)
+                finally:
+                    # Always wipe temp key buffer
+                    try:
+                        core.secure_wipe(mk_ba)
+                    except Exception:
+                        for i in range(len(mk_ba)):
+                            mk_ba[i] = 0
+        except Exception:
+            self.core_session_handle = None
+            used_session = False
+
+        # 3) Backward compatible fallback: only keep userKey if no native session
+        if used_session:
+            # Do NOT keep Python-side vault key
+            try:
+                if hasattr(self, "userKey"):
+                    try:
+                        delattr(self, "userKey")
+                    except Exception:
+                        self.userKey = None
+            except Exception:
+                pass
+        else:
+            # Legacy behavior (still works if DLL missing/old)
+            self.userKey = bytes(master_key)
+
+        # 4) Audit + lockout reset (best-effort)
         try:
             reset_login_failures(username)
         except Exception:
             pass
         try:
-            
-            log_event_encrypted(username, self.tr("login_success"), {"yk": bool(yk_record)})
+            log_event_encrypted(username, self.tr("login_success"), {"yk": bool(yk_record), "session": int(bool(used_session))})
         except Exception:
             pass
 
-        # 3) Load (or seed) the user’s vault so UI can render
+        # 5) Load (or seed) the user’s vault so UI can render
+        # IMPORTANT: abort login if vault decrypt fails (never show empty vault due to wrong key)
         try:
-            # create empty vault if first login
             try:
                 seed_vault(username)
             except Exception:
                 pass
-            _ = load_vault(username, self.userKey)  # keep in memory if you cache it
-        except Exception as e:
-            QMessageBox.warning(self, self.tr("Vault"), f"Could not load vault:\n{e}")
 
-        # 4) Update integrity baseline (vault/salt/user_db)
+            key_or_session = self.core_session_handle or getattr(self, "userKey", None)
+            if not key_or_session:
+                raise RuntimeError("No vault unlock material available (session/key missing).")
+
+            _ = load_vault(username, key_or_session)
+
+        except Exception as e:
+            # Stop login and keep user on login screen
+            self._login_finalized = False
+
+            # Close native session if we created one
+            try:
+                if self.core_session_handle:
+                    try:
+                        from native.native_core import get_core
+                        core = get_core()
+                        if core:
+                            core.close_session(self.core_session_handle)
+                    except Exception:
+                        pass
+                self.core_session_handle = None
+            except Exception:
+                pass
+
+            # Clear any legacy key
+            try:
+                if hasattr(self, "userKey"):
+                    self.userKey = None
+            except Exception:
+                pass
+
+            QMessageBox.critical(
+                self,
+                self.tr("Vault Decryption Failed"),
+                self.tr(
+                    "Keyquorum could not decrypt your vault.\n\n"
+                    "This usually means:\n"
+                    "• The wrong key was used (WRAP/Yubi still required), or\n"
+                    "• Your restored vault/salt/identity data does not match, or\n"
+                    "• The vault file is corrupted.\n\n"
+                    "Login was stopped to protect your data."
+                ) + f"\n\n{e}"
+            )
+            return
+
+        # 6) Update integrity baseline (vault/salt/user_db)
         try:
             update_baseline(username=username, verify_after=False, who="integrity baseline")
         except Exception as e:
@@ -2492,10 +2600,9 @@ def _finish_login(self, username: str, master_key: bytes, yk_record: dict | None
         except Exception:
             pass
 
-        # Hide login panel, show main tabs
+        # 7) Switch UI only AFTER vault successfully loads
         try:
             if hasattr(self, "stackedWidget"):
-                # index 1 is the main app
                 self.stackedWidget.setCurrentIndex(1)
         except Exception:
             pass
@@ -2505,7 +2612,7 @@ def _finish_login(self, username: str, master_key: bytes, yk_record: dict | None
         except Exception:
             pass
 
-        # 6) Refresh controls that depend on login
+        # 8) Refresh controls that depend on login
         try: self.refresh_recovery_controls()
         except Exception: pass
         try: self._auth_reload()
@@ -2513,21 +2620,19 @@ def _finish_login(self, username: str, master_key: bytes, yk_record: dict | None
         try: self._reload_table()
         except Exception: pass
 
-        # 7) Start/Reset session timers, clipboard guards, etc.
+        # 9) Start/Reset session timers, clipboard guards, etc.
         try: self.reset_logout_timer()
         except Exception: pass
         try: install_clipboard_guard(self)
         except Exception: pass
 
-        # 8) Optional one-time clipboard history warning on Windows
+        # 10) Optional one-time clipboard history warning on Windows
         try: maybe_warn_windows_clipboard(self, username, copy=False)
         except Exception: pass
 
-        # 9) Mark complete so double-emits are ignored
         self._login_finalized = True
 
     except Exception as e:
-        # Surface any unexpected failure cleanly
         self._login_finalized = False
         QMessageBox.critical(self, self.tr("Login failed"), f"{e}")
 

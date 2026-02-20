@@ -1485,7 +1485,7 @@ def _move_row_to_category_full(self, row: int, new_type: str) -> str:
 
         # load source entry + global index
         try:
-            entries = load_vault(self.currentUsername.text(), self.userKey)
+            entries = load_vault(self.currentUsername.text(), getattr(self, 'core_session_handle', None) or self.userKey)
             try:
                 global_index = self.current_entries_indices[row]
             except Exception:
@@ -1806,7 +1806,7 @@ def show_trash_manager(self):                                                   
     """
 
     username = self.currentUsername.text()
-    key = self.userKey
+    key=(getattr(self, 'core_session_handle', None) or self.userKey)
 
     # --- helpers -----------
 
@@ -2206,7 +2206,7 @@ def _preview_full_entry(self, entry: dict, sequential: bool = False) -> bool:
                     new_entry["Date"] = dt.datetime.now().strftime("%Y-%m-%d")
 
                     try:
-                        entries = load_vault(username, self.userKey) or []
+                        entries = load_vault(username, getattr(self, 'core_session_handle', None) or self.userKey) or []
                     except TypeError:
                         entries = load_vault(username) or []
 
@@ -2228,7 +2228,7 @@ def _preview_full_entry(self, entry: dict, sequential: bool = False) -> bool:
 
                     entries.append(new_entry)
                     try:
-                        save_vault(username, self.userKey, entries)
+                        save_vault(username, getattr(self, 'core_session_handle', None) or self.userKey, entries)
                     except TypeError:
                         save_vault(username, entries)
 
@@ -2267,7 +2267,7 @@ def _preview_full_entry(self, entry: dict, sequential: bool = False) -> bool:
                 new_entry["Date"] = dt.datetime.now().strftime("%Y-%m-%d")
 
                 try:
-                    entries = load_vault(username, self.userKey) or []
+                    entries = load_vault(username, getattr(self, 'core_session_handle', None) or self.userKey) or []
                 except TypeError:
                     entries = load_vault(username) or []
 
@@ -2289,7 +2289,7 @@ def _preview_full_entry(self, entry: dict, sequential: bool = False) -> bool:
 
                 entries.append(new_entry)
                 try:
-                    save_vault(username, self.userKey, entries)
+                    save_vault(username, getattr(self, 'core_session_handle', None) or self.userKey, entries)
                 except TypeError:
                     save_vault(username, entries)
 
@@ -2358,7 +2358,7 @@ def open_add_entry_dialog(self, *args, **kwargs):
 
     # free-limit gate (keep existing policy)
     try:
-        current = load_vault(username, self.userKey) or []
+        current = load_vault(username, getattr(self, 'core_session_handle', None) or self.userKey) or []
         if not self.can_add_entry():
             return
     except Exception:
@@ -2917,7 +2917,7 @@ def load_vault_table(self, *args, **kwargs):
             return
 
         # Load entries
-        all_entries = load_vault(self.currentUsername.text(), self.userKey)
+        all_entries = load_vault(self.currentUsername.text(), getattr(self, 'core_session_handle', None) or self.userKey)
 
         # Which category are we showing?
         category = self.categorySelector_2.currentText() if hasattr(self, "categorySelector_2") else "Passwords"
@@ -3361,7 +3361,7 @@ def delete_selected_vault_entry(self, *args, **kwargs):
             return
 
         username = self.currentUsername.text()
-        key = self.userKey
+        key=(getattr(self, 'core_session_handle', None) or self.userKey)
 
         ok = False
         if clicked is btn_trash:
@@ -3451,7 +3451,7 @@ def _quick_move_row_to_category(self, row: int, new_type: str) -> bool:
             pass
         
         try:
-            entries = load_vault(self.currentUsername.text(), self.userKey)
+            entries = load_vault(self.currentUsername.text(), getattr(self, 'core_session_handle', None) or self.userKey)
             try:
                 global_index = self.current_entries_indices[row]
             except Exception:
@@ -4263,7 +4263,7 @@ def _search_vault_all(self, query: str, *, max_results: int = 200,
     try:
         entries = self.vault_store.get_all_entries()
     except Exception:
-        entries = load_vault(self.currentUsername.text(), self.userKey) or []
+        entries = load_vault(self.currentUsername.text(), getattr(self, 'core_session_handle', None) or self.userKey) or []
 
     from catalog_category.category_fields import get_fields_for
 
@@ -4619,7 +4619,7 @@ def edit_selected_vault_entry(self, row, _column):
     log.debug(str(f"{kql.i('vault')} [VAULT] edit selected vault entry called"))
     self.reset_logout_timer()
     try:
-        entries = load_vault(self.currentUsername.text(), self.userKey) or []
+        entries = load_vault(self.currentUsername.text(), getattr(self, 'core_session_handle', None) or self.userKey) or []
         try:
             global_index = self.current_entries_indices[row]
         except Exception:

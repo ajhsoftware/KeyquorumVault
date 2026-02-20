@@ -457,6 +457,19 @@ def logout_user(w, skip_backup=True):
         # --- zeroize key material (in-place if possible) ---
         try:
             w.set_status_txt(_tr("Scrubing part 4"))
+            # --- close native session first (wipes vault key inside DLL) ---
+            try:
+                from native.native_core import get_core
+                core = get_core()
+                if core:
+                    core.close_session(getattr(w, "core_session_handle", None))
+            except Exception:
+                pass
+            try:
+                w.core_session_handle = None
+            except Exception:
+                pass
+
             _secure_zeroize(getattr(w, "userKey", None))           # >>> tightened
 
         except Exception:
@@ -631,14 +644,6 @@ def logout_user(w, skip_backup=True):
         w.auto_logout_timeout_sec = None
         w.enable_breach_checker = None
         log.debug("%s [LOGOUT] %s Runtime flags reset", kql.i('ok'), kql.i('auth'))
-
-        # --- hide tray icon if used ---
-        try:
-            if getattr(w, "trayIcon", None):
-                try: _trayIcon.hide()
-                except Exception: pass
-        except Exception:
-            pass
 
         # --- UI cleanup ---
         try:

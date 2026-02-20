@@ -99,3 +99,7 @@ The official browser extension is available at:
 The extension integrates with the desktop application to provide
 secure autofill capabilities within supported browsers.
 
+## Native C++ core (DLL)
+
+Keyquorum Vault includes a native C++ helper module used for cryptographic primitives (Argon2id + AES-GCM).
+Source: `src/cpp/keyquorum_core/`

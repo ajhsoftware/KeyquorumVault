@@ -229,14 +229,63 @@ def unwrap_vault_key_dmk(username: str, dmk: bytes) -> bytes:
 # AES-GCM envelope (vault content)
 # ==============================
 
-def save_encrypted(plaintext_obj: Any, path: str, key: bytes) -> None:
+def save_encrypted(plaintext_obj: Any, path: str, key_or_session) -> None:
+    """Encrypt and write vault JSON.
+
+    key_or_session may be:
+      - bytes/bytearray(32): legacy key path (compat)
+      - int: native DLL session handle (preferred; key never enters Python)
+    """
     data = json.dumps(plaintext_obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     iv = os.urandom(12)
-    encryptor = Cipher(algorithms.AES(key), modes.GCM(iv), backend=default_backend()).encryptor()
-    ct = encryptor.update(data) + encryptor.finalize()
+
+    core = get_core()
+    ct: bytes
+    tag: bytes
+
+    # Preferred: session handle (opaque int)
+    if isinstance(key_or_session, int):
+        if not core:
+            raise RuntimeError("Native core not available for session encryption")
+        ct_ba, tag_ba = core.session_encrypt(key_or_session, iv, data)
+        # tag_ba/ct_ba are bytearrays; not secret once written, but keep tidy
+        ct = bytes(ct_ba)
+        tag = bytes(tag_ba)
+        try:
+            core.secure_wipe(ct_ba)
+            core.secure_wipe(tag_ba)
+        except Exception:
+            pass
+
+    else:
+        key = key_or_session
+        if not isinstance(key, (bytes, bytearray)) or len(key) != 32:
+            raise ValueError("key must be 32 bytes (AES-256)")
+        # Use native core legacy encrypt if available; otherwise cryptography
+        if core:
+            key_ba = bytearray(key)
+            try:
+                ct_ba, tag_ba = core.encrypt_vault(key_ba, iv, data)
+                ct = bytes(ct_ba)
+                tag = bytes(tag_ba)
+                try:
+                    core.secure_wipe(ct_ba)
+                    core.secure_wipe(tag_ba)
+                except Exception:
+                    pass
+            finally:
+                try:
+                    core.secure_wipe(key_ba)
+                except Exception:
+                    pass
+        else:
+            encryptor = Cipher(algorithms.AES(key), modes.GCM(iv), backend=default_backend()).encryptor()
+            ct = encryptor.update(data) + encryptor.finalize()
+            tag = encryptor.tag
+
     obj: Dict[str, str] = {
         "iv":         base64.b64encode(iv).decode(),
-        "tag":        base64.b64encode(encryptor.tag).decode(),
+        "tag":        base64.b64encode(tag).decode(),
         "vault_data": base64.b64encode(ct).decode(),
         "kdf":        "argon2id",   # informational
     }
@@ -244,28 +293,45 @@ def save_encrypted(plaintext_obj: Any, path: str, key: bytes) -> None:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, indent=2)
 
-def load_encrypted(path: str, key: bytes):
+def load_encrypted(path: str, key_or_session):
+    """Load and decrypt vault JSON. Accepts key bytes (legacy) or session handle (preferred)."""
     obj = json.loads(Path(path).read_text(encoding="utf-8"))
     iv  = base64.b64decode(obj["iv"])
     tag = base64.b64decode(obj["tag"])
     ct  = base64.b64decode(obj["vault_data"])
 
     core = get_core()
-    if core:
-        key_ba = bytearray(key)
+
+    if isinstance(key_or_session, int):
+        if not core:
+            raise RuntimeError("Native core not available for session decryption")
+        pt_buf = core.session_decrypt(key_or_session, iv, ct, tag)
         try:
-            pt_buf = core.decrypt_vault(key_ba, iv, ct, tag)
-            try:
-                pt = bytes(pt_buf)
-            finally:
-                core.secure_wipe(pt_buf)
+            pt = bytes(pt_buf)
         finally:
-            core.secure_wipe(key_ba)
+            try:
+                core.secure_wipe(pt_buf)
+            except Exception:
+                pass
+
     else:
-        decryptor = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend()).decryptor()
-        pt = decryptor.update(ct) + decryptor.finalize()
+        key = key_or_session
+        if core:
+            key_ba = bytearray(key)
+            try:
+                pt_buf = core.decrypt_vault(key_ba, iv, ct, tag)
+                try:
+                    pt = bytes(pt_buf)
+                finally:
+                    core.secure_wipe(pt_buf)
+            finally:
+                core.secure_wipe(key_ba)
+        else:
+            decryptor = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend()).decryptor()
+            pt = decryptor.update(ct) + decryptor.finalize()
 
     return json.loads(pt.decode("utf-8"))
+
 
 
 # ==============================
@@ -307,12 +373,12 @@ def verify_vault_owner(vault_path: str, username: str, *, auto_claim: bool = Tru
     """
     return _verify_vault_owner(vault_path, username, auto_claim=auto_claim)
 
-def load_vault(username: str, key: bytes) -> list:
+def load_vault(username: str, key_or_session) -> list:
     """
     Read and decrypt the user's vault (list of entries). Returns [] if unreadable.
     """
     try:
-        raw = load_encrypted(get_vault_path(username), key)
+        raw = load_encrypted(get_vault_path(username), key_or_session)
         if isinstance(raw, list):
             return raw
         if isinstance(raw, dict):
@@ -323,10 +389,10 @@ def load_vault(username: str, key: bytes) -> list:
                 return [parsed] if parsed else []
             return parsed if isinstance(parsed, list) else []
         return []
-    except Exception:
-        return []
+    except Exception as e:
+        raise RuntimeError("Vault decryption failed") from e
 
-def save_vault(username: str, key: bytes, entries: list) -> bool:
+def save_vault(username: str, key_or_session, entries: list) -> bool:
     """
     Encrypt and write the vault; then refresh the per-user baseline (best effort).
     """
@@ -336,7 +402,7 @@ def save_vault(username: str, key: bytes, entries: list) -> bool:
     if not _verify_vault_owner(vp, username):
         raise PermissionError(f"Vault ownership mismatch for {username}")
 
-    save_encrypted(entries, vp, key)
+    save_encrypted(entries, vp, key_or_session)
 
     # best-effort baseline refresh
     try:
