@@ -74,3 +74,15 @@ This is a gradual architectural direction, not an immediate rewrite.
 ## Running the Project Locally
 
 See `README.md` for setup instructions.
+
+---
+
+## Branding & Fork Policy
+
+“Keyquorum Vault” and “AJH Software” are names used by the original author.
+
+While the code is licensed under GPL-3.0 and may be forked and redistributed under that license,
+the official project name, branding, and logos are not covered by the GPL license.
+
+Forks and redistributions must not use the official branding without prior permission.
+Modified versions should clearly distinguish themselves from the original project.

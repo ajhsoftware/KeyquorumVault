@@ -27,8 +27,8 @@ from auth.logout.logout_flow import logout_user
 # --- Dev Set
 # ==============================
 # set to True For Dev
-is_dev = True
-DEBUG_ON = True
+is_dev = False
+DEBUG_ON = False
 
 # ==============================
 # --- brighe ui ---
@@ -55,7 +55,7 @@ def get_app_version():
         log.debug(f"{kql.i('build')} [APP] VERSION {APP_VERSION}")
         return APP_VERSION
     except Exception:
-        APP_VERSION = "1.7.1"
+        APP_VERSION = "1.7.2"
         log.debug(f"{kql.i('build')} [APP] VERSION {APP_VERSION}")
         return APP_VERSION
 

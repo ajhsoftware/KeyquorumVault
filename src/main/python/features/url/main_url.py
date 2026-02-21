@@ -19,7 +19,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # ==============================
 SITE_MAIN           = "https://www.ajhsoftware.uk",
 SITE_HELP           = "https://www.ajhsoftware.uk/keyquorum/kqhelp"
-SITE_SUPPORT        = "https://forms.gle/118nQkUeV5cZyFj27"
+SITE_SUPPORT        = "https://forms.gle/VWJjbj8SCXiR2RVp7"
 SITE_SUPPORT_ME     = "https://www.ajhsoftware.uk/support-me"
 PRIVACY_POLICY      = "https://www.ajhsoftware.uk/keyquorum/privacy-policy"
 SITE_ANDROID        = ""

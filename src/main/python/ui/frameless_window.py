@@ -58,31 +58,26 @@ except Exception:
 # Static credits list (grouped by section)
 # ---------------------------------
 SPECIAL_THANKS: dict[str, list[str]] = {
-     _tr("Testers & Early Users"): [
-        _tr("Testers and early users of Keyquorum Vault"),
-        _tr("People who reported bugs and rough edges"),
+    _tr("Testers & Early Users"): [
+        _tr("Early adopters who tested pre-release builds"),
+        _tr("Users who reported bugs and usability issues"),
     ],
-     _tr("Community & Feedback"): [
-        _tr("Reddit and wider security communities"),
-        _tr("Friends who gave honest UI/UX feedback"),
+    _tr("Community"): [
+        _tr("Security and privacy communities"),
+        _tr("Reddit discussions and feedback"),
+        _tr("Individuals who provided UI/UX suggestions"),
     ],
-     _tr("Open Source & Tools"): [
-        _tr("Qt / PySide6 ecosystem"),
-        _tr("Python and its amazing package authors"),
-        _tr("Open-source crypto, security, UI, and utility libraries that power this application"),
+    _tr("Open Source Ecosystem"): [
+        _tr("Qt / PySide6"),
+        _tr("Python and its package authors"),
+        _tr("Open-source cryptography and security libraries"),
     ],
-     _tr("AI Assistance"): [
-        _tr("ChatGPT (OpenAI) — wording help, ideas, code suggestions, and security check & improvement"),
-       _tr("Claude (Anthropic) — comprehensive security audit, GPL licensing review, GitHub preparation, and encryption analysis"),
+    _tr("AI Assistance"): [
+        _tr("ChatGPT (OpenAI) — wording and development assistance"),
+        _tr("Claude (Anthropic) — security review and architectural guidance"),
     ],
 }
 
-# add direct or append: 
-# SPECIAL_THANKS["Testers & Early Users"].append("Jane Doe – regression testing")
-# # or
-# SPECIAL_THANKS["AI Assistance"].append("Another AI tool if you ever use one")
-# # or create a new section:
-# SPECIAL_THANKS["Partners"] = ["Some Company Ltd — co-marketing"]
 
 def load_special_thanks() -> dict[str, list[str]]:
     """
@@ -132,34 +127,49 @@ class CreditsDialog(QDialog):
                 if not names:
                     continue
                 items_html = "".join(f"<li>{name}</li>" for name in names)
-                # 'section' values come from data; leave as-is or localise at source
                 parts.append(f"<h4>{section}</h4><ul>{items_html}</ul>")
             special_html = "\n".join(parts)
         else:
-            special_html = "<i> " + self.tr("No additional names listed yet.") + "</i>"
+            special_html = "<i>" + self.tr("No additional names listed yet.") + "</i>"
 
         # Translatable chunks
-        title =  self.tr("Keyquorum Vault — Credits")
-        label_version =  self.tr("Version:")
+        title = self.tr("Keyquorum Vault — Credits")
+        label_version = self.tr("Version:")
 
-        h_author =  self.tr("Author / Owner")
-        author_line =  self.tr("Anthony Hatton (trading as ") + "<b>AJH Software</b>)"
-        website_label =  self.tr("Website:")
+        h_author = self.tr("Author & Maintainer")
+        author_line = "<b>Anthony Hatton</b> (AJH Software)"
+        website_label = self.tr("Website:")
 
-        h_dev_support =  self.tr("Development &amp; Support")
-        dev_para =  self.tr("Design, coding, testing, documentation, security hardening, ") +  self.tr("and support by ") + "Anthony Hatton.<br>" +  self.tr("Keyquorum Vault has also been developed with extensive assistance from") + "<b>" +  self.tr("ChatGPT (OpenAI)") + " </b> " +  self.tr(" for wording, ideas, and code suggestions.")
-    
-
-        h_feedback_libs =  self.tr("Feedback, Open Source &amp; Libraries")
-        feedback_para =  self.tr(
-            "This app stands on the shoulders of open-source software and community "
-            "feedback. Thank you to everyone who helped shape it."
+        h_licence = self.tr("Licence")
+        licence_para = self.tr(
+            "Keyquorum Vault is open source and licensed under the GNU General Public License v3 (GPL-3.0)."
         )
 
-        h_special =  self.tr("Special Thanks")
-        special_intro =  self.tr(
-            "The following people, tools, and communities have provided "
-            "feedback, testing, or inspiration:"
+        h_dev_support = self.tr("Development & Support")
+        dev_para = (
+            self.tr(
+                "Design, development, testing, documentation, and security hardening by Anthony Hatton."
+            )
+            + "<br>"
+            + self.tr(
+                "AI tools were used for wording refinement, idea exploration, and code review support (e.g., ChatGPT and Claude)."
+            )
+            + "<br><i>"
+            + self.tr(
+                "All security-critical decisions and final implementations are reviewed and approved by the maintainer."
+            )
+            + "</i>"
+        )
+
+        h_feedback_libs = self.tr("Feedback, Open Source & Libraries")
+        feedback_para = self.tr(
+            "This project stands on the shoulders of open-source software and community feedback. "
+            "Thank you to everyone who helped shape it."
+        )
+
+        h_special = self.tr("Special Thanks")
+        special_intro = self.tr(
+            "The following people, tools, and communities have provided feedback, testing, or inspiration:"
         )
 
         # Final HTML
@@ -171,6 +181,11 @@ class CreditsDialog(QDialog):
       {author_line}<br>
       {website_label}
       <a href="https://www.ajhsoftware.uk">https://www.ajhsoftware.uk</a>
+    </p>
+
+    <h3>{h_licence}</h3>
+    <p>
+      {licence_para}
     </p>
 
     <h3>{h_dev_support}</h3>
@@ -189,8 +204,8 @@ class CreditsDialog(QDialog):
     </p>
     {special_html}
     """
-        return html
 
+        return html
 # ==============================
 # --- Main Window
 # ==============================
@@ -335,7 +350,7 @@ class FramelessWindowMixin:
             f"{qt_notice}<br><br>"
             f"<b>{links_title}</b><br>"
             f"• <a href=\"https://www.ajhsoftware.uk\">{website_label}</a><br>"
-            f"• <a href=\"https://forms.gle/118nQkUeV5cZyFj27\">{support_label}</a><br>"
+            f"• <a href=\"https://forms.gle/VWJjbj8SCXiR2RVp7\">{support_label}</a><br>"
             f"• <a href=\"app:open_licenses\">{open_licenses_label}</a><br>"
             f"• <a href=\"app:open_logs\">{open_logs_label}</a><br><br>"
             f"{oss_notice_1}<br>"

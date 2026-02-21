@@ -150,14 +150,14 @@ def _maybe_show_autofill_tip(w):
 # --- new = show app whats new
 def _maybe_show_release_notes(w):
     """
-    Startup 'What's New' popup for the 10/12/2025 update.
+    Startup 'What's New' popup for the 20/02/2026 update.
     User can tick 'Don't show again' to hide it for this update.
     To reset later:
         QSettings("AJHSoftware", "KeyquorumVault").remove("hide_release_notes")
     """
     try:
         settings = QSettings("AJHSoftware", "KeyquorumVault")
-        key = "hide_release_notes"
+        key = "hide_release_notes_20-02-2026"  # change on every release
 
         # Already dismissed for this update?
         if settings.value(key, False, type=bool):
@@ -165,70 +165,157 @@ def _maybe_show_release_notes(w):
 
         # --- HTML content ----------
         # --- Break text into properly translatable blocks --------------------------
+        t_date = "<b>" + w.tr("Date") + ":</b> 20 Feb 2026<br><br>"
 
-        t_date = "<b>" + w.tr("Date") + ":</b>" + w.tr("10/12/2025") + "<br><br>"
+        t_header_whatsnew = (
+            "<b>" + w.tr("What’s New") + "</b> ("
+            + w.tr("new features may contain bugs — please report anything unexpected")
+            + " ) :<br>"
+        )
 
-        t_header_whatsnew = "<b>" + w.tr("What’s New") + "</b> (" + w.tr("new features may contain bugs — please report anything unexpected") + "):<br>"
-        t_feedback_link = w.tr("Report issues here") + ": <a href='https://forms.gle/118nQkUeV5cZyFj27'>" + w.tr("Feedback Form") + "</a><br><br>"
+        t_feedback_link = (
+            "<b>" + w.tr("Report issues") + ":</b><br>"
+            "<a href='https://github.com/ajhsoftware/KeyquorumVault/issues'>"
+            + w.tr("GitHub Issues")
+            + "</a><br>"
+            + w.tr("For non-technical feedback, you may also use")
+            + " <a href='https://forms.gle/71zuZFXuZWpFu5Ew6'>"
+            + w.tr("Google Feedback Form")
+            + "</a><br><br>"
+        )
 
-        t_language = "<li><b>" + w.tr("Language") + ":</b>" + w.tr("Client-side language selection added to the UI. Additional category-schema packs are now downloadable from the website.") + "</li>"
-        t_main_menu = "<li><b>" + w.tr("Main Menu") + ":</b> " + w.tr("Added a Reddit link and a category-download link.") + "</li>"
-        t_open_site = "<li><b>" + w.tr("Open Website button") + ":</b> " + w.tr("If a URL uses HTTP, the app now asks whether you want to upgrade it to HTTPS. If you continue with HTTP, it will warn you about the additional security risk.") + "</li>"
-        t_autofill = "<li><b>" + w.tr("Auto-Fill") + ":</b> " + w.tr("AutoFill now prioritises the platform selected in Settings") + ".</li>"
-        t_slow_login = "<li><b>" + w.tr("Slow login fixed") + ":</b> " + w.tr("Theme is now applied directly on UI load, removing the delay previously caused by theme re-initialisation.") + "</li>"
+        t_licence = (
+            "<li><b>" + w.tr("Licence") + ":</b> "
+            + w.tr(
+                "Keyquorum Vault is now open source under the GNU General Public License v3 (GPL-3.0). "
+                "The full source code is available on GitHub, and contributions are welcome."
+            )
+            + " <a href='https://github.com/ajhsoftware/KeyquorumVault'>"
+            + w.tr("GitHub Repository")
+            + "</a></li>"
+        )
+
+        t_official_source = (
+            "<li><b>" + w.tr("Updates & Privacy") + ":</b> "
+            + w.tr(
+                "Keyquorum Vault is designed as a privacy-first application. "
+                "The app does not perform automatic background network connections, telemetry, "
+                "or remote update checks. Network activity only occurs when you explicitly open a website "
+                "or when communicating locally with the browser extension. "
+                "Updates are manual unless installed through the Microsoft Store. "
+                "For security reasons, always download updates from the official GitHub repository "
+                "or the AJH Software website. Where provided, verify the SHA256 checksum before installing."
+            )
+            + "</li>"
+        )
+
+        t_login_hello = (
+            "<li><b>" + w.tr("Device unlock") + ":</b> "
+            + w.tr(
+                "Secure device-based unlock added. You can enable 'Remember this device' for faster login on trusted devices. "
+                "This can be cleared at any time in Settings → Profile."
+            )
+            + "</li>"
+        )
+
+        t_login_username = (
+            "<li><b>" + w.tr("Remember Username") + ":</b> "
+            + w.tr(
+                "Remember Username option added. You can clear the saved username at any time in Settings → Profile."
+            )
+            + "</li>"
+        )
+
+        t_reminder = (
+            "<li><b>" + w.tr("Reminder") + ":</b> "
+            + w.tr(
+                "A reminder checkbox has been added to categorie Edit. When enabled, additional fields for Reminder Date and "
+                "Reminder Note appear. Items with a reminder will be shown in the Reminders section of the Vault."
+            )
+            + "</li>"
+        )
+
+        t_language = "<li><b>" + w.tr("Language") + ":</b> " + w.tr(
+            "Client-side language selection added to the UI. Additional category-schema packs are now downloadable from the website."
+        ) + "</li>"
+
+        t_main_menu = "<li><b>" + w.tr("Main Menu") + ":</b> " + w.tr(
+            "Added a Reddit link and a category-download link."
+        ) + "</li>"
+
+        t_open_site = "<li><b>" + w.tr("Open Website button") + ":</b> " + w.tr(
+            "If a URL uses HTTP, the app now asks whether you want to upgrade it to HTTPS. If you continue with HTTP, it will warn you about the additional security risk."
+        ) + "</li>"
+
+        t_autofill = "<li><b>" + w.tr("Auto-Fill") + ":</b> " + w.tr(
+            "AutoFill now prioritises the platform selected in Settings."
+        ) + "</li>"
+
+        t_slow_login = "<li><b>" + w.tr("Slow login fixed") + ":</b> " + w.tr(
+            "Theme is now applied directly on UI load, removing the delay previously caused by theme re-initialisation."
+        ) + "</li>"
 
         t_section_issues = "<b>" + w.tr("Known Issues, Fixes & Work in Progress") + ":</b><br>"
-        t_pro_features = "<li><b>" + w.tr("Pro features") + ":</b> " + w.tr("Behaviour may vary depending on Microsoft Store licensing. Testing is only possible after publishing, so please report any issues") + ".</li>"
-        t_webfill = "<li><b>" + w.tr("WebFill, AppFill and other fill features") + ":</b>" + w.tr(" Some languages may not yet be fully supported. Please report the affected language and include logs if possible") + ".</li>"
-        t_pw_gen = "<li><b>" + w.tr("Password Generator") + ":</b> " + w.tr("Currently generates English-only passwords") + ".</li>"
-        t_window_bug = "<li><b>" + w.tr("Window movement bug") + ":</b> <b>" + w.tr("Fixed") + "</b>. " + w.tr("Previously, clicking anywhere on the UI could drag the window. Now only the title bar is draggable") + ".</li>"
+        t_webfill = "<li><b>" + w.tr("WebFill, AppFill and other fill features") + ":</b> " + w.tr(
+            "Some languages may not yet be fully supported. Please report the affected language and include logs if possible."
+        ) + "</li>"
+
+        t_pw_gen = "<li><b>" + w.tr("Password Generator") + ":</b> " + w.tr(
+            "Currently generates English-only passwords."
+        ) + "</li>"
+
+        t_window_bug = "<li><b>" + w.tr("Window movement bug") + ":</b> <b>" + w.tr("Fixed") + "</b>. " + w.tr(
+            "Previously, clicking anywhere on the UI could drag the window. Now only the title bar is draggable."
+        ) + "</li>"
 
         t_section_security = "<b>" + w.tr("Security Notes") + ":</b><br>"
-        t_security_notes = "<li>" + w.tr("No known vault or data-integrity issues at this time. Security updates will be posted on the website and Reddit. The app does not use remote notifications — all checks are local for privacy") + ".</li>"
+        t_security_notes = "<li>" + w.tr(
+            "No known vault or data-integrity issues at this time. Security updates will be posted on the website and Reddit. "
+            "The app does not use remote notifications — all checks are local for privacy."
+        ) + "</li>"
 
         t_section_feedback = "<b>" + w.tr("Feedback & Contributions") + ":</b><br>"
-        t_feedback_intro = w.tr("I would love to hear your feedback, improvements, ideas, and bug reports. Everything submitted through the feedback link is reviewed manually") + ".<br><br>"
+        t_feedback_intro = w.tr(
+            "I would love to hear your feedback, improvements, ideas, and bug reports. Everything submitted through the feedback links is reviewed manually."
+        ) + "<br><br>"
 
         t_contrib_licence = w.tr(
-            "If you choose to submit ideas, text, or code, you agree that AJH Software may use, "
-            "modify, publish, display (including on the website), or integrate your contribution "
-            "into any edition of the app, including the Free and Pro versions, without compensation. "
-            "You remain the owner of your work — by submitting it, you are granting AJH Software "
-            "a perpetual, non-exclusive, worldwide, royalty-free licence to use, adapt, and share "
-            "your contribution as part of the product or its documentation. "
-            "Your name can be added to the credits page (optional). "
-            "Please only submit work you created yourw and have the rights to share."
+            "<b>Contributions:</b> If you submit ideas, text, translations, or code, please only submit work you created "
+            "and have the rights to share. Unless you clearly state otherwise, your contribution will be treated as "
+            "licensed under the same licence as this project (GPL-3.0-or-later) and may be included in the app and its "
+            "documentation."
         )
-
-        # --- Build the final HTML safely -------------------------------------------
 
         html = (
-            t_date +
-            t_header_whatsnew +
-            t_feedback_link +
-            "<ul>" +
-                t_language +
-                t_main_menu +
-                t_open_site +
-                t_autofill +
-                t_slow_login +
-            "</ul>" +
-            t_section_issues +
-            "<ul>" +
-                t_pro_features +
-                t_webfill +
-                t_pw_gen +
-                t_window_bug +
-            "</ul>" +
-            t_section_security +
-            "<ul>" +
-                t_security_notes +
-            "</ul>" +
-            t_section_feedback +
-            t_feedback_intro +
-            t_contrib_licence
+            t_date
+            + t_header_whatsnew
+            + t_feedback_link
+            + "<ul>"
+                + t_login_hello
+                + t_licence
+                + t_official_source
+                + t_language
+                + t_login_username
+                + t_reminder
+                + t_main_menu
+                + t_open_site
+                + t_autofill
+                + t_slow_login
+            + "</ul>"
+            + t_section_issues
+            + "<ul>"
+                + t_webfill
+                + t_pw_gen
+                + t_window_bug
+            + "</ul>"
+            + t_section_security
+            + "<ul>"
+                + t_security_notes
+            + "</ul>"
+            + t_section_feedback
+            + t_feedback_intro
+            + t_contrib_licence
         )
-
 
         # --- Build a small dialog inline ------------------------------------
         dlg = QDialog(w)
