@@ -16,7 +16,7 @@ All security decisions happen locally.
 # 1. Core Principle
 
 Authentication (who you are)
-≠
+
 Encryption (can you decrypt the vault)
 
 Both must succeed for full vault access.

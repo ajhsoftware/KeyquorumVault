@@ -16,6 +16,17 @@ Goal:
 	Source: `src/cpp/keyquorum_core/`
 ---
 
+---
+## 🟡 Backward Compatibility – Must Ship Next Update
+
+- [x] Log when the Native C++ core is loaded / when fallback is used
+- [ ] Show a clear user-facing status (Security Center preferred) indicating:
+  - Native C++ core: **Active** / **Unavailable**
+  - If unavailable: advise the user to check DLL location + logs for details
+- [ ] Show a **one-time** notice when fallback mode is used (no repeated popups)
+---
+
+
 ## ✅ A) Vault Master Key – Fully DLL-Driven
 
 ### 1. Password Login
@@ -79,14 +90,21 @@ Function should:
 
 ---
 
+### 7. Vault Key Wrapping Integration (Post-Salt Removal)
+
+ - [x] Native core unwraps VK (KQID-VK) inside DLL session
+ - [x] Python never stores VK when native session active
+ - [x] Keyfile integration handled before open_session_from_key
+ - [x] No vault key derivation from password directly
+
 ## 🟡 D) Backward Compatibility (Minor Improvements Optional)
 
-### 7. DLL Feature Detection
+### 8. DLL Feature Detection
 - [ ] Check `kq_version()` or export presence
 - [ ] Graceful message if required export missing
 - [x] Fallback only if safe
 
-### 8. Legacy Key Fallback
+### 9. Legacy Key Fallback
 - [x] Only used when native session creation fails
 - [x] Never used silently for decrypt if session exists
 
@@ -94,12 +112,12 @@ Function should:
 
 ## 🟡 E) Native DLL Final Review (Optional Hardening)
 
-### 9. KqSession Structure
+### 10. KqSession Structure
 - [x] 32-byte fixed key buffer
 - [x] Wiped in destructor / close
 - [x] OpenSSL contexts freed
 
-### 10. Error Codes
+### 11. Error Codes
 - [x] Distinct negative return codes
 - [x] Python maps to clear errors
 - [x] No silent decrypt failures

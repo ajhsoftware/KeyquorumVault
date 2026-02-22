@@ -242,7 +242,7 @@ PORTABLE_CFG_SUBDIR    = "config"
 PORTABLE_DOCS_SUBDIR   = "docs"
 
 BLOB_REL_PATH = r"resources\\portable\\core.kqpkg"
-KEY0_B64 = "9i7nN9s+vA65Ugz15nUhdf4tVStPoao0osNootntxs4="  # base64 32B key seed
+KEY0_B64 = "base64 32B key here"
 
 def _get_pfn() -> str:
     p = os.getenv("KQ_APP_PFN")
@@ -251,7 +251,8 @@ def _get_pfn() -> str:
         from winsdk.windows.applicationmodel import Package  
         return str(Package.current.id.family_name)
     except Exception:
-        return "ajhsoftware.Keyquorum_m7005c4h488m6"
+
+        return  "<PackageFamilyName>"
 
 def _read_blob_pfn(blob_path: Path) -> str | None:
     try:

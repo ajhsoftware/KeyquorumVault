@@ -290,7 +290,6 @@ try:
 except Exception:
     _mode = 'installed'
 
-# --- main.py (very top-level bootstrap) ---
 def _bootstrap_usb_binding_if_any():
     from pathlib import Path
     try:

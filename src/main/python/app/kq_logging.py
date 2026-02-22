@@ -13,15 +13,16 @@ Keyquorum Vault is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 """
+
 from __future__ import annotations
 
 """usage :
 App start (pre-login):
 import app.kq_logging as kql
-log = kql.setup_logging()   # ==============================default shared app log
+log = kql.setup_logging()   # default shared app log
 kql.install_qt_message_logging(log)
 After successful login:
-kql.set_log_user(username)  # ==============================switches to %APPDATA%\Keyquorum\\Users\\<user>\logs\<user>.log
+kql.set_log_user(username)  # switches to %APPDATA%\Keyquorum\\Users\\<user>\logs\<user>.log
 log.info("%s user logged in: %s", kql.i("auth"), username)
 On logout / user switch back to shared log:
 kql.set_log_user(None)
@@ -32,10 +33,13 @@ import logging, os, sys, traceback
 from logging.handlers import RotatingFileHandler
 from typing import Optional
 import re
-from app.paths import user_log_file
+# NOTE: avoid circular import with app.paths; import lazily inside functions
+def __user_log_file(username: Optional[str] = None):
+    from app.paths import user_log_file as _ulf  # local import (break circular)
+    return _ulf(username) if username is not None else _ulf()
 
 # ==============================
-# ==============================Redaction filter (hide secrets)
+# = Redaction filter (hide secrets)
 # ==============================
 
 """ Windows (PowerShell)
@@ -57,14 +61,14 @@ class RedactFilter(logging.Filter):
     def __init__(self, name: str = ""):
         super().__init__(name)
 
-        # ==============================Redaction ON by default
-        # ==============================Disable ONLY if explicitly requested
+        # Redaction ON by default
+        # Disable ONLY if explicitly requested
         self._disable_redaction = (
             os.getenv("KQ_NO_REDACT", "").strip().lower() in ("1", "true", "yes", "on")
         )
 
     def filter(self, record: logging.LogRecord) -> bool:
-        # ==============================✅ Explicit opt-out only
+        # ✅ Explicit opt-out only
         return True
         if self._disable_redaction:
             return True
@@ -237,18 +241,18 @@ def setup_logging(logger_name: str = _LOGGER_NAME,
     lg = _get_logger(_LOGGER_NAME)
     lg.setLevel(level)
 
-    # ==============================Redaction filter (once)
+    # Redaction filter (once)
     if not any(isinstance(f, RedactFilter) for f in lg.filters):
         lg.addFilter(RedactFilter())
 
-    # ==============================File handler (default or per-user)
-    target_path = user_log_file(username, ensure_parent=True) if username else _default_log_file()
+    # File handler (default or per-user)
+    target_path = _user_log_file(username, ensure_parent=True) if username else _default_log_file()
     _detach_active_file_handler(lg)
     _ACTIVE_FILE_HANDLER = _make_file_handler(target_path, level)
     _attach_file_handler(lg, _ACTIVE_FILE_HANDLER)
     _ACTIVE_USERNAME = username
 
-    # ==============================Optional console mirror if KQ_CONSOLE=1
+    # Optional console mirror if KQ_CONSOLE=1
     if os.environ.get("KQ_CONSOLE", "0") == "1":
         _ensure_console_handler(lg, level)
     else:
@@ -266,12 +270,12 @@ def set_log_user(username: Optional[str]) -> None:
     """
     global _ACTIVE_USERNAME, _ACTIVE_FILE_HANDLER
     lg = _get_logger()
-    # ==============================Keep current level / console setup
+    # Keep current level / console setup
     current_level = lg.level
 
-    target_path = user_log_file(username, ensure_parent=True) if username else _default_log_file()
+    target_path = _user_log_file(username, ensure_parent=True) if username else _default_log_file()
     if _ACTIVE_USERNAME == username and _ACTIVE_FILE_HANDLER:
-        # ==============================already on the desired file
+        # already on the desired file
         return
 
     _detach_active_file_handler(lg)
@@ -291,7 +295,7 @@ def get_logfile_path() -> str:
             return _ACTIVE_FILE_HANDLER.baseFilename  
         except Exception:
             pass
-    # ==============================Fallback to default path
+    # Fallback to default path
     return _default_log_file()
 
 def install_global_excepthook(logger: logging.Logger | None = None) -> None:

@@ -62,11 +62,7 @@ class read_only_paths:
 
 def _paths_ro() -> bool:
     """True when read_only_paths(True) is active."""
-    try:
-        from app.paths import _READ_ONLY_PATHS
-        return bool(_READ_ONLY_PATHS)
-    except Exception:
-        return False
+    return bool(_READ_ONLY_PATHS)
 
 def _maybe_mkdir(p: Path, *, note: str, caller: str, ensure: bool):
     """
@@ -686,6 +682,9 @@ def lang_dir(*, must_exist: bool = False) -> Path:
 
 def icon_file(name: str) -> Path:
     return res_path(f"icons/{name}")
+
+def dll_file():
+    return res_path(f"native/bin/keyquorum_core.dll")
 
 def lang(name: str) -> Path:
     return res_path(Path("i18n") / name)

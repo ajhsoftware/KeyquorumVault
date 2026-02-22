@@ -17,6 +17,11 @@ This repository is being reorganised so it’s easier for users to read and for 
 - Expand automated tests for vault read/write, import/export, and migration safety.
 - Improve security hardening (clipboard clear, lockout integrity, audit log protections, etc.).
 
+- Remove legacy external salt file and migrate to wrapped Vault Key (VK) model.
+- Introduce optional keyfile-based unlock mode (USB/offline).
+- Explore optional hardware-bound unlock chain (Password + Keyfile + YubiKey).
+- Maintain backward compatibility with automatic migration.
+
 ## Long-term direction (future)
 The long-term goal is to move security-critical parts of Keyquorum into a native core (C++/Qt or a native library),
 primarily to improve memory handling (e.g., reducing accidental copies and supporting explicit zeroisation).
