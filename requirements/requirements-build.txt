@@ -1,0 +1,8 @@
+# Build / packaging dependencies (fbs Pro / PyInstaller)
+pyinstaller==6.16.0
+pyinstaller-hooks-contrib==2025.8
+
+# PyInstaller internals / platform helpers (commonly pulled in automatically)
+altgraph==0.17.4
+macholib==1.16.3; platform_system=="Darwin"
+pefile==2023.2.7; platform_system=="Windows"

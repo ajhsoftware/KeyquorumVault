@@ -1,0 +1,47 @@
+# Keyquorum Vault - minimal, human-edited dependencies (runtime)
+# Use this for day-to-day dev installs:
+#   python -m pip install -r requirements.in
+
+PySide6>=6.9.0
+cryptography>=45.0.0
+argon2-cffi>=25.0.0
+
+# 2FA / QR / PDF emergency kit
+pyotp>=2.9.0
+qrcode>=8.0.0
+segno>=1.6.0
+reportlab>=4.4.0
+PyPDF2>=3.0.0
+pikepdf>=9.0.0
+
+# Networking / breach check
+requests>=2.32.0
+tldextract>=5.3.0
+
+# Images / UI helpers
+pillow>=11.0.0
+numpy>=2.2.0
+opencv-python>=4.10.0
+
+# Password/key helpers
+bcrypt>=4.0.0
+
+# Passkeys / security keys (if you build/use these features)
+fido2>=2.0.0
+yubikey-manager>=5.8.0
+hidapi>=0.14.0.post4
+pyscard>=2.3.0
+
+# Async Qt glue (if used)
+qasync>=0.28.0
+QtPy>=2.4.0
+
+# Autofill / window scanning helpers
+psutil>=5.9.0
+
+# Windows-only helpers
+pywin32>=306; platform_system=="Windows"
+pywin32-ctypes>=0.2.0; platform_system=="Windows"
+pywinauto>=0.6.9; platform_system=="Windows"
+winsdk>=1.0.0b10; platform_system=="Windows"
+WMI>=1.5.1; platform_system=="Windows"
