@@ -27,8 +27,8 @@ from auth.logout.logout_flow import logout_user
 # --- Dev Set
 # ==============================
 # set to True For Dev
-is_dev = False
-DEBUG_ON = False
+is_dev = True
+DEBUG_ON = True
 
 # ==============================
 # --- brighe ui ---

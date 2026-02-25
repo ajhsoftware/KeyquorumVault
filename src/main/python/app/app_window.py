@@ -5321,8 +5321,8 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         return result
 
     def make_share_packet(self, *args, **kwargs):
-        from app.misc_ops import make_share_packet as _impl
-        return _impl(self, *args, **kwargs)
+        from . import misc_ops as _impl
+        return _impl.make_share_packet(self, *args, **kwargs)
 
     def quick_export_scan_only(self, *args, **kwargs):
         from app.misc_ops import quick_export_scan_only as _impl

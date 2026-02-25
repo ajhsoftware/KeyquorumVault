@@ -121,11 +121,6 @@ class InlineOnboardingWizard(QWizard):
         self.setOption(QWizard.NoBackButtonOnStartPage, True)
         self.resize(720, 540)
         self.setMinimumSize(640, 480)
-        try: # note needs fixing here
-            self.pro = parent.PRO_
-        except Exception as f:
-            log.info("NOTE: Fix parent.PRO_ in crete account FIXME")
-            self.pro = False
         # Inherit the app palette + stylesheet so the theme applies immediately
         app = QApplication.instance()
         if app:
@@ -466,7 +461,6 @@ class InlineOnboardingWizard(QWizard):
     def _page_protections(self) -> QWizardPage:
         import platform as _plat
 
-        pro_active = self.pro  
         p = QWizardPage()
         p.setTitle("Optional protections")
         try:
@@ -479,10 +473,10 @@ class InlineOnboardingWizard(QWizard):
 
         # --- defaults (same keys you'll save later) ------------------------------
         lockout_threshold            = int(settings.get("lockout_threshold", 5))
-        password_expiry_days         = int(settings.get("password_expiry_days", 90 if pro_active else 60))
-        clipboard_clear_timeout_sec  = int(settings.get("clipboard_clear_timeout_sec", 15 if pro_active else 20))
-        auto_logout_timeout_sec      = int(settings.get("auto_logout_timeout_sec", 300 if pro_active else 200))
-        ontop                        = bool(settings.get("ontop", False if pro_active else False))
+        password_expiry_days         = int(settings.get("password_expiry_days", 90))
+        clipboard_clear_timeout_sec  = int(settings.get("clipboard_clear_timeout_sec", 15))
+        auto_logout_timeout_sec      = int(settings.get("auto_logout_timeout_sec", 300))
+        ontop                        = bool(settings.get("ontop", False))
         touch_mode                   = bool(settings.get("touch_mode", False))
         known_scan                   = bool(settings.get("known_process_scan", False))
         win_def_checkbox             = bool(settings.get("WinDefCheckbox", False))
@@ -543,13 +537,6 @@ class InlineOnboardingWizard(QWizard):
         lay = QVBoxLayout(p)
         lay.addWidget(hdr)
 
-        # If not Pro, show a banner and lock all controls on this page
-        if not pro_active:
-            note = QLabel(self.tr("These protection settings are available in Keyquorum Pro."))
-            note.setWordWrap(True)
-            note.setAlignment(Qt.AlignLeft)
-            lay.addWidget(note)
-
         form = QFormLayout()
         form.addRow("Failed-login lockout threshold:", self._sp_lockout)
         form.addRow("Password expiry reminder:",       self._sp_expiry)
@@ -564,24 +551,10 @@ class InlineOnboardingWizard(QWizard):
             lay.addWidget(w)
             w.setStyleSheet("color: palette(WindowText);")
 
-        # Lock out the inputs when not Pro (but still show them)
-        if not pro_active:
-            for w in (
-                self._cb_known, self._cb_ontop, self._cb_touch,
-                self._cb_win_def, self._cb_def_quick,
-                self._sp_lockout, self._sp_expiry, self._sp_clip, self._sp_logout
-            ):
-                try:
-                    w.setEnabled(False)
-                    w.setToolTip(self.tr("Available in Keyquorum Pro."))
-                except Exception:
-                    pass
-
         return p
 
     def _page_finish(self) -> QWizardPage:
 
-        pro_active = self.pro
         p = QWizardPage()
         p.setTitle("All set!")
         try:
@@ -590,36 +563,20 @@ class InlineOnboardingWizard(QWizard):
         except Exception:
             pass
 
-        # Determine tier robustly
-       
-        if pro_active:
-            msg = (
-            "<b>Welcome to Keyquorum Vault Pro!</b><br><br>"
+        msg = (
+            "<b>Welcome to Keyquorum Vault!</b><br><br>"
             "Your account has been created successfully.<br><br>"
-            "Thank you for your support — your subscription helps us keep improving.<br><br>"
+            "Keyquorum Vault is free and open-source, built with a focus on privacy, security, and offline-first design.<br><br>"
+            f"Project source code and updates are available on GitHub: "
+            f"<a href='{SITE_GITHUB}'>{SITE_GITHUB}</a><br><br>"
             f"If you run into any issues, please contact support at "
-            f"<a href='{SITE_SUPPORT}'>{SITE_SUPPORT}</a>. We’ll aim to resolve problems as quickly as possible.<br><br>"
-            "<b>Important:</b> make regular backups of your vault and keep them offline for safety.<br><br>"
+            f"<a href='{SITE_SUPPORT}'>{SITE_SUPPORT}</a>.<br><br>"
+            "<b>Important:</b> Make regular backups of your vault and store them offline for maximum safety.<br><br>"
             "When reporting a bug, please include helpful details (screenshots, what happened and when, and relevant logs). "
-            "Logs are filtered to avoid sensitive data, but it’s still wise to skim them before sharing.<br><br>"
-            "Feedback — good or bad — is always welcome via the support channel above. "
-            "It helps us prioritize improvements and new features."
-            )
-        else:
-            msg = (
-                "<b>Welcome to Keyquorum Vault!</b><br><br>"
-                "Your account has been created successfully.<br><br>"
-                "Keyquorum Vault is free and open-source, built with a focus on privacy, security, and offline-first design.<br><br>"
-                f"Project source code and updates are available on GitHub: "
-                f"<a href='{SITE_GITHUB}'>{SITE_GITHUB}</a><br><br>"
-                f"If you run into any issues, please contact support at "
-                f"<a href='{SITE_SUPPORT}'>{SITE_SUPPORT}</a>.<br><br>"
-                "<b>Important:</b> Make regular backups of your vault and store them offline for maximum safety.<br><br>"
-                "When reporting a bug, please include helpful details (screenshots, what happened and when, and relevant logs). "
-                "Logs are filtered to avoid sensitive data, but it’s still wise to review them before sharing.<br><br>"
-                "Feedback — good or bad — is always welcome. It helps improve Keyquorum for everyone."
+            "Logs are filtered to avoid sensitive data, but it’s still wise to review them before sharing.<br><br>"
+            "Feedback — good or bad — is always welcome. It helps improve Keyquorum for everyone."
 
-            )
+        )
         
         
         lbl = QLabel(msg, p)

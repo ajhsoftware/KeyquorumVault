@@ -2102,7 +2102,7 @@ def _preview_full_entry(self, entry: dict, sequential: bool = False) -> bool:
     v.setSpacing(10)
 
     cat_detected = str(entry.get("category") or entry.get("Category") or "(unknown)")
-    lbl = QLabel(self.tr("Detected category in packet: <b>{cat_detected}</b>").format(cat_detected))
+    lbl = QLabel(self.tr("Detected category in packet: <b>{cat_detected}</b>").format(cat_detected=cat_detected))
     lbl.setTextFormat(Qt.TextFormat.RichText)
     v.addWidget(lbl)
 

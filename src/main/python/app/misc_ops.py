@@ -42,7 +42,10 @@ from app.paths import tamper_log_file
 from auth.login.login_handler import validate_login
 from security.baseline_signer import update_baseline
 import time as _t
-from features.share.zk_share import verify_and_decrypt_share_packet
+from features.share.zk_share import (
+    verify_and_decrypt_share_packet,
+    make_share_packet as zk_make_share_packet,
+)
 from typing import Union
 import weakref
 try:
@@ -2605,7 +2608,7 @@ def make_share_packet(self, *args, **kwargs):
         envelopes = []
         for src in selected:
             entry = self._minimal_share_entry(src)
-            pkt = make_share_packet(
+            pkt = zk_make_share_packet(
                 entry_json=entry,
                 sender_priv_x25519=priv_x,
                 sender_priv_ed25519=priv_ed,
@@ -3674,7 +3677,7 @@ def quick_share_qr(self, *args, **kwargs):
         # Soft expiry 5 minutes from now (not enforced yet; future-ready)
         expires_at = (dt.datetime.utcnow() + dt.timedelta(minutes=5)).replace(microsecond=0).isoformat() + "Z"
 
-        packet = make_share_packet(
+        packet = zk_make_share_packet(
             entry_json=entry,
             sender_priv_x25519=priv_x,
             sender_priv_ed25519=priv_ed,
@@ -4396,7 +4399,7 @@ def quick_export_scan_only(self, *args, **kwargs):
         # Optional expiry hint (soft)
         expires_at = None  # keep simple for now
 
-        packet = make_share_packet(
+        packet = zk_make_share_packet(
             entry_json=entry,
             sender_priv_x25519=priv_x,
             sender_priv_ed25519=priv_ed,
@@ -5294,3 +5297,6 @@ def _show_logout_warning(self, *args, **kwargs):
     else:
         # If they dismissed with OK, do nothing (timers continue counting down)
         pass
+
+# Backward-compatible alias (older UI code may call this name)
+build_share_packet = make_share_packet
