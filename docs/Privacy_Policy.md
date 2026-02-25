@@ -1,0 +1,164 @@
+# Privacy Policy
+
+Keyquorum Vault — Offline-First, Privacy-First by Design
+
+Effective date: 23 February 2026
+Version: 1.2
+
+## 1. Who We Are
+
+Controller: Anthony Hatton, sole trader, trading as AJH Software
+Location: United Kingdom
+Email: ajhsoftware1@outlook.com
+Website: ajhsoftware.uk
+Keyquorum Vault is free, open-source software released under the GPL-3.0 licence.
+This policy explains how the desktop application and official companion tools handle information.
+
+## 2. Core Principle
+
+Keyquorum Vault is designed as an offline-first application.
+There is no central user database.
+No vault data is sent to AJH Software.
+No accounts are created with us.
+We cannot access or recover your vault.
+All encryption and vault processing occur locally on your device.
+
+## 3. Information Stored by the Application
+
+The application stores the following locally on your device:
+- Vault contents
+- Authentication secrets (e.g., 2FA seeds)
+- Application settings
+- Local audit or log files
+
+If using Portable Mode, these files remain on your removable storage device.
+AJH Software does not receive copies of this data.
+
+## 4. Information We Do NOT Collect
+
+The application does not collect:
+- Passwords or vault entries
+- Master passwords
+- Recovery keys
+- Backup codes
+- Device identifiers
+- Analytics data
+- Telemetry
+- Advertising identifiers
+- Behavioural tracking data
+- There are no background uploads of vault data.
+
+## 5. Security Overview
+
+Encryption:
+- AES-GCM encryption
+- Keys derived using Argon2id
+- Parameters may evolve as security best practices advance
+
+Optional protections:
+- Two-Factor Authentication (2FA)
+- Auto-lock
+- Clipboard auto-clear
+- Hardware key integration (e.g., YubiKey support)
+
+Important:
+If you lose your master password and recovery options, your vault cannot be recovered.
+AJH Software has no ability to reset, unlock, or decrypt user vaults.
+
+## 6. Optional Network Features (Disabled by Default)
+
+Password Breach Checking
+If enabled, the app uses the Have I Been Pwned® range API.
+Only the first 5 characters of a SHA-1 hash are sent using a privacy-preserving k-anonymity model.
+Neither your password nor the full hash is transmitted.
+
+Updates
+- The standalone version does not automatically connect to check for updates.
+- If installed through the Microsoft Store, updates are delivered via the store platform.
+
+## 7. Cloud Sync
+
+If you choose to sync encrypted vault files using third-party cloud providers (e.g., OneDrive, Google Drive, NAS):
+- You control that provider relationship.
+- AJH Software does not access your cloud account.
+- AJH Software cannot decrypt synced files.
+
+## 8. Support Communications
+
+If you contact us via email or support form:
+
+You may provide:
+
+- Your message
+- Optional logs or screenshots
+- Lawful basis (UK/EU GDPR):
+- Legitimate interest (providing support)
+- Consent (where explicitly provided)
+
+Retention:
+
+- Support emails/logs are typically deleted within 12 months of issue resolution.
+- Earlier deletion available upon request where feasible.
+- If using the web support form, submissions are processed by Google Forms under Google’s privacy policy.
+
+## 9. Purchases and Payments
+
+Keyquorum Vault is free and open source.
+If optional paid versions are distributed via digital stores (e.g., Microsoft Store):
+The store is the merchant of record.
+The store controls billing data and refunds.
+AJH Software does not receive full billing details.
+We may receive license status information required for feature activation.
+
+## 10. Your Rights (UK / EU)
+
+Keyquorum Vault does not collect or store user vault data.
+All vault content remains on your device, and AJH Software cannot access it.
+
+Because we do not process vault data, GDPR rights such as access, correction, or deletion do not apply to vault content.
+However, if you contact us (for example by email or support form), we may process personal data such as your email address or the information you choose to send.
+
+For that information, you may request:
+- Access
+- Correction
+- Deletion
+- Restriction
+- Objection
+- Data portability
+
+Requests can be made by email.
+We aim to respond within 30 days.
+
+## 11. International Transfers
+
+AJH Software does not receive vault data and therefore does not transfer vault data internationally.
+If you contact us, your email may be processed through standard email infrastructure.
+
+## 12. Data Retention
+
+Vault data:
+Stored only on your device for as long as you choose.
+
+Support materials:
+Retained up to 12 months after closure unless deletion is requested sooner or legal obligations require longer retention.
+
+## 13. Changes to This Policy
+
+We may update this policy as the software evolves.
+The latest version will be published:
+- On the official website
+- In the project repository
+- Within the application where applicable
+
+## 14. Independent Project Notice
+
+“Have I Been Pwned”, “Qt”, and “YubiKey”, among others, are trademarks of their respective owners.
+Keyquorum Vault is an independent project and is not affiliated with, endorsed by, or sponsored by these companies.
+
+## 15. Legal Notice
+
+From a data protection perspective, Keyquorum Vault functions as an offline application.
+AJH Software acts solely as the software vendor and does not process user vault content as a data controller or data processor.
+
+This software is provided “as is”, without warranties of any kind.
+See the GPL-3.0 license for full terms and conditions.
