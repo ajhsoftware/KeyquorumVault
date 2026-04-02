@@ -91,3 +91,8 @@ class LocalPathProvider(ProviderBase):
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         shutil.copy2(local_path, dst)
         return ""  # no version tag
+
+# Provider registry (used by SyncEngine)
+PROVIDERS = {
+    LocalPathProvider.name: LocalPathProvider(),
+}

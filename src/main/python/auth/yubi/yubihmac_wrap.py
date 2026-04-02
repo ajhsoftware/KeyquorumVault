@@ -196,14 +196,13 @@ def test_yk_unwrap(*, username: str, password: str) -> bool:
         if (cfg.get("mode") or "").strip().lower() != "yk_hmac_wrap":
             return False
 
-        # Derive password_key from user salt
+        # Derive password_key from user salt (identity header first, fallback legacy .slt)
         try:
+            from auth.salt_file import read_master_salt_readonly
+            user_salt = read_master_salt_readonly(username)
+        except Exception:
             from app.paths import salt_file
             user_salt = salt_file(username, ensure_parent=False).read_bytes()
-        except Exception:
-            from app.paths import get_salt_path
-            with open(get_salt_path(username), "rb") as f:
-                user_salt = f.read()
 
         from vault_store.kdf_utils import derive_key_argon2id
         password_key = derive_key_argon2id(password or "", user_salt)

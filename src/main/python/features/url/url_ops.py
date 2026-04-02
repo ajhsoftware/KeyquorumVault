@@ -320,7 +320,7 @@ def open_url_with_warnings(self, raw_url: str) -> None:
     # Try to get the current username for per-user suppression flags
     username = ""
     try:
-        username = (self.currentUsername.text() or "").strip()
+        username = self._active_username()
     except Exception:
         username = ""
 

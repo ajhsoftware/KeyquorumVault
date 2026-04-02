@@ -8,7 +8,7 @@ class ApplicationContext:
 
     def __init__(self):
         self.build_settings = {
-            "version": "1.7.0"
+            "version": "v1.8.9"
         }
 
     def get_resource(self, relative_path: str) -> str:

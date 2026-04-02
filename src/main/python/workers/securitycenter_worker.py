@@ -115,7 +115,7 @@ class SecurityCenterWorker(QThread):
 
     def _check_preflight(self):
         try:
-            ok, reason = safe_preflight()
+            ok, reason = safe_preflight()  # secerty center 
             suspects = scan_for_suspicious_processes()
             return {"ok": ok, "reason": reason, "suspects": suspects}
         except Exception as e:

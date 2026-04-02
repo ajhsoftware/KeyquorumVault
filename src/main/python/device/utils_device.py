@@ -60,3 +60,29 @@ def get_device_fingerprint():
     # Not used for password hashing.
     fp = hashlib.sha256(canon).hexdigest()
     return fp, data  # return both: hashed id + context (you can log only hashed id)
+
+def get_hardware_fingerprint() -> str:
+    """
+    Best-effort hardware fingerprint string.
+    We intentionally return a string (not a hash) so we can hash it at storage time.
+    Keep this stable-ish but not overly invasive.
+    """
+    parts = [
+        platform.system() or "",
+        platform.release() or "",
+        platform.machine() or "",
+        platform.node() or "",
+    ]
+
+    try:
+        import uuid
+        parts.append(hex(uuid.getnode()))
+    except Exception:
+        pass
+    return "|".join(p.strip() for p in parts if p is not None)
+
+
+
+def hwfp_sha256() -> str:
+    fp = get_hardware_fingerprint().encode("utf-8", errors="ignore")
+    return hashlib.sha256(fp).hexdigest()

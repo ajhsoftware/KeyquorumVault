@@ -36,9 +36,13 @@ import time
 import traceback
 import importlib
 from pathlib import Path
+import pathlib
 import logging
+import traceback
+
 
 # Stable logger name used across Keyquorum
+from security.secure_audit import log_event_encrypted
 log = logging.getLogger("keyquorum")
 
 # Keyquorum icon/label logger helper
@@ -51,6 +55,15 @@ except Exception:
 from PySide6.QtCore import *  # noqa: F401,F403
 from PySide6.QtGui import *  # noqa: F401,F403
 from PySide6.QtWidgets import *  # noqa: F401,F403
-
 # Some legacy code uses the QtCore namespace (QtCore.Qt.*)
 from PySide6 import QtCore  # noqa: F401
+
+from qtpy import uic  # noqa: F401
+from qtpy.QtCore import Signal as pyqtSignal, Slot as pyqtSlot # noqa: F401
+from qtpy import QtWidgets  # noqa: F401
+from qtpy import *
+
+# dev
+
+from app.dev import dev_ops
+dev_set = dev_ops.dev_set

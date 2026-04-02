@@ -17,19 +17,21 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # ==============================
 # --- Main Values ---
 # ==============================
-SITE_MAIN           = "https://www.ajhsoftware.uk",
-SITE_HELP           = "https://www.ajhsoftware.uk/keyquorum/kqhelp"
+
+SITE_MAIN           = "https://www.ajhsoftware.uk"
+SITE_HELP           = "https://ajhsoftware.uk/keyquorum.html#support"
 SITE_SUPPORT        = "https://forms.gle/VWJjbj8SCXiR2RVp7"
-SITE_SUPPORT_ME     = "https://www.ajhsoftware.uk/support-me"
-PRIVACY_POLICY      = "https://www.ajhsoftware.uk/keyquorum/privacy-policy"
+SITE_SUPPORT_ME     = "https://ajhsoftware.uk/supportme.html"
+PRIVACY_POLICY      = "https://ajhsoftware.uk/keyquorum.html#security-privacy-overview"
 SITE_ANDROID        = ""
 SITE_LINUX          = ""
-SITE_VIDEO          = "https://www.ajhsoftware.uk/keyquorum/video-help"
-SITE_SEC            = "https://www.ajhsoftware.uk/keyquorum/security-practices-tips"
-SITE_THREAT         = "https://www.ajhsoftware.uk/keyquorum/threat-model"
-SITE_BUG_FIX        = "https://www.ajhsoftware.uk/keyquorum/bugs-fixes"
+SITE_UPDATE         = "https://github.com/ajhsoftware/KeyquorumVault/releases"
+SITE_VIDEO          = "https://ajhsoftware.uk/keyquorum.html#video-help"
+SITE_SEC            = "https://ajhsoftware.uk/keyquorum.html#security-practices-tips"
+SITE_THREAT         = ""
+SITE_BUG_FIX        = "https://ajhsoftware.uk/index.html"
 SITE_CATALOG        = "https://www.ajhsoftware.uk/keyquorum/catalog-help"
-SITE_BROWSER        = "https://www.ajhsoftware.uk/keyquorum/browser-extension-help"
+SITE_BROWSER        = "https://ajhsoftware.uk/keyquorum.html#browser-extension-help"
 SITE_BROW_TEST      = "https://ajhsoftware.github.io/kq-test-pages/"
 REDDIT              = "https://www.reddit.com/r/AJHsoftware/"
 STORE_URL_CHROME    = "https://chromewebstore.google.com/detail/keyquorum-autofill-local/jcblpckopkkhokdjdojlblknikfahbgb"
@@ -37,8 +39,9 @@ STORE_URL_EDGE      = ""  # optional: https://microsoftedge.microsoft.com/addons
 WATCH               = ""
 PWNEDPASSWORD       = "https://api.pwnedpasswords.com/range/"
 PWNEDEMAIL          = "https://haveibeenpwned.com/account/"
-CATEGORY_DOWN       = "https://www.ajhsoftware.uk/keyquorum/category"
+CATEGORY_DOWN       = "https://ajhsoftware.uk/keyquorum.html#category"
 SITE_GITHUB         = "https://github.com/ajhsoftware/KeyquorumVault/"
+
 
 # ==============================
 # --- App Hints Values ---
@@ -57,13 +60,9 @@ URI_HINTS = {
 # --- Store IDs ---
 # ==============================
 APP_ID = "9NCWWM5CMQ55"
-MSSTORE_ADDONS = {
-    "month":    "9NB534N40VZV",
-    "year":     "9P07WTXX553F",
-    "onetime": "9P744GF39NFN",
-}
 
 STORE_REVIEW_URI = f"ms-windows-store://review/?ProductId={APP_ID}"
+
 # ==============================
 # --- Open URL---
 # ==============================

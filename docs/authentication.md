@@ -22,36 +22,98 @@ Encryption (can you decrypt the vault)
 Both must succeed for full vault access.
 
 Authentication validates identity.
-Encryption unlocks vault contents.
 
+Encryption unlocks vault contents.
 ---
 
 # 2. Identity Components Per User
 
 Each user account may contain:
 
-- Username
-- Password
-- Salt (for Argon2id)
-- Vault encryption key (derived or generated)
-- Optional wrapped vault key
-- Optional recovery key (one-time shown)
-- Optional YubiKey configuration
-- Optional TOTP secret
-- Backup codes (stored as hashes)
-- Lockout metadata
+   - Username
+   - Password hash
+   - Salt (stored in identity header)
+   - KDF profile (Argon2 parameters)
+   - Vault encryption key (derived or generated)
+   - Optional wrapped vault key
+   - Optional recovery key (one-time shown)
+   - Optional YubiKey configuration
+   - Optional TOTP secret
+   - Backup codes (stored as hashes)
+   - Lockout metadata
+   - Backup metadata
 
 User metadata is stored separately from the encrypted vault file.
 
 ---
 
-# 3. Password-Based Vault Access
+# 3. Key Derivation (Argon2id)
+
+Keyquorum uses Argon2id to derive a 32-byte key from:
+
+Password + Salt
+
+## KDF Versioning
+
+Each user stores a KDF profile:
+
+	"kdf": {
+	  "algo": "argon2id",
+	  "kdf_v": 2,
+	  "time_cost": 4,
+	  "memory_kib": 512000,
+	  "parallelism": 4,
+	  "hash_len": 32
+	}
+
+This allows future upgrades without breaking older vaults.
+
+## KDF v1 (Legacy Profile)
+
+   - Fixed Argon2id parameters compiled into the native core.
+   - No per-user parameters stored.
+   - Used by accounts created before KDF versioning.
+
+### Login uses:
+	kq_session_open(password, salt)
+
+## KDF v2 (Current Profile – Stronger)
+
+Default for new accounts:
+	
+	Parameter	|	Value
+	time_cost	|	4
+	memory_kib	|	512000 (~512MB)
+	parallelism	|	2–4
+	hash_len	|	32
+
+### Login uses:
+	kq_session_open_ex(password, salt, t, m, p)
+
+This significantly increases resistance against offline password cracking.
+
+
+# 4. Strict Native Core Enforcement
+
+All cryptographic operations are performed by the native core (DLL).
+
+There is no Python fallback.
+
+If the native core is unavailable:
+   - Vault operations fail
+   - Account creation fails
+   - No cryptographic downgrade occurs
+
+This ensures consistent cryptographic enforcement across builds.
+
+
+# 5. Password-Based Vault Access
 
 When logging in:
 
 1. User enters password.
-2. Argon2id derives a 32-byte key using password + salt.
-3. That key is used to decrypt the vault file using AES-256-GCM.
+2. Native core derives key using Argon2id (v1 or v2 profile).
+3. AES-256-GCM decrypts vault file.
 4. Authentication tag must verify.
 5. If tag verification fails → access denied.
 
@@ -60,7 +122,7 @@ Plaintext passwords are never stored.
 
 ---
 
-# 4. Account Security Modes
+# 6. Account Security Modes
 
 Keyquorum supports multiple protection configurations.
 
@@ -72,7 +134,6 @@ Keyquorum supports multiple protection configurations.
 - No wrapped vault key stored.
 - No recovery mechanism.
 - If password is lost → vault is unrecoverable.
-
 This minimizes stored key material.
 
 ---
@@ -81,14 +142,14 @@ This minimizes stored key material.
 
 - A random vault key is generated.
 - That vault key is wrapped (encrypted) using a password-derived key.
-- Allows password changes without re-encrypting the entire vault.
+- Allows password rotation.
 - Enables recovery workflows.
 
 This mode supports password rotation and safer recovery mechanisms.
 
 ---
 
-# 5. Recovery Key (One-Time Shown)
+# 7. Recovery Key (One-Time Shown)
 
 When recovery mode is enabled:
 
@@ -103,7 +164,26 @@ If lost:
 
 ---
 
-# 6. Backup Codes
+# 8. DPAPI (Remember This Device)
+
+Keyquorum supports device-bound unlock using Windows DPAPI.
+
+Current implementation:
+   - Native session key is exported using:
+	  - kq_session_export_key_dpapi
+   - Session can be restored using:
+      - kq_dpapi_unprotect_to_session
+
+DPAPI tokens are versioned internally (v4 session-based).
+
+## Important:
+
+After a KDF upgrade (v1 → v2), the remembered-device token must be regenerated because the derived key changes.
+DPAPI unlock restores a native session but does not bypass encryption verification.
+
+---
+
+# 9. Backup Codes
 
 Backup codes:
 
@@ -117,7 +197,7 @@ They only bypass second-factor login checks.
 
 ---
 
-# 7. Forgot Password Flow
+# 10. Forgot Password Flow
 
 Forgot password works only if:
 
@@ -137,8 +217,19 @@ In maximum-security mode:
 
 ---
 
-# 8. YubiKey Integration
+# 11. TOTP (Authenticator)
 
+If enabled:
+   - TOTP secret stored in metadata.
+   - Valid code required at login.
+   - Backup codes provide emergency bypass.
+
+TOTP protects authentication, not encryption.
+
+---
+
+# 12. YubiKey Integration
+	
 Keyquorum supports hardware-backed protection using YubiKey.
 
 There are two distinct conceptual modes.
@@ -175,11 +266,11 @@ Without the correct YubiKey:
 
 This creates a hardware dependency.
 
-Loss of YubiKey may make the vault unrecoverable unless recovery mode is separately configured.
+Loss of YubiKey may make the vault unrecoverable unless recovery mode is configured.
 
 ---
 
-# 9. Hardware Dependency Notice (Important for Contributors)
+# 13. Hardware Dependency Notice (Important for Contributors)
 
 If YubiKey Wrap Mode is enabled:
 
@@ -198,20 +289,7 @@ Failure to implement this correctly will result in vault unlock failures.
 
 ---
 
-# 10. TOTP (Authenticator)
-
-If enabled:
-
-- A TOTP secret is stored in user metadata.
-- User must provide valid time-based code at login.
-- Backup codes provide emergency bypass.
-
-TOTP protects login,
-but encryption still depends on password and/or wrapped key configuration.
-
----
-
-# 11. Lockout Protection
+# 14. Lockout Protection
 
 The system may:
 
@@ -223,23 +301,24 @@ This mitigates brute-force attempts.
 
 ---
 
-# 12. Security Boundaries
+# 15. Security Boundaries
 
 Security depends on:
 
 - Password strength
 - Argon2id parameters
 - AES-GCM correctness
-- Protection of salt and metadata files
-- Secure storage of recovery key
-- Protection of YubiKey hardware
-- System memory safety
+- Native core integrity
+- Protection of salt and metadata
+- Secure recovery key storage
+- Hardware device protection
+- Memory safety
 
-There is no central recovery authority.
+No central recovery authority exists.
 
 ---
 
-# 13. Data Loss Scenarios
+# 16. Data Loss Scenarios
 
 If the following are lost:
 
@@ -257,14 +336,25 @@ Vault file corruption:
 
 ---
 
-# 14. Future Enhancements
+# 17. Future Enhancements
 
 Possible future improvements:
-
-- Versioned identity format
+- Additional KDF profiles
+- Extended hardware support
 - Unified wrapper format
-- Hardware-backed key storage improvements
-- Native VaultCore key management
-- Stronger memory zeroisation
+- Enhanced memory zeroisation
+- Multi-platform parity improvements
 
 All future changes will aim to preserve backward compatibility where possible.
+
+---
+
+# 18. Migration & Compatibility
+
+Keyquorum maintains backward compatibility:
+   - KDF v1 vaults remain accessible.
+   - Users may upgrade to KDF v2 via Security Center.
+   - Future KDF versions may be introduced without breaking older vaults.
+Vault encryption format remains AES-256-GCM.
+
+---

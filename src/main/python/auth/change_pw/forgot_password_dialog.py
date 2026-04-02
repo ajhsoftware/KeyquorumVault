@@ -26,6 +26,7 @@ from ui_gen.forgot_password_ui import Ui_ForgotPasswordDialog
 # Core crypto + identity helpers ----
 from auth.pw.utils_recovery import recovery_key_to_mk
 from auth.identity_store import get_public_header, mk_hash_b64, rewrap_with_new_password
+from native.native_core import get_core
 # Password policy + generator
 from auth.pw.password_utils import get_password_strength
 from auth.pw.password_generator import show_password_generator_dialog
@@ -38,6 +39,84 @@ from qtpy.QtCore import QCoreApplication
 
 def _tr(text: str) -> str:
     return QCoreApplication.translate("forgot_password_dialog", text)
+
+
+def _secure_zero_ba(buf: bytearray) -> None:
+    try:
+        core = get_core()
+        core.secure_wipe(buf)
+    except Exception:
+        for i in range(len(buf)):
+            buf[i] = 0
+
+def _load_master_salt_strict(username: str) -> bytes:
+    from auth.salt_file import read_master_salt_strict
+    return read_master_salt_strict(username)
+
+
+def _user_kdf_for_username(username: str) -> dict | None:
+    try:
+        rec = get_user_record(username) or {}
+        if isinstance(rec, dict):
+            return rec.get("kdf") or None
+    except Exception:
+        pass
+    return None
+
+def _derive_key_native_for_user(secret_text: str, salt: bytes, username: str) -> bytes:
+    """
+    Derive the actual vault key bytes using the user's stored KDF profile.
+    Falls back to legacy DLL derivation only when no per-user KDF exists.
+    """
+    if not isinstance(secret_text, str) or not secret_text:
+        raise ValueError("secret_text must be a non-empty string")
+    if not isinstance(salt, (bytes, bytearray, memoryview)) or not bytes(salt):
+        raise ValueError("salt must be non-empty bytes")
+
+    core = get_core()
+    if not core:
+        raise RuntimeError("Native core not loaded. DLL is required.")
+
+    kdf = _user_kdf_for_username(username)
+    pw_buf = bytearray(secret_text.encode("utf-8"))
+    try:
+        if (
+            isinstance(kdf, dict)
+            and int(kdf.get("kdf_v", 1)) >= 2
+            and hasattr(core, "derive_vault_key_ex")
+            and getattr(core, "has_derive_vault_key_ex", lambda: False)()
+        ):
+            return bytes(core.derive_vault_key_ex(
+                pw_buf,
+                bytes(salt),
+                time_cost=int(kdf.get("time_cost", 3)),
+                memory_kib=int(kdf.get("memory_kib", 256000)),
+                parallelism=int(kdf.get("parallelism", 2)),
+            ))
+        return bytes(core.derive_vault_key(pw_buf, bytes(salt)))
+    finally:
+        _secure_zero_ba(pw_buf)
+
+
+def _derive_key_native(secret_text: str, salt: bytes) -> bytes:
+    """
+    Strict-native derivation for forgot-password vault-key rewrap paths.
+    No Python Argon2 fallback is allowed here.
+    """
+    if not isinstance(secret_text, str) or not secret_text:
+        raise ValueError("secret_text must be a non-empty string")
+    if not isinstance(salt, (bytes, bytearray, memoryview)) or not bytes(salt):
+        raise ValueError("salt must be non-empty bytes")
+
+    core = get_core()
+    if not core:
+        raise RuntimeError("Native core not loaded. DLL is required.")
+
+    pw_buf = bytearray(secret_text.encode("utf-8"))
+    try:
+        return bytes(core.derive_vault_key(pw_buf, bytes(salt)))
+    finally:
+        _secure_zero_ba(pw_buf)
 
 # ---------------------------------
 # Helpers
@@ -362,7 +441,6 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
                     get_wrapped_key_path,
                     load_encrypted,
                     save_encrypted,
-                    load_user_salt,
                     unwrap_vault_key_dmk,
                     wrap_vault_key_dmk,
                 )
@@ -378,7 +456,6 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
                     log.debug("[ForgotPassword] DMK unwrap failed, trying legacy Recovery-Key wrapper: %r", e_dmk)
 
                     # Legacy Recovery-Key-based .kq_wrap (text, encrypt_key())
-                    from vault_store.kdf_utils import derive_key_argon2id
                     from vault_store.key_utils import decrypt_key as _decrypt_key
 
                     wpath = Path(get_wrapped_key_path(username))
@@ -387,9 +464,9 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
 
                     # Old file is a base64 string written by encrypt_key()
                     ct_b64 = wpath.read_text(encoding="utf-8").strip()
-                    salt = load_user_salt(username)
-                    # KEK derived from Recovery Key string + salt
-                    kek = derive_key_argon2id(rk_in, salt)
+                    salt = _load_master_salt_strict(username)
+                    # KEK derived from Recovery Key string + identity-header salt
+                    kek = _derive_key_native(rk_in, salt)
                     vk = _decrypt_key(ct_b64, kek)
                     log.info("[ForgotPassword] migrated legacy Recovery-Key wrapped vault key for %s", username)
 
@@ -401,28 +478,33 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
                 vpath = Path(vault_path)
                 if not vpath.exists():
                     log.info("[ForgotPassword] no existing vault for %s; creating DMK wrapper only", username)
-                    from vault_store.kdf_utils import derive_key_argon2id
-                    salt = load_user_salt(username)
-                    new_vk = derive_key_argon2id(new1, salt)
+                    salt = _load_master_salt_strict(username)
+                    new_vk = _derive_key_native_for_user(new1, salt, username)
                     wrap_vault_key_dmk(username, dmk_after, new_vk)
                 else:
-                    # 5c-3: Decrypt existing vault with old vk
+                    # 5c-3: Decrypt existing vault with old vk via strict native session
+                    old_session = None
                     try:
-                        data = load_encrypted(vault_path, vk)
+                        old_session = _open_native_session_from_key(vk)
+                        data = load_encrypted(vault_path, old_session)
                     except Exception as e_dec:
                         raise RuntimeError(
-                            _tr("Existing vault could not be decrypted with recovered key") + f": {e_dec}"
+                            _tr("Existing vault could not be decrypted with recovered key") + f": {e_dec}. This usually means the stored wrapped vault key does not match the real vault session key for this account\'s KDF/profile."
                         ) from e_dec
+                    finally:
+                        try:
+                            get_core().close_session(old_session)
+                        except Exception:
+                            pass
 
                     # 5c-4: Derive new vault key from NEW password + existing salt
-                    from vault_store.kdf_utils import derive_key_argon2id
-                    salt = load_user_salt(username)
-                    new_vk = derive_key_argon2id(new1, salt)
+                    salt = _load_master_salt_strict(username)
+                    new_vk = _derive_key_native_for_user(new1, salt, username)
 
                     # 5c-4b: Migrate Authenticator field secrets (secret_enc_b64) from old vk -> new_vk
                     # These secrets are additionally wrapped using AES-GCM(user_key) inside the decrypted vault.
                     try:
-                        from vault_store.authenticator_store import rewrap_authenticator_entries
+                        from features.auth_store.authenticator_store import rewrap_authenticator_entries
 
                         # 'data' may be dict(vault) or list(entries). Try to get an entries list safely.
                         entries_obj = data
@@ -482,7 +564,7 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
                             # Prefer the same encrypt/decrypt helpers as the app (sync.engine).
                             moved = False
                             try:
-                                from sync.engine import decrypt_json_file, encrypt_json_file
+                                from features.sync.engine import decrypt_json_file, encrypt_json_file
                                 trash_rows = decrypt_json_file(str(tpath), old_tk) or []
                                 encrypt_json_file(str(tpath), new_tk, trash_rows)
                                 moved = True
@@ -705,7 +787,6 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
                     get_wrapped_key_path,
                     load_encrypted,
                     save_encrypted,
-                    load_user_salt,
                     unwrap_vault_key_dmk,
                     wrap_vault_key_dmk,
                 )
@@ -721,7 +802,6 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
                     log.debug("[ForgotPassword] DMK unwrap failed, trying legacy Recovery-Key wrapper: %r", e_dmk)
 
                     # Legacy Recovery-Key-based .kq_wrap (text, encrypt_key())
-                    from vault_store.kdf_utils import derive_key_argon2id
                     from vault_store.key_utils import decrypt_key as _decrypt_key
 
                     wpath = Path(get_wrapped_key_path(username))
@@ -730,9 +810,9 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
 
                     # Old file is a base64 string written by encrypt_key()
                     ct_b64 = wpath.read_text(encoding="utf-8").strip()
-                    salt = load_user_salt(username)
-                    # KEK derived from Recovery Key string + salt
-                    kek = derive_key_argon2id(rk_in, salt)
+                    salt = _load_master_salt_strict(username)
+                    # KEK derived from Recovery Key string + identity-header salt
+                    kek = _derive_key_native(rk_in, salt)
                     vk = _decrypt_key(ct_b64, kek)
                     log.info("[ForgotPassword] migrated legacy Recovery-Key wrapped vault key for %s", username)
 
@@ -744,28 +824,33 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
                 vpath = Path(vault_path)
                 if not vpath.exists():
                     log.info("[ForgotPassword] no existing vault for %s; creating DMK wrapper only", username)
-                    from vault_store.kdf_utils import derive_key_argon2id
-                    salt = load_user_salt(username)
-                    new_vk = derive_key_argon2id(new1, salt)
+                    salt = _load_master_salt_strict(username)
+                    new_vk = _derive_key_native_for_user(new1, salt, username)
                     wrap_vault_key_dmk(username, dmk_after, new_vk)
                 else:
-                    # 5c-3: Decrypt existing vault with old vk
+                    # 5c-3: Decrypt existing vault with old vk via strict native session
+                    old_session = None
                     try:
-                        data = load_encrypted(vault_path, vk)
+                        old_session = _open_native_session_from_key(vk)
+                        data = load_encrypted(vault_path, old_session)
                     except Exception as e_dec:
                         raise RuntimeError(
-                            _tr("Existing vault could not be decrypted with recovered key") + f": {e_dec}"
+                            _tr("Existing vault could not be decrypted with recovered key") + f": {e_dec}. This usually means the stored wrapped vault key does not match the real vault session key for this account\'s KDF/profile."
                         ) from e_dec
+                    finally:
+                        try:
+                            get_core().close_session(old_session)
+                        except Exception:
+                            pass
 
                     # 5c-4: Derive new vault key from NEW password + existing salt
-                    from vault_store.kdf_utils import derive_key_argon2id
-                    salt = load_user_salt(username)
-                    new_vk = derive_key_argon2id(new1, salt)
+                    salt = _load_master_salt_strict(username)
+                    new_vk = _derive_key_native_for_user(new1, salt, username)
 
                     # 5c-4b: Migrate Authenticator field secrets (secret_enc_b64) from old vk -> new_vk
                     # These secrets are additionally wrapped using AES-GCM(user_key) inside the decrypted vault.
                     try:
-                        from vault_store.authenticator_store import rewrap_authenticator_entries
+                        from features.auth_store.authenticator_store import rewrap_authenticator_entries
 
                         # 'data' may be dict(vault) or list(entries). Try to get an entries list safely.
                         entries_obj = data
@@ -824,7 +909,7 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
                             # Prefer the same encrypt/decrypt helpers as the app (sync.engine).
                             moved = False
                             try:
-                                from sync.engine import decrypt_json_file, encrypt_json_file
+                                from features.sync.engine import decrypt_json_file, encrypt_json_file
                                 trash_rows = decrypt_json_file(str(tpath), old_tk) or []
                                 encrypt_json_file(str(tpath), new_tk, trash_rows)
                                 moved = True
@@ -872,7 +957,15 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
 
 
                     # 5c-5: Re-encrypt vault under new_vk and store DMK wrapper
-                    save_encrypted(data, vault_path, new_vk)
+                    new_session = None
+                    try:
+                        new_session = _open_native_session_from_key(new_vk)
+                        save_encrypted(data, vault_path, new_session)
+                    finally:
+                        try:
+                            get_core().close_session(new_session)
+                        except Exception:
+                            pass
                     wrap_vault_key_dmk(username, dmk_after, new_vk)
 
             except Exception as e:
@@ -962,3 +1055,9 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
         except Exception as e:
             fail(_tr("Unhandled error"), e)
 
+
+
+def _open_native_session_from_key(key32: bytes) -> int:
+    """Open a strict native DLL session from a raw 32-byte vault key."""
+    core = get_core()
+    return core.open_session_from_key(key32)

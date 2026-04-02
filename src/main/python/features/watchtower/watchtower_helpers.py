@@ -181,7 +181,7 @@ def find_entry_index_by_id(w, entry_id: str) -> int:
     except Exception:
         username = ""
     try:
-        key = getattr(w, "userKey", None)
+        key = getattr(w, "core_session_handle", None)
     except Exception:
         key = None
 

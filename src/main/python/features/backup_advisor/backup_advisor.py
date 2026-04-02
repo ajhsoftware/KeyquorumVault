@@ -15,13 +15,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 """
 
 from __future__ import annotations
-# - pysider
-from qtpy.QtCore import QTimer, QDateTime, Qt, QSettings, QCoreApplication
-from qtpy.QtWidgets import QCheckBox, QApplication, QMessageBox
-# - import Logging
-import logging
-log = logging.getLogger("keyquorum")
-
+from app.qt_imports import *
 
 # --- lang
 def _tr(text: str) -> str:
@@ -29,10 +23,127 @@ def _tr(text: str) -> str:
     return QCoreApplication.translate("main", text)
 
 
+
+
 # ==============================
 # --- BackupAdvisor: prompt user to back up after N changes ---
 # ==============================
+
 class BackupAdvisor:
+    def __init__(self, parent, do_backup_callable, username: str = "", *, settings_org="AJH Software", settings_app="Keyquorum Vault"):
+        self.parent = parent
+        self._do_backup = do_backup_callable
+        self.settings = QSettings(settings_org, settings_app)
+        self.username = (username or "").strip().lower()
+
+        self.session_suppressed = False
+        self._debounce_ms = 500
+
+        self._reload_state()
+
+        self._debounce_timer = QTimer(self.parent)
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.timeout.connect(lambda: self._maybe_prompt_now(force=False))
+
+    def _key(self, suffix: str) -> str:
+        user = self.username or "_global"
+        return f"users/{user}/{suffix}"
+
+    def _reload_state(self):
+        self.threshold = int(self.settings.value(self._key("backup/n_changes_threshold"), 5))
+        self.change_count = int(self.settings.value(self._key("backup/change_count"), 0))
+        self.last_prompt_ts = int(self.settings.value(self._key("backup/last_prompt_ts"), 0))
+        self.snooze_until_ts = int(self.settings.value(self._key("backup/snooze_until_ts"), 0))
+
+    def switch_user(self, username: str):
+        self.username = (username or "").strip().lower()
+        self.session_suppressed = False
+        self._reload_state()
+
+    def note_change(self, how_many: int = 1):
+        self.change_count += max(1, int(how_many))
+        self.settings.setValue(self._key("backup/change_count"), self.change_count)
+
+        if not self._debounce_timer.isActive():
+            self._debounce_timer.start(self._debounce_ms)
+
+    def pending_changes(self) -> int:
+        return int(self.change_count)
+
+    def prompt_to_backup_now(self, force: bool = False):
+        self._maybe_prompt_now(force=force)
+
+    def _maybe_prompt_now(self, force: bool = False):
+        if self.session_suppressed and not force:
+            return
+
+        now = int(QDateTime.currentSecsSinceEpoch())
+
+        if not force and self.snooze_until_ts and now < self.snooze_until_ts:
+            return
+
+        if not force and int(self.change_count) < max(1, int(self.threshold)):
+            return
+
+        plural = "changes" if self.change_count != 1 else "change"
+
+        msg = (
+            _tr("You have ")
+            + f"{self.change_count} {plural} "
+            + _tr("since your last backup")
+            + ".\n\n"
+            + _tr("Would you like to create a backup now?")
+        )
+
+        box = QMessageBox(self.parent)
+        box.setWindowTitle(_tr("Create Backup?"))
+        box.setIcon(QMessageBox.Question)
+        box.setText(msg)
+
+        backup_btn = box.addButton(_tr("Back up now"), QMessageBox.AcceptRole)
+        box.addButton(_tr("Later"), QMessageBox.RejectRole)
+
+        chk = QCheckBox(_tr("Don’t show again until restart"))
+        box.setCheckBox(chk)
+
+        snooze_minutes = int(self.settings.value(self._key("backup/snooze_minutes_on_later"), 30))
+
+        box.exec()
+
+        if box.clickedButton() is backup_btn:
+            try:
+                QApplication.setOverrideCursor(Qt.WaitCursor)
+            except Exception:
+                pass
+
+            try:
+                ok = self._do_backup()
+                if ok is True or ok is None:
+                    self.change_count = 0
+                    self.settings.setValue(self._key("backup/change_count"), 0)
+
+                    self.snooze_until_ts = 0
+                    self.settings.setValue(self._key("backup/snooze_until_ts"), 0)
+            finally:
+                try:
+                    QApplication.restoreOverrideCursor()
+                except Exception:
+                    pass
+        else:
+            if snooze_minutes > 0 and not force:
+                self.snooze_until_ts = now + snooze_minutes * 60
+                self.settings.setValue(self._key("backup/snooze_until_ts"), self.snooze_until_ts)
+
+        self.session_suppressed = chk.isChecked() if not force else False
+
+        self.last_prompt_ts = int(QDateTime.currentSecsSinceEpoch())
+        self.settings.setValue(self._key("backup/last_prompt_ts"), self.last_prompt_ts)
+
+    def reset_change_counter(self):
+        self.change_count = 0
+        self.settings.setValue(self._key("backup/change_count"), 0)
+
+class BackupAdvisor2:
     """
     Tracks vault changes and politely prompts for a backup after N changes.
     - Persists counters in QSettings (per user)

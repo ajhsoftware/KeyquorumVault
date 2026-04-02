@@ -14,6 +14,7 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 """
 from __future__ import annotations
+from turtle import up
 """
 Small UI helper callbacks that are referenced by ui/ui_bind.py.
 
@@ -37,10 +38,41 @@ except Exception:  # pragma: no cover
 
 
 # ==============================
-# --- Maybe dont show again popups ---  Maybe Popups ---
+# --- pre warn message box
 # ==============================
+def _maybe_warn_first_time(self, pref_key: str, title: str, message: str) -> bool:
+    """
+    Show a one-time warning with 'Don't show again'. Returns True to continue.
+    Store the user's choice in user settings prefs.
+    """
+    try:
+        prefs = getattr(self, "userPrefs", {}) or {}
+        if prefs.get(pref_key) is True:
+            return True
+    except Exception:
+        prefs = {}
 
+    box = QMessageBox(self)
+    box.setIcon(QMessageBox.Warning)
+    box.setWindowTitle(title)
+    box.setText(message)
+    box.setStandardButtons(QMessageBox.Cancel | QMessageBox.Ok)
+    box.button(QMessageBox.Ok).setText(self.tr("I understand"))
+    chk = QCheckBox(self.tr("Don't show again"))
+    box.setCheckBox(chk)
+    ret = box.exec()
+    if ret == QMessageBox.Ok and chk.isChecked():
+        prefs[pref_key] = True
+        try:
+            self.userPrefs = prefs
+        except Exception:
+            pass
+    return ret == QMessageBox.Ok
+
+
+# ==============================
 # --- reset hide flags
+# ==============================
 def on_reset_hide_flags_clicked(w):
     """
     Reset all 'Don't show again' flags.
@@ -113,7 +145,9 @@ def on_reset_hide_flags_clicked(w):
         )
 
 
+# ==============================
 # --- fill app with process select
+# ==============================
 def _maybe_show_autofill_tip(w):
     """
     Show the 'Auto-fill guidance' popup the first time the feature is used.
@@ -147,30 +181,34 @@ def _maybe_show_autofill_tip(w):
         settings.setValue("hide_autofill_tip", True)
 
 
+# ==============================
 # --- new = show app whats new
+# ==============================
 def _maybe_show_release_notes(w):
     """
-    Startup 'What's New' popup for the 20/02/2026 update.
+    Startup 'What's New' popup for the 01/04/2026 update.
     User can tick 'Don't show again' to hide it for this update.
+
     To reset later:
-        QSettings("AJHSoftware", "KeyquorumVault").remove("hide_release_notes")
+        QSettings("AJHSoftware", "KeyquorumVault").remove("hide_release_notes_01-04-2026")
     """
     try:
         settings = QSettings("AJHSoftware", "KeyquorumVault")
-        key = "hide_release_notes_20-02-2026"  # change on every release
+        key = "hide_release_notes_01-04-2026"  # change on every release
 
         # Already dismissed for this update?
         if settings.value(key, False, type=bool):
             return
 
-        # --- HTML content ----------
-        # --- Break text into properly translatable blocks --------------------------
-        t_date = "<b>" + w.tr("Date") + ":</b> 20 Feb 2026<br><br>"
+        # -------------------------------
+        # Translatable HTML content
+        # -------------------------------
+        t_date = "<b>" + w.tr("Date") + ":</b> 01 Apr 2026<br><br>"
 
         t_header_whatsnew = (
             "<b>" + w.tr("What’s New") + "</b> ("
             + w.tr("new features may contain bugs — please report anything unexpected")
-            + " ) :<br>"
+            + ")<br><br>"
         )
 
         t_feedback_link = (
@@ -184,11 +222,226 @@ def _maybe_show_release_notes(w):
             + "</a><br><br>"
         )
 
+        t_update = (
+            "<li><b>" + w.tr("Update") + ":</b> "
+            + w.tr(
+                "This update includes new features, security improvements, performance work, and bug fixes."
+            )
+            + "</li>"
+        )
+
+        t_windows_notify = (
+            "<li><b>" + w.tr("Windows notifications") + ":</b> "
+            + w.tr(
+                "Watchtower and Reminders can now show clearer Windows notifications, helping surface important changes without opening the app."
+            )
+            + "</li>"
+        )
+
+        t_watchtower_perf = (
+            "<li><b>" + w.tr("Watchtower performance") + ":</b> "
+            + w.tr(
+                "Watchtower scanning has been significantly improved for large vaults. Scans on big datasets are much faster, smoother, and more reliable."
+            )
+            + "</li>"
+        )
+
+        t_watchtower_breach = (
+            "<li><b>" + w.tr("Breach detection") + ":</b> "
+            + w.tr(
+                "Password breach checking has been fixed so entries are checked correctly. Cache handling has also been improved to reduce repeated work and improve speed."
+            )
+            + "</li>"
+        )
+
+        t_background_alerts = (
+            "<li><b>" + w.tr("Background alerts") + ":</b> "
+            + w.tr(
+                "A lightweight background worker now checks Watchtower and reminder states and only alerts when something changes, helping avoid repeated notification spam."
+            )
+            + "</li>"
+        )
+
+        t_url_checks = (
+            "<li><b>" + w.tr("Smarter URL handling") + ":</b> "
+            + w.tr(
+                "Watchtower now only performs URL-related checks when a real URL exists. This reduces false warnings on entries such as cards, notes, and other non-login items."
+            )
+            + "</li>"
+        )
+
+        t_native = (
+            "<li><b>" + w.tr("Native security core") + ":</b> "
+            + w.tr(
+                "The app now requires the native C++ DLL for sensitive operations. This improves handling for keys, encryption, session-based protection, and memory cleanup."
+            )
+            + "</li>"
+        )
+
+        t_auth = (
+            "<li><b>" + w.tr("Encrypted data migration") + ":</b> "
+            + w.tr(
+                "Encrypted items now migrate more safely when changing password, updating vault security, or enabling or disabling YubiKey WRAP. This helps keep vault data, password history, trash, authenticator data, and related encrypted stores working correctly after security changes."
+            )
+            + "</li>"
+        )
+
+        t_yubi = (
+            "<li><b>" + w.tr("YubiKey WRAP fixes") + ":</b> "
+            + w.tr(
+                "YubiKey WRAP flows have been improved to better protect against data loss during rekey operations and to make migration between old and new secure sessions more reliable."
+            )
+            + "</li>"
+        )
+
+        t_kdf = (
+            "<li><b>" + w.tr("Vault security upgrade") + ":</b> "
+            + w.tr(
+                "Support for stronger Argon2-based vault settings has been improved, including better handling for newer KDF profiles and stricter DLL-only security paths."
+            )
+            + "</li>"
+        )
+
+        t_sync = (
+            "<li><b>" + w.tr("Sync improvements") + ":</b> "
+            + w.tr(
+                "Sync is now more reliable. It better handles important companion data, shows clearer sync state, and improves restoring user data between devices, folders, NAS locations, and cloud-backed folders chosen by the user."
+            )
+            + "</li>"
+        )
+
+        t_sync_bundle = (
+            "<li><b>" + w.tr("Sync bundle safety") + ":</b> "
+            + w.tr(
+                "Sync handling has been improved so vault data and related metadata stay together more safely, helping reduce problems caused by partial or mismatched syncs across devices."
+            )
+            + "</li>"
+        )
+
+        t_csv = (
+            "<li><b>" + w.tr("CSV import") + ":</b> "
+            + w.tr(
+                "CSV import performance has been improved and can now handle very large imports much more smoothly."
+            )
+            + "</li>"
+        )
+
+        t_salt = (
+            "<li><b>" + w.tr("Salt storage") + ":</b> "
+            + w.tr(
+                "Vault salt handling has been simplified by moving away from a separate salt file and integrating that information into the identity data for easier maintenance and syncing."
+            )
+            + "</li>"
+        )
+
+        t_logging = (
+            "<li><b>" + w.tr("Per-user logging") + ":</b> "
+            + w.tr(
+                "Logging has been improved so user-specific logs are created more reliably after login, helping with troubleshooting and support."
+            )
+            + "</li>"
+        )
+
+        t_bridge = (
+            "<li><b>" + w.tr("Browser extension bridge") + ":</b> "
+            + w.tr(
+                "Communication with the browser extension has been improved with stronger signed local authentication between the extension and the app."
+            )
+            + "</li>"
+        )
+
+        t_catalog = (
+            "<li><b>" + w.tr("Autofill and launch reliability") + ":</b> "
+            + w.tr(
+                "Autofill-related handling and app launch or open flows have been improved for better reliability."
+            )
+            + "</li>"
+        )
+
+        t_cleaning = (
+            "<li><b>" + w.tr("Code cleanup") + ":</b> "
+            + w.tr(
+                "The app is still being split into cleaner modules. This should make future updates easier to maintain, but during this transition some areas may still be rough. Please report bugs with logs where possible."
+            )
+            + "</li>"
+        )
+
+        t_older = (
+            "<li><b>" + w.tr("Older updates") + ":</b> "
+            + w.tr(
+                "The notes below include older improvements still relevant to current builds."
+            )
+            + "</li>"
+        )
+
+        t_login_hello = (
+            "<li><b>" + w.tr("Device unlock") + ":</b> "
+            + w.tr(
+                "Secure device-based unlock has been added. You can enable 'Remember this device' for faster login on trusted devices. This can be cleared at any time in Settings → Profile."
+            )
+            + "</li>"
+        )
+
+        t_login_username = (
+            "<li><b>" + w.tr("Remember username") + ":</b> "
+            + w.tr(
+                "A Remember Username option has been added. You can clear the saved username at any time in Settings → Profile."
+            )
+            + "</li>"
+        )
+
+        t_reminder = (
+            "<li><b>" + w.tr("Reminders") + ":</b> "
+            + w.tr(
+                "A reminder checkbox has been added to category editing. When enabled, Reminder Date and Reminder Note fields appear. Items with reminders are shown in the Reminders section of the vault."
+            )
+            + "</li>"
+        )
+
+        t_language = (
+            "<li><b>" + w.tr("Language") + ":</b> "
+            + w.tr(
+                "Client-side language selection has been added to the UI. Additional category-schema packs are also available from the website."
+            )
+            + "</li>"
+        )
+
+        t_main_menu = (
+            "<li><b>" + w.tr("Main menu") + ":</b> "
+            + w.tr(
+                "Added links for Reddit and category downloads."
+            )
+            + "</li>"
+        )
+
+        t_open_site = (
+            "<li><b>" + w.tr("Open Website button") + ":</b> "
+            + w.tr(
+                "If a URL uses HTTP, the app now asks whether you want to upgrade it to HTTPS. If you continue with HTTP, it warns you about the additional security risk."
+            )
+            + "</li>"
+        )
+
+        t_autofill = (
+            "<li><b>" + w.tr("Auto-fill") + ":</b> "
+            + w.tr(
+                "AutoFill now prioritises the platform selected in Settings."
+            )
+            + "</li>"
+        )
+
+        t_slow_login = (
+            "<li><b>" + w.tr("Faster startup") + ":</b> "
+            + w.tr(
+                "Theme handling is now applied more directly on UI load, reducing the delay previously caused by theme re-initialisation."
+            )
+            + "</li>"
+        )
+
         t_licence = (
             "<li><b>" + w.tr("Licence") + ":</b> "
             + w.tr(
-                "Keyquorum Vault is now open source under the GNU General Public License v3 (GPL-3.0). "
-                "The full source code is available on GitHub, and contributions are welcome."
+                "Keyquorum Vault is now open source under the GNU General Public License v3 (GPL-3.0). The full source code is available on GitHub, and contributions are welcome."
             )
             + " <a href='https://github.com/ajhsoftware/KeyquorumVault'>"
             + w.tr("GitHub Repository")
@@ -198,92 +451,64 @@ def _maybe_show_release_notes(w):
         t_official_source = (
             "<li><b>" + w.tr("Updates & Privacy") + ":</b> "
             + w.tr(
-                "Keyquorum Vault is designed as a privacy-first application. "
-                "The app does not perform automatic background network connections, telemetry, "
-                "or remote update checks. Network activity only occurs when you explicitly open a website "
-                "or when communicating locally with the browser extension. "
-                "Updates are manual unless installed through the Microsoft Store. "
-                "For security reasons, always download updates from the official GitHub repository "
-                "or the AJH Software website. Where provided, verify the SHA256 checksum before installing."
+                "Keyquorum Vault is designed as a privacy-first application. The app does not perform automatic background network connections, telemetry, or remote update checks. Network activity only occurs when you explicitly open a website or when communicating locally with the browser extension. Updates are manual unless installed through the Microsoft Store. Adding update verification and optional automatic updates is on the roadmap. For security reasons, always download updates from the official GitHub repository or the AJH Software website. Where provided, verify the SHA256 checksum before installing."
             )
             + "</li>"
         )
 
-        t_login_hello = (
-            "<li><b>" + w.tr("Device unlock") + ":</b> "
+        t_section_issues = (
+            "<b>" + w.tr("Known Issues, Fixes & Work in Progress") + ":</b><br>"
+        )
+
+        t_webfill = (
+            "<li><b>" + w.tr("WebFill, AppFill and related fill features") + ":</b> "
             + w.tr(
-                "Secure device-based unlock added. You can enable 'Remember this device' for faster login on trusted devices. "
-                "This can be cleared at any time in Settings → Profile."
+                "Some languages may not yet be fully supported. Please report the affected language and include logs if possible."
             )
             + "</li>"
         )
 
-        t_login_username = (
-            "<li><b>" + w.tr("Remember Username") + ":</b> "
+        t_pw_gen = (
+            "<li><b>" + w.tr("Password Generator") + ":</b> "
             + w.tr(
-                "Remember Username option added. You can clear the saved username at any time in Settings → Profile."
+                "Currently generates English-only passwords."
             )
             + "</li>"
         )
 
-        t_reminder = (
-            "<li><b>" + w.tr("Reminder") + ":</b> "
+        t_window_bug = (
+            "<li><b>" + w.tr("Window movement bug") + ":</b> <b>"
+            + w.tr("Fixed")
+            + "</b>. "
             + w.tr(
-                "A reminder checkbox has been added to categorie Edit. When enabled, additional fields for Reminder Date and "
-                "Reminder Note appear. Items with a reminder will be shown in the Reminders section of the Vault."
+                "Previously, clicking anywhere on the UI could drag the window. Now only the title bar is draggable."
             )
             + "</li>"
         )
-
-        t_language = "<li><b>" + w.tr("Language") + ":</b> " + w.tr(
-            "Client-side language selection added to the UI. Additional category-schema packs are now downloadable from the website."
-        ) + "</li>"
-
-        t_main_menu = "<li><b>" + w.tr("Main Menu") + ":</b> " + w.tr(
-            "Added a Reddit link and a category-download link."
-        ) + "</li>"
-
-        t_open_site = "<li><b>" + w.tr("Open Website button") + ":</b> " + w.tr(
-            "If a URL uses HTTP, the app now asks whether you want to upgrade it to HTTPS. If you continue with HTTP, it will warn you about the additional security risk."
-        ) + "</li>"
-
-        t_autofill = "<li><b>" + w.tr("Auto-Fill") + ":</b> " + w.tr(
-            "AutoFill now prioritises the platform selected in Settings."
-        ) + "</li>"
-
-        t_slow_login = "<li><b>" + w.tr("Slow login fixed") + ":</b> " + w.tr(
-            "Theme is now applied directly on UI load, removing the delay previously caused by theme re-initialisation."
-        ) + "</li>"
-
-        t_section_issues = "<b>" + w.tr("Known Issues, Fixes & Work in Progress") + ":</b><br>"
-        t_webfill = "<li><b>" + w.tr("WebFill, AppFill and other fill features") + ":</b> " + w.tr(
-            "Some languages may not yet be fully supported. Please report the affected language and include logs if possible."
-        ) + "</li>"
-
-        t_pw_gen = "<li><b>" + w.tr("Password Generator") + ":</b> " + w.tr(
-            "Currently generates English-only passwords."
-        ) + "</li>"
-
-        t_window_bug = "<li><b>" + w.tr("Window movement bug") + ":</b> <b>" + w.tr("Fixed") + "</b>. " + w.tr(
-            "Previously, clicking anywhere on the UI could drag the window. Now only the title bar is draggable."
-        ) + "</li>"
 
         t_section_security = "<b>" + w.tr("Security Notes") + ":</b><br>"
-        t_security_notes = "<li>" + w.tr(
-            "No known vault or data-integrity issues at this time. Security updates will be posted on the website and Reddit. "
-            "The app does not use remote notifications — all checks are local for privacy."
-        ) + "</li>"
 
-        t_section_feedback = "<b>" + w.tr("Feedback & Contributions") + ":</b><br>"
-        t_feedback_intro = w.tr(
-            "I would love to hear your feedback, improvements, ideas, and bug reports. Everything submitted through the feedback links is reviewed manually."
-        ) + "<br><br>"
+        t_security_notes = (
+            "<li>"
+            + w.tr(
+                "No known vault or data-integrity issues are currently expected in this release. Security updates will be posted on the website and Reddit. The app does not use remote notifications for privacy; checks remain local where possible."
+            )
+            + "</li>"
+        )
+
+        t_section_feedback = (
+            "<b>" + w.tr("Feedback & Contributions") + ":</b><br>"
+        )
+
+        t_feedback_intro = (
+            w.tr(
+                "I would love to hear your feedback, improvements, ideas, and bug reports. Everything submitted through the feedback links is reviewed manually."
+            )
+            + "<br><br>"
+        )
 
         t_contrib_licence = w.tr(
-            "<b>Contributions:</b> If you submit ideas, text, translations, or code, please only submit work you created "
-            "and have the rights to share. Unless you clearly state otherwise, your contribution will be treated as "
-            "licensed under the same licence as this project (GPL-3.0-or-later) and may be included in the app and its "
-            "documentation."
+            "<b>Contributions:</b> If you submit ideas, text, translations, or code, please only submit work you created and have the rights to share. Unless you clearly state otherwise, your contribution will be treated as licensed under the same licence as this project (GPL-3.0-or-later) and may be included in the app and its documentation."
         )
 
         html = (
@@ -291,33 +516,54 @@ def _maybe_show_release_notes(w):
             + t_header_whatsnew
             + t_feedback_link
             + "<ul>"
-                + t_login_hello
-                + t_licence
-                + t_official_source
-                + t_language
-                + t_login_username
-                + t_reminder
-                + t_main_menu
-                + t_open_site
-                + t_autofill
-                + t_slow_login
+            + t_update
+            + t_windows_notify
+            + t_watchtower_perf
+            + t_watchtower_breach
+            + t_background_alerts
+            + t_url_checks
+            + t_native
+            + t_auth
+            + t_yubi
+            + t_kdf
+            + t_sync
+            + t_sync_bundle
+            + t_csv
+            + t_salt
+            + t_logging
+            + t_bridge
+            + t_catalog
+            + t_cleaning
+            + t_older
+            + t_login_hello
+            + t_licence
+            + t_official_source
+            + t_language
+            + t_login_username
+            + t_reminder
+            + t_main_menu
+            + t_open_site
+            + t_autofill
+            + t_slow_login
             + "</ul>"
             + t_section_issues
             + "<ul>"
-                + t_webfill
-                + t_pw_gen
-                + t_window_bug
+            + t_webfill
+            + t_pw_gen
+            + t_window_bug
             + "</ul>"
             + t_section_security
             + "<ul>"
-                + t_security_notes
+            + t_security_notes
             + "</ul>"
             + t_section_feedback
             + t_feedback_intro
             + t_contrib_licence
         )
 
-        # --- Build a small dialog inline ------------------------------------
+        # -------------------------------
+        # Build dialog
+        # -------------------------------
         dlg = QDialog(w)
         dlg.setWindowTitle(w.tr("What’s New in Keyquorum Vault"))
         dlg.setModal(True)
@@ -326,8 +572,8 @@ def _maybe_show_release_notes(w):
 
         main_layout = QVBoxLayout(dlg)
 
-        # icon + text
         top_layout = QHBoxLayout()
+
         icon_label = QLabel()
         icon = dlg.style().standardIcon(QStyle.SP_MessageBoxInformation)
         icon_label.setPixmap(icon.pixmap(48, 48))
@@ -349,7 +595,7 @@ def _maybe_show_release_notes(w):
         btn_box.accepted.connect(dlg.accept)
         main_layout.addWidget(btn_box)
 
-        # show dialog
+        # Show dialog
         if dlg.exec() == QDialog.Accepted and chk.isChecked():
             settings.setValue(key, True)
 
@@ -358,9 +604,9 @@ def _maybe_show_release_notes(w):
             log.debug(f"[WHATSNEW] Popup failed: {e}")
         except Exception:
             pass
-    
-
-# --- user running from usb 
+# ==============================
+# --- user running from usb
+# ==============================
 def notify_usb_loaded_once(w, username: str) -> None:
     """
     If running from USB, show a one-time notice with a
@@ -415,7 +661,9 @@ def notify_usb_loaded_once(w, username: str) -> None:
     )
 
 
-# --- clipboard 
+# ==============================
+# --- clipboard
+# ==============================
 def maybe_warn_windows_clipboard(w, copy=True) -> None:
     """Show a one-time warning if Windows Clipboard history / sync are ON."""
     # - imports
@@ -461,3 +709,67 @@ def maybe_warn_windows_clipboard(w, copy=True) -> None:
             settings.setValue("suppress_clipboard_warn", True)
         except Exception:
             pass
+
+
+# ==============================
+# --- preflight 
+# ==============================
+def maybe_prompt_enable_preflight(self, parent=None):
+    prefs = load_security_prefs()
+    if prefs.get("preflight_prompted", False):
+        return
+
+    box = QMessageBox(parent or self)
+    box.setWindowTitle(self.tr("Security Preflight"))
+    box.setIcon(QMessageBox.Icon.Question)
+    box.setText(self.tr("Enable Security Preflight checks?"))
+    box.setInformativeText(
+        "Preflight can warn you about packet sniffers, debuggers, and other tools "
+        "that increase risk. You can change this later in Settings."
+    )
+    enable_btn = box.addButton(self.tr("Enable (Recommended)"), QMessageBox.ButtonRole.AcceptRole)
+    later_btn  = box.addButton(self.tr("Not Now"), QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(enable_btn)
+    box.exec()
+
+    prefs["preflight_prompted"] = True
+    prefs["enable_preflight"] = (box.clickedButton() is enable_btn)
+    save_security_prefs(prefs)
+
+
+# ==============================
+# --- Url Warn 
+# ==============================
+def open_vendor_url(self, url: str, builtins_url: str | None = None) -> None:
+    """Open a URL safely. If it looks user-added, show one-time warning."""
+    u = (url or "").strip()
+    if not u:
+        QMessageBox.warning(self, self.tr("URL missing"), self.tr("There is no URL configured for this item."))
+        return
+    try:
+        p = urlparse(u)
+        if p.scheme not in ("https", "http"):
+            QMessageBox.warning(self, self.tr("Blocked URL"), self.tr("Only http/https links are allowed."))
+            return
+    except Exception:
+        QMessageBox.warning(self, self.tr("Invalid URL"), self.tr("The link appears malformed."))
+        return
+
+    # One-time warning for user-added/overridden URLs
+    if self._is_probably_user_added(u, builtins_url):
+        cont = self._maybe_warn_first_time(
+            pref_key="suppress_user_url_warning",
+            title="Custom URL — be careful",
+            message=(
+                "This link was added or changed by a user.\n\n"
+                "Only open official vendor sites or trusted direct download links.\n"
+                "Malicious links can harm your device."
+            )
+        )
+        if not cont:
+            return
+
+    QDesktopServices.openUrl(QUrl(u))
+
+
+

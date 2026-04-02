@@ -15,7 +15,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 """
 
 """Per-user persistent X25519/Ed25519 key management"""
-import os, json, base64, logging
+import os, json, base64, logging, secrets
 from pathlib import Path
 from typing import Dict, Tuple
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -23,30 +23,58 @@ from cryptography.hazmat.primitives.asymmetric import x25519, ed25519
 from cryptography.hazmat.primitives import serialization
 
 from app.paths import shared_key_file
+from native.native_core import get_core
 
 log = logging.getLogger("keyquorum")
 
 B64  = lambda b: base64.b64encode(b).decode("ascii")
 B64D = lambda s: base64.b64decode(s.encode("ascii"))
 
-def _enc_json(path: Path, key: bytes, obj: dict) -> None:
-    """Encrypt and write JSON using AES-GCM (32-byte key)."""
-    if len(key) != 32:
-        raise ValueError("share_keys: user_key must be 32 bytes")
-    aead, n = AESGCM(key), os.urandom(12)
+def _is_session_handle(key_or_session) -> bool:
+    return isinstance(key_or_session, int) and key_or_session > 0
+
+def _enc_json(path: Path, key_or_session, obj: dict) -> None:
+    """Encrypt and write JSON using either AES-GCM (legacy 32-byte key) or native session encryption."""
     pt = json.dumps(obj, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    ct = aead.encrypt(n, pt, None)
-    payload = {"n": B64(n), "ct": B64(ct)}
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    if _is_session_handle(key_or_session):
+        core = get_core()
+        if core is None:
+            raise RuntimeError("share_keys: native core not loaded")
+        iv = secrets.token_bytes(12)
+        ct_ba, tag_ba = core.session_encrypt(int(key_or_session), iv, pt)
+        payload = {"ver": 2, "mode": "native", "iv": B64(iv), "ct": B64(bytes(ct_ba)), "tag": B64(bytes(tag_ba))}
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        return
+
+    if not isinstance(key_or_session, (bytes, bytearray, memoryview)) or len(key_or_session) != 32:
+        raise ValueError("share_keys: user_key must be 32 bytes or a native session handle")
+    aead, n = AESGCM(bytes(key_or_session)), os.urandom(12)
+    ct = aead.encrypt(n, pt, None)
+    payload = {"ver": 1, "mode": "aesgcm", "n": B64(n), "ct": B64(ct)}
     path.write_text(json.dumps(payload), encoding="utf-8")
 
-def _dec_json(path: Path, key: bytes) -> dict:
+def _dec_json(path: Path, key_or_session) -> dict:
     """Decrypt JSON previously written by _enc_json()."""
-    if len(key) != 32:
-        raise ValueError("share_keys: user_key must be 32 bytes")
     payload = json.loads(path.read_text(encoding="utf-8"))
-    aead = AESGCM(key)
-    pt = aead.decrypt(B64D(payload["n"]), B64D(payload["ct"]), None)
+
+    if _is_session_handle(key_or_session):
+        mode = payload.get("mode") or ("native" if payload.get("ver") == 2 else "")
+        if mode == "native" or (payload.get("iv") and payload.get("tag")):
+            core = get_core()
+            if core is None:
+                raise RuntimeError("share_keys: native core not loaded")
+            pt_ba = core.session_decrypt(int(key_or_session), B64D(payload["iv"]), B64D(payload["ct"]), B64D(payload["tag"]))
+            return json.loads(bytes(pt_ba).decode("utf-8"))
+
+    if not isinstance(key_or_session, (bytes, bytearray, memoryview)) or len(key_or_session) != 32:
+        raise ValueError("share_keys: user_key must be 32 bytes or a native session handle")
+    aead = AESGCM(bytes(key_or_session))
+    nonce = payload.get("n") or payload.get("nonce")
+    if not nonce:
+        raise ValueError("share_keys: invalid legacy payload")
+    pt = aead.decrypt(B64D(nonce), B64D(payload["ct"]), None)
     return json.loads(pt.decode("utf-8"))
 
 def _bundle(pub_x: bytes, pub_ed: bytes, user_id: str) -> Dict[str, str]:
@@ -56,15 +84,15 @@ def _bundle(pub_x: bytes, pub_ed: bytes, user_id: str) -> Dict[str, str]:
         "pub_ed25519": B64(pub_ed),
     }
 
-def ensure_share_keys(username: str, user_key: bytes) -> Tuple[Dict[str, str],
+def ensure_share_keys(username: str, user_key) -> Tuple[Dict[str, str],
                                                                x25519.X25519PrivateKey,
                                                                ed25519.Ed25519PrivateKey]:
     """
     Ensure persistent per-user X25519/Ed25519 keys exist.
     Returns (public_bundle, priv_x25519, priv_ed25519).
     """
-    if len(user_key) != 32:
-        raise ValueError("user_key must be 32 bytes")
+    if not (_is_session_handle(user_key) or (isinstance(user_key, (bytes, bytearray, memoryview)) and len(user_key) == 32)):
+        raise ValueError("user_key must be 32 bytes or a native session handle")
 
     keyfile = shared_key_file(username, ensure_parent=True)
 
@@ -108,7 +136,7 @@ def ensure_share_keys(username: str, user_key: bytes) -> Tuple[Dict[str, str],
     )
     return pub, priv_x, priv_ed
 
-def export_share_id_json(username: str, user_key: bytes) -> dict:
+def export_share_id_json(username: str, user_key) -> dict:
     """Return a minimal public Share ID (no private material)."""
     pub, _px, _pe = ensure_share_keys(username, user_key)
     return {

@@ -2,77 +2,27 @@
 Keyquorum Vault
 Copyright (C) 2025-2026 Anthony Hatton (AJH Software)
 
-This file is part of Keyquorum Vault.
+User catalog storage (clients/aliases/platform guide/autofill recipes).
 
-Keyquorum Vault is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+STRICT DLL-only mode:
+- Catalog is encrypted/decrypted using the native session (AES-256-GCM).
+- No raw vault key bytes are ever used in Python.
+- Integrity is provided by AES-GCM tags (no separate HMAC seal).
 
-Keyquorum Vault is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+On-disk format: JSON with base64 fields {"iv","tag","data"}.
 """
 
+from __future__ import annotations
 
-import os, json, hmac, hashlib
-from typing import Any, Tuple
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from app.paths import catalog_file, catalog_seal_file
+import os, json, base64
+from typing import Any
 import logging
 log = logging.getLogger("keyquorum")
 
-
-# ==============================
-# --- Crypto helpers (AES-GCM + HMAC integrity)
-# ==============================
-def _hkdf_subkey(user_key: bytes, info: bytes) -> bytes:
-    salt = b"\x00" * 32
-    prk = hmac.new(salt, user_key, hashlib.sha256).digest()
-    t = hmac.new(prk, info + b"\x01", hashlib.sha256).digest()
-    return t  # 32 bytes
+from app.paths import catalog_file
+from native.native_core import get_core
 
 
-def encrypt_json(plain: dict, user_key: bytes) -> bytes:
-    key = _hkdf_subkey(user_key, b"catalog:aesgcm-32")
-    nonce = os.urandom(12)
-    ct = AESGCM(key).encrypt(nonce, json.dumps(plain, ensure_ascii=False).encode("utf-8"), None)
-    return nonce + ct
-
-
-def decrypt_json(blob: bytes, user_key: bytes) -> dict:
-    if not blob:
-        return {}
-    key = _hkdf_subkey(user_key, b"catalog:aesgcm-32")
-    nonce, ct = blob[:12], blob[12:]
-    pt = AESGCM(key).decrypt(nonce, ct, None)
-    return json.loads(pt.decode("utf-8"))
-
-
-
-def write_hmac_seal(username: str, obj: dict, user_key: bytes) -> None:
-    msg = json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")
-    mac = hmac.new(_hkdf_subkey(user_key, b"catalog:hmac-32"), msg, hashlib.sha256).hexdigest()
-    f = catalog_seal_file(username, ensure_dir=True)
-    with open(f, "w", encoding="utf-8") as f:
-        f.write(mac)
-
-
-def verify_hmac_seal(username: str, obj: dict, user_key: bytes) -> bool:
-    try:
-        f = catalog_seal_file(username, ensure_dir=True)
-        with open(f, "r", encoding="utf-8") as f:
-            want = f.read().strip()
-    except Exception:
-        return False
-    msg = json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")
-    mac = hmac.new(_hkdf_subkey(user_key, b"catalog:hmac-32"), msg, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(want, mac)
-
-
-# ==============================
-# --- Catalog load / save
-# ==============================
 def _build_default_catalog(b_clients, b_aliases, b_guide, b_recipes=None) -> dict:
     return {
         "CLIENTS": b_clients,
@@ -83,208 +33,210 @@ def _build_default_catalog(b_clients, b_aliases, b_guide, b_recipes=None) -> dic
     }
 
 
-def ensure_user_catalog_created(username: str, b_clients, b_aliases, b_guide, b_recipes=None, user_key: bytes | None = None):
+def _encrypt_json_native(obj: dict, session_handle: int) -> bytes:
+    core = get_core()
+    iv = os.urandom(12)
+    pt = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+    ct_ba, tag_ba = core.session_encrypt(session_handle, iv, pt)
+    payload = {
+        "iv": base64.b64encode(iv).decode("ascii"),
+        "tag": base64.b64encode(bytes(tag_ba)).decode("ascii"),
+        "data": base64.b64encode(bytes(ct_ba)).decode("ascii"),
+        "ver": 1,
+    }
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+
+def _decrypt_json_native(blob: bytes, session_handle: int) -> dict:
+    """Decrypt an encrypted JSON container using native session.
+
+    Supports:
+      A) JSON envelope (utf-8 JSON with base64 fields)
+      B) Binary: iv(12)||tag(16)||ct
+      C) Binary: iv(12)||ct||tag(16)
+    """
+    if not blob:
+        return {}
+    if not isinstance(session_handle, int) or not session_handle:
+        raise RuntimeError("native session missing/invalid")
+
+    core = get_core()
+
+    def _dec(iv: bytes, ct: bytes, tag: bytes) -> dict:
+        pt_ba = core.session_decrypt(int(session_handle), iv, ct, tag)
+        try:
+            return json.loads(bytes(pt_ba).decode("utf-8"))
+        finally:
+            try:
+                core.secure_wipe(pt_ba)
+            except Exception:
+                pass
+
+    # JSON envelope
+    if blob[:1] in (b"{", b"["):
+        try:
+            obj = json.loads(blob.decode("utf-8"))
+            # allow plaintext json dict
+            if isinstance(obj, dict) and ("iv" not in obj or ("data" not in obj and "vault_data" not in obj)):
+                return obj
+            iv = base64.b64decode(obj["iv"])
+            tag = base64.b64decode(obj["tag"])
+            ct = base64.b64decode(obj.get("data") or obj.get("vault_data"))
+            return _dec(iv, ct, tag)
+        except Exception:
+            pass
+
+    # binary
+    if len(blob) < 12 + 16:
+        raise RuntimeError("Encrypted blob too small/invalid format")
+
+    iv = blob[:12]
+    rest = blob[12:]
+
+    # iv||tag||ct
+    if len(rest) >= 16:
+        tag1 = rest[:16]
+        ct1 = rest[16:]
+        try:
+            return _dec(iv, ct1, tag1)
+        except Exception:
+            pass
+
+    # iv||ct||tag
+    tag2 = rest[-16:]
+    ct2 = rest[:-16]
+    return _dec(iv, ct2, tag2)
+
+
+def ensure_user_catalog_created(username: str, b_clients, b_aliases, b_guide, b_recipes=None, session_handle: int | None = None):
+    """Ensure the encrypted catalog file exists for `username`.
+
+    In strict mode, `session_handle` is required to create the file.
+    """
     enc_path = catalog_file(username, ensure_parent=True)
     if os.path.exists(enc_path):
         return enc_path
+
+    if not isinstance(session_handle, int) or not session_handle:
+        raise RuntimeError("Native session handle required to create catalog")
+
     catalog = _build_default_catalog(b_clients, b_aliases, b_guide, b_recipes)
-    if user_key:
-        blob = encrypt_json(catalog, user_key)
-        with open(enc_path, "wb") as f:
-            f.write(blob)
-        write_hmac_seal(username, catalog, user_key)
-    else:
-        with open(enc_path, "w", encoding="utf-8") as f:
-            json.dump(catalog, f, indent=2, ensure_ascii=False)
+    blob = _encrypt_json_native(catalog, session_handle)
+    with open(enc_path, "wb") as f:
+        f.write(blob)
     return enc_path
 
-def load_user_catalog_raw(username: str, user_key: bytes | None) -> dict:
+
+def load_user_catalog_raw(username: str, session_handle: int | None) -> dict:
     enc_path = catalog_file(username)
     if not os.path.exists(enc_path):
-        log.debug("[CATALOG] no encrypted catalog file – returning empty overlay – returning empty overlay")
+        log.debug("[CATALOG] no catalog file; returning empty overlay")
         return {}
+    if not isinstance(session_handle, int) or not session_handle:
+        log.debug("[CATALOG] session missing; cannot decrypt")
+        return {}
+
     try:
-        if not user_key:
-            log.debug("[CATALOG] WARNING: user_key missing; cannot decrypt catalog.enc")
-            return {}
-        with open(enc_path, "rb") as f:
-            return decrypt_json(f.read(), user_key)
+        blob = open(enc_path, "rb").read()
+        # if it looks like plaintext JSON overlay (dev leftovers), accept it
+        try:
+            o = json.loads(blob.decode("utf-8"))
+            if isinstance(o, dict) and ("iv" not in o or "data" not in o):
+                return o
+        except Exception:
+            pass
+        return _decrypt_json_native(blob, session_handle) or {}
     except Exception as e:
-        log.debug("[CATALOG] decrypt failed:", e)
+        log.error("[CATALOG] decrypt failed: %s", e)
         return {}
 
 
-def save_user_catalog(username: str, data: dict, user_key: bytes | None = None):
+def save_user_catalog(username: str, overlay: dict, *, session_handle: int):
+    if not isinstance(session_handle, int) or not session_handle:
+        raise RuntimeError("Native session handle required")
     enc_path = catalog_file(username, ensure_parent=True)
-    if user_key:
-        blob = encrypt_json(data, user_key)
-        with open(enc_path, "wb") as f:
-            f.write(blob)
-        write_hmac_seal(username, data, user_key)
-    else:
-        with open(enc_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+    blob = _encrypt_json_native(overlay or {}, session_handle)
+    with open(enc_path, "wb") as f:
+        f.write(blob)
 
 
-# ==============================
-# --- Merge logic (respects __deleted__)
-# ==============================
+def merge_catalogs(b_clients, b_aliases, b_guide, b_recipes, overlay: dict) -> dict:
+    base = _build_default_catalog(b_clients, b_aliases, b_guide, b_recipes)
+    if not isinstance(overlay, dict):
+        return base
+    for k in ("CLIENTS", "ALIASES", "PLATFORM_GUIDE", "AUTOFILL_RECIPES"):
+        if isinstance(overlay.get(k), dict):
+            base[k].update(overlay.get(k) or {})
+    return base
 
-def merge_catalogs(builtins: dict, user_overlay: dict) -> dict:
-    """
-    Merge built-ins and user overlay for the catalog.
 
-    Rules:
-    - Start from built-ins.
-    - Apply per-user overrides for any fields present in user CLIENTS.
-    - Add any user-only CLIENTS that don't exist in built-ins.
-    - Respect __deleted__ so users can hide built-in entries.
-    - ALIASES and PLATFORM_GUIDE: user values override built-ins key-by-key.
-    """
-    b = builtins or {}
-    u = user_overlay or {}
+def load_effective_catalogs_from_user(username: str, b_clients, b_aliases, b_guide, b_recipes=None, *, session_handle: int, user_overlay: dict | None = None):
+    overlay = user_overlay if isinstance(user_overlay, dict) else load_user_catalog_raw(username, session_handle)
+    eff = merge_catalogs(b_clients, b_aliases, b_guide, b_recipes or {}, overlay)
+    return eff.get("CLIENTS", {}), eff.get("ALIASES", {}), eff.get("PLATFORM_GUIDE", {}), eff.get("AUTOFILL_RECIPES", {}), overlay
 
-    deleted = set(u.get("__deleted__", []))
 
-    base_clients = b.get("CLIENTS", {}) or {}
-    user_clients = u.get("CLIENTS", {}) or {}
-
-    res_clients: dict = {}
-
-    # 1) Built-in clients, unless deleted
-    for k, v in base_clients.items():
-        if k in deleted:
-            # User explicitly “deleted” this built-in client
-            continue
-
-        # Start from built-in definition
-        merged = dict(v)
-
-        # If user has overrides for this client, apply them
-        u_client = user_clients.get(k)
-        if isinstance(u_client, dict):
-            # Overlay fields completely override built-in ones:
-            # protocols, domains, exe_paths, installer, page, emails, etc.
-            merged.update(u_client)
-
-        res_clients[k] = merged
-
-    # 2) User-only clients (not in built-ins at all)
-    for k, v in user_clients.items():
-        if k in base_clients:
-            # Already handled above as an override
-            continue
-        if k in deleted:
-            # If user somehow marked a non-built-in as deleted, skip
-            continue
-        if isinstance(v, dict):
-            res_clients[k] = dict(v)
-
-    # 3) Aliases – user overlay overrides built-ins per key
-    base_aliases = b.get("ALIASES", {}) or {}
-    user_aliases = u.get("ALIASES", {}) or {}
-    res_aliases = dict(base_aliases)
-    res_aliases.update(user_aliases)
-
-    # 4) Platform guide – same pattern
-    base_guide = b.get("PLATFORM_GUIDE", {}) or {}
-    user_guide = u.get("PLATFORM_GUIDE", {}) or {}
-    res_guide = dict(base_guide)
-    res_guide.update(user_guide)
-
-    base_recipes = b.get("AUTOFILL_RECIPES", {}) or {}
-    user_recipes = u.get("AUTOFILL_RECIPES", {}) or {}
-    res_recipes = dict(base_recipes)
-    # user overlay wins key-by-key; allow per-client dict overrides
-    for rk, rv in user_recipes.items():
-        if isinstance(rv, dict) and isinstance(res_recipes.get(rk), dict):
-            merged_r = dict(res_recipes.get(rk) or {})
-            merged_r.update(rv)
-            res_recipes[rk] = merged_r
-        else:
-            res_recipes[rk] = rv
-
+def debug_catalog_status(username: str) -> dict:
+    enc_path = catalog_file(username)
     return {
-        "CLIENTS": res_clients,
-        "ALIASES": res_aliases,
-        "PLATFORM_GUIDE": res_guide,
-        "AUTOFILL_RECIPES": res_recipes,
-        "__deleted__": sorted(deleted),
-        "version": u.get("version", 1),
+        "path": enc_path,
+        "exists": os.path.exists(enc_path),
+        "size": os.path.getsize(enc_path) if os.path.exists(enc_path) else 0,
     }
 
 
-def load_effective_catalogs_from_user(
-    username: str,
-    CLIENTS: dict,
-    ALIASES: dict,
-    PLATFORM_GUIDE: dict,
-    AUTOFILL_RECIPES: dict | None = None,
-    user_key: bytes | None = None,
-    user_overlay: dict | None = None,
-) -> Tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], dict]:
-    overlay = user_overlay if user_overlay is not None else load_user_catalog_raw(username, user_key)
-    merged = merge_catalogs(
-        {"CLIENTS": CLIENTS, "ALIASES": ALIASES, "PLATFORM_GUIDE": PLATFORM_GUIDE, "AUTOFILL_RECIPES": (AUTOFILL_RECIPES or {})},
-        overlay or {}
-    )
-    return merged["CLIENTS"], merged["ALIASES"], merged["PLATFORM_GUIDE"], merged.get("AUTOFILL_RECIPES", {}) or {}, merged
-
-
-# --- Diagnostics -------------------
-
-def debug_catalog_status(username: str, user_key: bytes | None):
-    """Prints catalog file existence, overlay stats, and HMAC result."""
-    try:
-        enc = catalog_file(username, ensure_parent=True)
-        log.debug(f"[CATALOG] path: {enc}")
-        log.debug(f"[CATALOG] exists: {os.path.exists(enc)} size={os.path.getsize(enc) if os.path.exists(enc) else 0}")
-
-        overlay = load_user_catalog_raw(username, user_key)
-        log.debug(f"[CATALOG] overlay keys: {list(overlay.keys())}")
-        dels = set(overlay.get("__deleted__", [])) if isinstance(overlay, dict) else set()
-        log.debug(f"[CATALOG] __deleted__ count: {len(dels)} ({sorted(list(dels))[:5]}{'...' if len(dels)>5 else ''})")
-
-        ok = False
-        if user_key:
-            try:
-                ok = verify_hmac_seal(username, overlay or {}, user_key)
-            except Exception as e:
-                log.debug("[CATALOG] HMAC verify error:", e)
-        log.debug(f"[CATALOG] HMAC ok: {ok}")
-
-        return overlay, ok
-    except Exception as e:
-        log.debug("[CATALOG] debug_catalog_status failed:", e)
-        return {}, False
-
-# ==============================
-# --- password change
-# ==============================
-def migrate_user_catalog_overlay(username: str, old_key: bytes, new_key: bytes):
+def migrate_user_catalog_overlay(username: str, old_session_handle: int, new_session_handle: int):
     """
-    Re-encrypt the user's catalog overlay (catalog.enc) from old_key -> new_key.
-    Returns (ok: bool, msg: str)
+    Migrate the encrypted user catalog overlay from old DLL session -> new DLL session.
+
+    DLL-only:
+    - read/decrypt with old_session_handle
+    - save/encrypt with new_session_handle
+    - no Python crypto fallback
+
+    Backward-compatible behavior:
+    - if the file is still plaintext JSON, re-encrypt it with new_session_handle
     """
-    if not username:
-        return False, "No username"
-    if not old_key or not new_key or old_key == new_key:
-        return True, "No key change"
+    enc_path = catalog_file(username)
+    if not os.path.exists(enc_path):
+        return True, "No catalog overlay file found."
 
     try:
-        overlay = load_user_catalog_raw(username, old_key) or {}
-        if not overlay:
-            return True, "No overlay to migrate"
+        old_sess = int(old_session_handle) if old_session_handle else 0
+        new_sess = int(new_session_handle) if new_session_handle else 0
+    except Exception:
+        return False, "Invalid session handle(s)."
 
-        # Save overlay under new key
-        save_user_catalog(username, overlay, new_key)
+    if old_sess <= 0 or new_sess <= 0:
+        return False, "Missing old/new session handle."
 
-        # Re-seal under new key
+    if old_sess == new_sess:
+        return True, "Catalog migration skipped (same session)."
+
+    try:
+        # 1) Normal case: load current overlay using OLD session
+        data = load_user_catalog_raw(username, old_sess)
+
+        if isinstance(data, dict) and data:
+            save_user_catalog(username, data, session_handle=new_sess)
+            return True, f"Migrated catalog overlay ({len(data)} top-level item(s))."
+
+        # 2) If empty dict came back, check whether the file is legacy plaintext JSON
+        blob = open(enc_path, "rb").read()
         try:
-            write_hmac_seal(username, overlay, new_key)
-        except TypeError:
-            write_hmac_seal(username, new_key)
+            o = json.loads(blob.decode("utf-8"))
+        except Exception:
+            return False, "Catalog overlay could not be loaded with old session and is not plaintext JSON."
 
-        return True, "Catalog overlay migrated"
+        if not isinstance(o, dict):
+            return False, "Catalog overlay plaintext format is invalid."
+
+        # If it already looks like encrypted wrapper JSON, then old-session decrypt failed
+        if "iv" in o and "data" in o:
+            return False, "Catalog overlay appears encrypted but could not be loaded with old session."
+
+        save_user_catalog(username, o, session_handle=new_sess)
+        return True, f"Upgraded plaintext catalog overlay ({len(o)} top-level item(s))."
+
     except Exception as e:
-        return False, f"Catalog migrate failed: {e}"
+        return False, f"Catalog migration failed: {e}"

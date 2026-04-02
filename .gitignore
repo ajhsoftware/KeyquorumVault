@@ -18,7 +18,8 @@ target/
 # MSIX layout output (huge; build artifact)
 msix/
 #
-
+app/owner.py
+**/app/owner.py
 # Packaged portable vault / exports (never commit)
 *.kqpkg
 

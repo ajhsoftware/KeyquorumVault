@@ -34,7 +34,7 @@ class DeviceUnlockDialog(QDialog):
     IMPORTANT:
     - This dialog is intended to be opened AFTER login.
     - It uses:
-        - self.app.userKey (master key in memory)
+        - self.app.core_session_handle (master key in memory)
         - auth.login_handler.get_user_record / set_user_record (persistent record)
     - It does NOT require self.app.user_record
     """
@@ -132,8 +132,8 @@ class DeviceUnlockDialog(QDialog):
             return ""
 
     def _mk(self) -> bytes:
-        # Your app stores the master key as self.userKey (bytes) after login
-        k = getattr(self.app, "userKey", None)
+        # Your app stores the master key as self.core_session_handle (bytes) after login
+        k = getattr(self.app, "core_session_handle", None)
         if isinstance(k, (bytes, bytearray)) and k:
             return bytes(k)
         raise RuntimeError("Vault key not in memory (open this dialog after login).")
@@ -142,7 +142,7 @@ class DeviceUnlockDialog(QDialog):
         u = self._username()
         if not u:
             raise RuntimeError("No username available (open this dialog after login).")
-        from auth.login_handler import get_user_record
+        from auth.login.login_handler import get_user_record
         rec = get_user_record(u) or {}
         if not isinstance(rec, dict) or not rec:
             raise RuntimeError("User record not found.")
@@ -152,7 +152,7 @@ class DeviceUnlockDialog(QDialog):
         u = self._username()
         if not u:
             raise RuntimeError("No username available (open this dialog after login).")
-        from auth.login_handler import set_user_record
+        from auth.login.login_handler import set_user_record
         set_user_record(u, rec)
 
     def _hello_on(self, rec: dict) -> bool:

@@ -14,14 +14,32 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 """
 
+# .kqad                     = audit file
+# .kqslt                    = audit file salt
+# .kqadmr                   = audit mirror file
+# .kquslk                   = user lock flag
+#  {user}tamper.kqtp        = audit tamper
+# .audit.enc.jsonl          = audit dir for user
+# .kq_id                    = identities file
+#  {user}_KQ.kq             = user db file
+# .slt                      = salt file
+# .kq_wrap                  = vault wrapped file
+#  {user}_trash.bin         = trash path
+#  {user}pw_last.bin        = pw cache file
+# .kq_user                  = vault file 
+#  {user}_bline.bsln        = baseline file
+#  {user}_prefs.sp          = security prefs file
+# .sharekeys.json           = shared key file
+#  {user}.enc               = catalog file
+#  {user}.hmac              = catalog seal file
+#  {user}_breach_cache.json = breach cache
+#  BTOK.txt                 = bridge token dir
+
 from __future__ import annotations
-
-
 import os, sys, logging, inspect
 from pathlib import Path
 from typing import Optional
 from functools import lru_cache
-
 import app.kq_logging as kql
 
 log = logging.getLogger("keyquorum")
@@ -279,7 +297,6 @@ def _backup_dir(username: str):
     """
     return (user_root(username, ensure=False) / "Backups")
 
-
 BACKUP_DIR = _backup_dir
 # -----------------------------------
 # mkdir instrumentation
@@ -440,7 +457,7 @@ def salt_dir(username: str, *, ensure_parent: bool = False) -> Path:
     _ensure_dir_logged(p, bool(ensure_parent) and not _paths_ro(), note="salt_dir")
     return p
 
-def salt_file(username: str, *, ensure_parent: bool = False, name_only: bool = False) -> Path:
+def salt_file(username: str, *, ensure_parent: bool = False, name_only: bool = False) -> Path:  # NOTE: remove next update 
     name = f"kq_user_{username}.slt"
     return Path(name) if name_only else salt_dir(username, ensure_parent=ensure_parent) / name
 
@@ -585,6 +602,7 @@ def licenses_dir(username: str | None = None, *, ensure_parent: bool = False) ->
     _ensure_dir_logged(p, ensure_parent, note="licenses_dir")
     return p
 
+# remove here
 def licenses_file(username: str | None = None, *, ensure_parent: bool = False, name_only: bool = False, use_type: str = "lemon", ensure_dir: bool = None) -> Path:
     if ensure_dir is not None:
         ensure_parent = bool(ensure_parent or ensure_dir)
@@ -642,11 +660,6 @@ def shared_key_file(username: str, *, ensure_parent: bool = False, name_only: bo
     _ensure_dir_logged(base, ensure_parent, note="shared_key_file(base)")
     return Path(name) if name_only else base / name
 
-def category_schema_file(username: str, *, ensure_parent: bool = False, name_only: bool = False, ensure_dir: bool = None) -> Path:
-    if ensure_dir is not None:
-        ensure_parent = bool(ensure_parent or ensure_dir)
-    name = f"{username}.schema.json"
-    return Path(name) if name_only else config_dir(username, ensure_parent=ensure_parent) / name
 
 def catalog_file(username: str, *, ensure_parent: bool = False, name_only: bool = False, ensure_dir: bool = None) -> Path:
     if ensure_dir is not None:
@@ -654,11 +667,6 @@ def catalog_file(username: str, *, ensure_parent: bool = False, name_only: bool 
     name = f"{username}.enc"
     return Path(name) if name_only else config_dir(username, ensure_parent=ensure_parent) / name
 
-def catalog_seal_file(username: str, *, ensure_parent: bool = False, name_only: bool = False, ensure_dir: bool = None) -> Path:
-    if ensure_dir is not None:
-        ensure_parent = bool(ensure_parent or ensure_dir)
-    name = f"{username}.hmac"
-    return Path(name) if name_only else config_dir(username, ensure_parent=ensure_parent) / name
 
 def breach_cache(username: str, *, ensure_parent: bool = False, name_only: bool = False, ensure_dir: bool = None) -> Path:
     if ensure_dir is not None:
@@ -666,12 +674,10 @@ def breach_cache(username: str, *, ensure_parent: bool = False, name_only: bool 
     name = f"{username}_breach_cache.json"
     return Path(name) if name_only else config_dir(username, ensure_parent=ensure_parent) / name
 
+# NOTE: old removed old dev key
 def dev_file(username: str, *, ensure_parent: bool = False, name_only: bool = False) -> Path:
     name = "dev_entitlements.json"
     return Path(name) if name_only else config_dir(username, ensure_parent=ensure_parent) / name
-
-def _hints_path() -> Path:
-    return Path(config_dir()) / "hints.json"
 
 def ui_file(name: str = "keyquorum_ui", *, must_exist: bool = False) -> Path:
     return res_path(Path("ui") / f"{name}.ui", must_exist=must_exist)
@@ -757,13 +763,11 @@ def bridge_token_dir(username: str | None = None, ensure_parent: bool = True) ->
 def find_passkey_manager_exe(base_dir: str) -> str | None:
     cands = []
 
-    # 1) Bundled (prefer)
     cands += [
         os.path.join(base_dir, "_internal", "resources", "bin", "Keyquorum.PasskeyManager.exe"),
         os.path.join(base_dir, "resources", "bin", "Keyquorum.PasskeyManager.exe"),
     ]
 
-    # (optional) also allow a shorter name if you ship it that way
     cands += [
         os.path.join(base_dir, "_internal", "resources", "bin", "PasskeyManager.exe"),
         os.path.join(base_dir, "resources", "bin", "PasskeyManager.exe"),
@@ -818,11 +822,8 @@ def debug_log_paths(username: str | None = None) -> None:
             pass
 
 def user_log_paths(username: str | None = None) -> None:
-
     spf = security_prefs_file(username, ensure_parent=False, name_only=False)
-    csf = category_schema_file(username, ensure_parent=False)
     cf = catalog_file(username, ensure_parent=False)
-    casf = catalog_seal_file(username, ensure_parent=False)
     skf = shared_key_file(username, ensure_parent=False)
     bcf = breach_cache(username, ensure_parent=False)
     pif = profile_pic(username)
@@ -844,7 +845,7 @@ def user_log_paths(username: str | None = None) -> None:
     bk = _backup_dir(username)
     # -----------------------
     log.info(f"{kql.i('path')} [US_PATHS] {spf} exists={spf.exists()}")
-    log.info(f"{kql.i('path')} [US_PATHS] {csf} exists={csf.exists()}")
+    # log.info(f"{kql.i('path')} [US_PATHS] {csf} exists={csf.exists()}")
     log.info(f"{kql.i('path')} [US_PATHS] {cf} exists={cf.exists()}")
     log.info(f"{kql.i('path')} [US_PATHS] {casf} exists={casf.exists()}")
     log.info(f"{kql.i('path')} [US_PATHS] {skf} exists={skf.exists()}")

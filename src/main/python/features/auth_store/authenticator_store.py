@@ -19,6 +19,7 @@ import time, base64, hashlib, secrets, urllib.parse as _url
 from typing import List, Optional, Tuple
 import logging
 log = logging.getLogger("keyquorum")
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 # Runtime deps
 try:
@@ -28,12 +29,8 @@ except Exception:
 
 # Use vault APIs for CRUD
 from vault_store.vault_store import load_vault, add_vault_entry, save_vault
-# --- local AES-GCM helpers just for field-wrapping the Base32 secret ---
-# (keeps the secret ciphertext even inside the decrypted in-memory vault)
-try:
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-except Exception:
-    AESGCM = None
+# --- field wrapping uses the NATIVE session API (no raw key bytes) ---
+from native.native_core import get_core
 from qtpy.QtCore import QCoreApplication
 
 # ==============================
@@ -43,36 +40,55 @@ from qtpy.QtCore import QCoreApplication
 def _tr(text: str) -> str:
     return QCoreApplication.translate("authenticator_store", text)
 
-def _field_encrypt(user_key: bytes, plaintext: bytes) -> str:
+def _field_encrypt(session_handle: int, plaintext: bytes) -> str:
+    """Encrypt a small secret field using the native session (AES-256-GCM).
+
+    Returns base64 of: iv(12) | tag(16) | ciphertext.
     """
-    AES-GCM with a fresh 12-byte nonce; returns base64 of nonce|ciphertext|tag.
-    """
-    if AESGCM is None:
-        raise RuntimeError(_tr("cryptography is required for authenticator secrets (pip install cryptography)"))
-    aead = AESGCM(user_key)
+    if not isinstance(session_handle, int) or not session_handle:
+        raise RuntimeError(_tr("Vault must be unlocked (native session missing)."))
+
+    core = get_core()
     nonce = secrets.token_bytes(12)
-    ct = aead.encrypt(nonce, plaintext, b"authenticator-field")
-    # AESGCM returns ct||tag; we store nonce||ct
-    blob = nonce + ct
+    ct_ba, tag_ba = core.session_encrypt(session_handle, nonce, plaintext)
+    blob = nonce + bytes(tag_ba) + bytes(ct_ba)
     return base64.b64encode(blob).decode("ascii")
 
-def _field_decrypt(user_key: bytes, enc_b64: str) -> bytes:
-    if AESGCM is None:
-        raise RuntimeError(_tr("cryptography is required for authenticator secrets (pip install cryptography)"))
-    raw = base64.b64decode(enc_b64)
-    nonce, ct = raw[:12], raw[12:]
-    aead = AESGCM(user_key)
-    return aead.decrypt(nonce, ct, b"authenticator-field")
+def _field_decrypt(session_handle: int, enc_b64: str) -> bytes:
+    """Decrypt base64(iv|tag|ct) produced by _field_encrypt()."""
+    if not isinstance(session_handle, int) or not session_handle:
+        raise RuntimeError(_tr("Vault must be unlocked (native session missing)."))
+    if not enc_b64:
+        return b""
+    raw = base64.b64decode(enc_b64.encode("ascii"))
+    if len(raw) < (12 + 16):
+        raise ValueError("bad wrapped field")
+    iv = raw[:12]
+    tag = raw[12:28]
+    ct = raw[28:]
+    core = get_core()
+    pt_ba = core.session_decrypt(session_handle, iv, ct, tag)
+    try:
+        return bytes(pt_ba)
+    finally:
+        try:
+            core.secure_wipe(pt_ba)
+        except Exception:
+            pass
+
+# NOTE: Strict DLL-only mode.
+# A historical Python AESGCM fallback existed here. It is intentionally removed
+# to avoid accidentally treating a native session handle (int) as raw key bytes.
 
 def _normalize_algo(algo: str) -> str:
     a = (algo or "SHA1").upper()
     return a if a in {"SHA1","SHA256","SHA512"} else "SHA1"
 
-def _pack_secret(user_key: bytes, secret_b32: str) -> str:
-    return _field_encrypt(user_key, secret_b32.encode("utf-8"))
+def _pack_secret(session_handle: int, secret_b32: str) -> str:
+    return _field_encrypt(session_handle, secret_b32.encode("utf-8"))
 
-def _unpack_secret(user_key: bytes, enc_b64: str) -> str:
-    return _field_decrypt(user_key, enc_b64).decode("utf-8")
+def _unpack_secret(session_handle: int, enc_b64: str) -> str:
+    return _field_decrypt(session_handle, enc_b64).decode("utf-8")
 
 def _now() -> float:
     return time.time()
@@ -93,11 +109,11 @@ def _entries_list(vu) -> List[dict]:
         return []
     return list(vu or [])
 
-def list_authenticators(username: str, user_key: bytes) -> List[dict]:
+def list_authenticators(username: str, session_handle: int) -> List[dict]:
     """
     Return authenticator entries stored inside the user's vault.
     """
-    vu = load_vault(username, user_key)
+    vu = load_vault(username, session_handle)
     entries = _entries_list(vu)
     return [
         e for e in entries
@@ -110,7 +126,7 @@ def list_authenticators(username: str, user_key: bytes) -> List[dict]:
 
 def add_authenticator(
     username: str,
-    user_key: bytes,
+    session_handle: int,
     *,
     label: str,
     account: str,
@@ -124,7 +140,7 @@ def add_authenticator(
     if not sb32:
         raise ValueError(_tr("Secret is empty"))
 
-    enc = _pack_secret(user_key, sb32)
+    enc = _pack_secret(session_handle, sb32)
     entry = {
         "id": secrets.token_hex(8),
         "_type": "authenticator",
@@ -141,14 +157,14 @@ def add_authenticator(
         "updated_ts": _now(),
     }
     # persist a single entry
-    add_vault_entry(username, user_key, entry)
+    add_vault_entry(username, session_handle, entry)
     return entry
 
 # ==============================
 # ---------- otpauth export (URI + QR image) ----------
 # ==============================
 
-def build_otpauth_uri(user_key: bytes, entry: dict) -> str:
+def build_otpauth_uri(session_handle: int, entry: dict) -> str:
     """
     Reconstruct a standards-compliant otpauth:// URI from a stored authenticator entry.
     """
@@ -157,7 +173,7 @@ def build_otpauth_uri(user_key: bytes, entry: dict) -> str:
     label   = (entry.get("label") or account or issuer or "Authenticator").strip()
 
     # Decrypt base32 secret
-    secret_b32 = _unpack_secret(user_key, entry["secret_enc_b64"]).replace(" ", "")
+    secret_b32 = _unpack_secret(session_handle, entry["secret_enc_b64"]).replace(" ", "")
 
     digits = int(entry.get("digits", 6) or 6)
     period = int(entry.get("period", 30) or 30)
@@ -181,13 +197,13 @@ def build_otpauth_uri(user_key: bytes, entry: dict) -> str:
         
     return f"otpauth://totp/{label_enc}?" + _url.urlencode(q)
 
-def export_otpauth_qr_png(user_key: bytes, entry: dict, out_path: str) -> str:
+def export_otpauth_qr_png(session_handle: int, entry: dict, out_path: str) -> str:
     """
     Create a PNG QR code for the given entry's otpauth URI.
     Tries 'segno' (pure-Python). Falls back to 'qrcode' if available.
     Returns the path written.
     """
-    uri = build_otpauth_uri(user_key, entry)
+    uri = build_otpauth_uri(int(session_handle), entry)
 
     # Try segno first (no pillow dependency)
     try:
@@ -207,11 +223,11 @@ def export_otpauth_qr_png(user_key: bytes, entry: dict, out_path: str) -> str:
     except Exception as e:
         raise RuntimeError(_tr("No QR generator available. Install 'segno' or 'qrcode'.")) from e
     
-def export_otpauth_qr_bytes(user_key: bytes, entry: dict) -> bytes:
+def export_otpauth_qr_bytes(session_handle: int, entry: dict) -> bytes:
     """
     Return PNG bytes of the QR (useful for showing in a dialog without touching disk).
     """
-    uri = build_otpauth_uri(user_key, entry)
+    uri = build_otpauth_uri(int(session_handle), entry)
 
     # segno path
     try:
@@ -231,11 +247,116 @@ def export_otpauth_qr_bytes(user_key: bytes, entry: dict) -> bytes:
     except Exception as e:
         raise RuntimeError(_tr("No QR generator available. Install 'segno' or 'qrcode'.")) from e
 
+
+
+# ===================
+# ---------- SESSION-BASED migration (DLL ONLY) ----------
+# ===================
+
+def rewrap_authenticator_entries_with_sessions(entries: list[dict], old_session: int, new_session: int):
+    """
+    Rewrap authenticator secrets using native session handles only.
+
+    Returns: (ok: bool, msg: str, changed: int, failed: int)
+    """
+    if not entries:
+        return True, _tr("No authenticator entries to migrate."), 0, 0
+
+    if not isinstance(old_session, int) or old_session <= 0:
+        return False, _tr("Old native session missing."), 0, 0
+
+    if not isinstance(new_session, int) or new_session <= 0:
+        return False, _tr("New native session missing."), 0, 0
+
+    if old_session == new_session:
+        return True, _tr("No session change detected."), 0, 0
+
+    changed = 0
+    failed = 0
+    had_secrets = 0
+
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+
+        enc = e.get("secret_enc_b64")
+        if not enc:
+            continue
+
+        had_secrets += 1
+
+        try:
+            secret_plain = _field_decrypt(old_session, enc)
+            e["secret_enc_b64"] = _field_encrypt(new_session, secret_plain)
+            e["updated_ts"] = _now()
+            changed += 1
+        except Exception as ex:
+            failed += 1
+            try:
+                log.warning("[AUTH-MIGRATE] entry_id=%s failed: %s", e.get("id"), ex)
+            except Exception:
+                pass
+
+    if had_secrets == 0:
+        return True, _tr("No encrypted authenticator secrets found to migrate."), 0, 0
+
+    if changed == 0:
+        return False, _tr("Migration failed: could not decrypt any secrets with the previous native session."), 0, failed
+
+    if failed > 0:
+        return True, _tr("Migrated {changed} authenticator(s), {failed} failed.").format(
+            changed=changed, failed=failed
+        ), changed, failed
+
+    return True, _tr("Migrated {changed} authenticator(s).").format(changed=changed), changed, 0
+
+
+def migrate_authenticator_store_with_sessions(username: str, old_session: int, new_session: int):
+    """
+    DLL-only authenticator migration.
+    Load vault with NEW live session, rewrap authenticator secrets from
+    OLD session -> NEW session, then save back with NEW session.
+    """
+    try:
+        vu = load_vault(username, new_session)
+        entries = _entries_list(vu)
+
+        auths = [
+            e for e in entries
+            if isinstance(e, dict) and (
+                e.get("_type") == "authenticator" or
+                (e.get("Category") == AUTH_CATEGORY_NAME) or
+                (str(e.get("category", "")).lower() == "authenticator")
+            )
+        ]
+
+        try:
+            log.info(
+                "[AUTH-MIGRATE] username=%s total_entries=%s auth_entries=%s",
+                username, len(entries or []), len(auths)
+            )
+        except Exception:
+            pass
+
+        ok, msg, changed, failed = rewrap_authenticator_entries_with_sessions(
+            auths, old_session, new_session
+        )
+
+        if ok and changed:
+            save_vault(username, new_session, entries)
+
+        return ok, msg, changed, failed
+
+    except Exception as e:
+        return False, _tr("Authenticator migration error: {err}").format(err=e), 0, 0
+
+
+
 # ==============================
 # ---------- key migration (password change / salt rotation / change password) ----------
 # ==============================
 
-def rewrap_authenticator_entries(entries: list[dict], old_key: bytes, new_key: bytes):
+def rewrap_authenticator_entries_old(entries: list[dict], old_key: bytes, new_key: bytes):
     """
     Returns: (ok: bool, msg: str, changed: int, failed: int)
     ok=True means migration completed (even if some entries failed).
@@ -276,7 +397,7 @@ def rewrap_authenticator_entries(entries: list[dict], old_key: bytes, new_key: b
 
     return True, _tr("Migrated {changed} authenticator(s).").format(changed=changed), changed, 0
 
-def migrate_authenticator_store(username: str, old_key: bytes, new_key: bytes):
+def migrate_authenticator_store_old(username: str, old_key: bytes, new_key: bytes):
     """
     Migrate authenticator secrets after a password change / salt rotation.
 
@@ -307,8 +428,8 @@ def migrate_authenticator_store(username: str, old_key: bytes, new_key: bytes):
     except Exception as e:
         return False, _tr("Authenticator migration error: {err}").format(err=e), 0, 0
 
-def update_authenticator(username: str, user_key: bytes, entry_id: str, **updates) -> bool:
-    vu = load_vault(username, user_key)
+def update_authenticator(username: str, session_handle: int, entry_id: str, **updates) -> bool:
+    vu = load_vault(username, session_handle)
     entries = _entries_list(vu)
     changed = False
 
@@ -321,7 +442,7 @@ def update_authenticator(username: str, user_key: bytes, entry_id: str, **update
                     e[k] = updates[k]
             if "secret_base32" in updates and updates["secret_base32"]:
                 sb32 = (updates["secret_base32"] or "").replace(" ", "")
-                e["secret_enc_b64"] = _pack_secret(user_key, sb32)
+                e["secret_enc_b64"] = _pack_secret(session_handle, sb32)
             e["updated_ts"] = _now()
             # keep it in the system category
             e["Category"] = AUTH_CATEGORY_NAME
@@ -330,20 +451,20 @@ def update_authenticator(username: str, user_key: bytes, entry_id: str, **update
             break
 
     if changed:
-        save_vault(username, user_key, entries)
+        save_vault(username, session_handle, entries)
     return changed
 
-def delete_authenticator(username: str, user_key: bytes, entry_id: str) -> bool:
-    entries = _entries_list(load_vault(username, user_key))
+def delete_authenticator(username: str, session_handle: int, entry_id: str) -> bool:
+    entries = _entries_list(load_vault(username, session_handle))
     new_entries = [e for e in entries if not (
         isinstance(e, dict) and e.get("_type") == "authenticator" and e.get("id") == entry_id
     )]
     if len(new_entries) != len(entries):
-        save_vault(username, user_key, new_entries)
+        save_vault(username, session_handle, new_entries)
         return True
     return False
 
-def get_current_code(user_key: bytes, entry: dict) -> Tuple[str, int]:
+def get_current_code(session_handle: int, entry: dict) -> Tuple[str, int]:
     if pyotp is None:
         return ("—", 0)
     try:
@@ -354,7 +475,7 @@ def get_current_code(user_key: bytes, entry: dict) -> Tuple[str, int]:
             "SHA512": hashlib.sha512,
         }.get(algo, hashlib.sha1)
 
-        secret_b32 = _unpack_secret(user_key, entry["secret_enc_b64"])
+        secret_b32 = _unpack_secret(session_handle, entry["secret_enc_b64"])
         period = int(entry.get("period", 30))
         digits = int(entry.get("digits", 6))
 
@@ -395,10 +516,10 @@ def parse_otpauth_uri(uri: str) -> Optional[dict]:
     except Exception:
         return None
 
-def add_from_otpauth_uri(username: str, user_key: bytes, uri: str) -> dict:
+def add_from_otpauth_uri(username: str, session_handle: int, uri: str) -> dict:
     p = parse_otpauth_uri(uri)
     if not p: raise ValueError(_tr("Invalid otpauth URI"))
-    return add_authenticator(username, user_key, **p)
+    return add_authenticator(username, session_handle, **p)
 
 def import_otpauth_from_qr_image(image_path: str) -> Optional[str]:
     """

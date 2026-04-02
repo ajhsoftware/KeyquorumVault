@@ -26,7 +26,7 @@ import shutil
 from pathlib import Path
 from typing import Optional, Tuple
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from vault_store.key_utils import derive_key_argon2id
+from native.native_core import get_core
 from security.secure_audit import log_event_encrypted
 
 log = logging.getLogger("keyquorum")
@@ -43,6 +43,36 @@ from qtpy.QtCore import QCoreApplication
 
 def _tr(text: str) -> str:
     return QCoreApplication.translate("identity_store", text)
+
+
+def _secure_zero_ba(buf: bytearray) -> None:
+    try:
+        core = get_core()
+        core.secure_wipe(buf)
+    except Exception:
+        for i in range(len(buf)):
+            buf[i] = 0
+
+def _derive_identity_key_native(secret_text: str, salt: bytes) -> bytes:
+    """
+    Strict-native KEK derivation for identity password wrappers.
+
+    The DLL derives the 32-byte key; there is no Python Argon2 fallback here.
+    """
+    if not isinstance(secret_text, str) or not secret_text:
+        raise ValueError("secret_text must be a non-empty string")
+    if not isinstance(salt, (bytes, bytearray, memoryview)) or not bytes(salt):
+        raise ValueError("salt must be non-empty bytes")
+
+    core = get_core()
+    if not core:
+        raise RuntimeError("Native core not loaded. DLL is required.")
+
+    pw_buf = bytearray(secret_text.encode("utf-8"))
+    try:
+        return bytes(core.derive_vault_key(pw_buf, bytes(salt)))
+    finally:
+        _secure_zero_ba(pw_buf)
 
 # ==============================
 # --- forgot password rewrap: bind recovery wrapper
@@ -227,12 +257,11 @@ def rewrap_with_new_password(username: str, master_key: bytes, new_password: str
             wrappers.append(pw)
 
         pw_salt = _b64d(pw["salt"]) if pw.get("salt") else os.urandom(16)
-        kek_pw  = derive_key_argon2id(new_password, pw_salt)
+        kek_pw  = _derive_identity_key_native(new_password, pw_salt)
 
         # IMPORTANT: keep this aligned with create_or_open_with_password
         # so login can still decrypt the DMK from the password wrapper.
         n1, ct1 = _aes_enc(kek_pw, b"KQID-DMK", cek)   # 'cek' is actually DMK here
-
         pw.update(
             {
                 "salt":  _b64e(pw_salt),
@@ -240,8 +269,6 @@ def rewrap_with_new_password(username: str, master_key: bytes, new_password: str
                 "ct":    _b64e(ct1),
             }
         )
-
-
         # 5) Refresh recovery wrapper with same MK (in case we want to rotate salt)
         if recw is None:
             recw = {"type": "recovery"}
@@ -279,7 +306,6 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 
 def _kek_from_mk(master_key: bytes, salt: bytes) -> bytes:
-    # Derive a KEK deterministically from MK (does not weaken MK; HKDF isolates usage)
     hkdf = HKDF(algorithm=hashes.SHA256(), length=32, salt=salt, info=b"kq/identity/recovery")
     return hkdf.derive(master_key)
 
@@ -347,16 +373,12 @@ def _write_public_header(username: str, header: Dict) -> None:
     from app.paths import identities_file
     p = Path(identities_file(username, ensure_parent=True))
 
-    try:
-        # Read existing payload (nonce + ciphertext) so we don't touch it
-        _, payload_nonce, payload_ct = _read_header_nonce_ct(p)
-    except Exception:
-        # No valid identity yet → create minimal empty payload
-        dmk = secrets.token_bytes(32)
-        inner = {"twofa": {}, "recovery": {}, "meta": header.get("meta", {})}
-        payload_nonce, payload_ct = _aes_enc(dmk, b"KQID-PAYLOAD", _canon(inner))
+    # Read existing payload (nonce + ciphertext) so we don't touch it.
+    # IMPORTANT: Do NOT attempt to "repair" or recreate payload here. Header-only
+    # updates must never risk overwriting user data.
+    _, payload_nonce, payload_ct = _read_header_nonce_ct(p)
 
-    # Now write header + existing (or freshly created) payload in the new format
+    # Now write header + preserved payload in the current format
     _write_all(p, header, payload_nonce, payload_ct)
 
 def ensure_mk_hash_in_header(username: str, mk: bytes) -> None:
@@ -523,24 +545,32 @@ def _write_all(path: Path, header: dict, payload_nonce: bytes, payload_ct: bytes
 # Public API
 # ==============================
 
-def create_or_open_with_password(username: str, password: str | bytes) -> tuple[bytes, dict, dict]:
+def create_or_open_with_password(username: str, password: str | bytes, salt: bytes | None = None) -> tuple[bytes, dict, dict]:
     """
     Open identity file for user. Creates a new identity if missing.
     Returns (dmk, inner, header).
+
+    For brand-new accounts, pass the already-generated vault salt so the
+    identity header and vault use the same authoritative salt value.
     """
     p = _user_id_file(username, ensure_parent=True)
     if not p.exists():
         # new identity
-        # Require a textual password to derive the initial KEK.  This path
+        # Require a textual password to derive the initial KEK. This path
         # intentionally rejects bytes-like passwords to avoid accidentally
         # binding an identity to a derived key without a corresponding
-        # memorable passphrase.  DPAPI‑bound logins never create new
+        # memorable passphrase. DPAPI-bound logins never create new
         # identities.
         if not isinstance(password, str):
             raise TypeError("password must be a string when creating a new identity")
 
-        salt = secrets.token_bytes(16)
-        kek  = derive_key_argon2id(password, salt)  # 32 bytes
+        if salt is None:
+            raise ValueError("salt must be non-empty bytes")
+        if not isinstance(salt, (bytes, bytearray, memoryview)) or not bytes(salt):
+            raise ValueError("salt must be non-empty bytes")
+        salt = bytes(salt)
+
+        kek  = _derive_identity_key_native(password, salt)  # 32 bytes
         dmk  = secrets.token_bytes(32)
         n1, ct1 = _aes_enc(kek, b"KQID-DMK", dmk)
 
@@ -554,6 +584,7 @@ def create_or_open_with_password(username: str, password: str | bytes) -> tuple[
                 "twofa_backup_count": 0,
                 "login_backup_count": 0,
                 "has_totp": False,
+                "master_salt_b64": _b64e(salt),
             },
         }
 
@@ -589,7 +620,7 @@ def create_or_open_with_password(username: str, password: str | bytes) -> tuple[
         # inadvertently using a mutable memoryview or subclass.
         kek = bytes(password)
     else:
-        kek = derive_key_argon2id(password, salt)
+        kek = _derive_identity_key_native(password, salt)
     dmk  = _aes_dec(kek, b"KQID-DMK", n1, ct1)
     inner = json.loads(_aes_dec(dmk, b"KQID-PAYLOAD", n2, ct2).decode("utf-8"))
     return dmk, inner, hdr
@@ -928,13 +959,56 @@ def derive_identity_kek(username: str, password: str) -> bytes:
         raise RuntimeError("identity has no password wrapper")
 
     salt = _b64d(pw["salt"])
-    return derive_key_argon2id(password, salt)
+    return _derive_identity_key_native(password, salt)
 
 # -------- YubiKey config --------
 
+def _apply_yubi_public_meta(meta: dict, *, mode: str | None, serial: str | None = None, slot: int | None = None, salt_b64: str | None = None, nonce_b64: str | None = None, wrapped_b64: str | None = None, ykman_path: str | None = None, mk_hash_b64: str | None = None) -> None:
+    """Mirror the minimum Yubi WRAP metadata into header.meta for passwordless flows.
+
+    The payload remains encrypted as before. This only exposes the non-secret WRAP
+    artifacts that are already required to drive the Yubi challenge/unwrap flow.
+    """
+    if not isinstance(meta, dict):
+        return
+
+    meta["yubi_enabled"] = bool(mode)
+    meta["yubi_mode"] = mode
+
+    # Always clear stale mirrored values first so switching wrap<->gate cannot leave
+    # old WRAP blobs behind in the public header.
+    for k in (
+        "yubi_serial",
+        "yubi_slot",
+        "yubi_salt_b64",
+        "yubi_nonce_b64",
+        "yubi_wrapped_b64",
+        "yubi_ykman_path",
+    ):
+        meta.pop(k, None)
+
+    if serial is not None:
+        meta["yubi_serial"] = str(serial)
+    if slot is not None:
+        try:
+            meta["yubi_slot"] = int(slot)
+        except Exception:
+            pass
+    if salt_b64:
+        meta["yubi_salt_b64"] = salt_b64
+    if nonce_b64:
+        meta["yubi_nonce_b64"] = nonce_b64
+    if wrapped_b64:
+        meta["yubi_wrapped_b64"] = wrapped_b64
+    if ykman_path:
+        meta["yubi_ykman_path"] = ykman_path
+    if mk_hash_b64 is not None:
+        meta["mk_hash_b64"] = mk_hash_b64
+
+
 def set_yubi_config(
     username: str,
-    password: str,
+    password: str | bytes,
     *,
     mode: str,                # "yk_hmac_wrap" | "yk_hmac_gate"
     serial: str | None,
@@ -961,10 +1035,17 @@ def set_yubi_config(
     if ykman_hash is not None: yubi["ykman_hash"] = ykman_hash
 
     meta = hdr.setdefault("meta", {})
-    meta["yubi_enabled"] = True
-    meta["yubi_mode"] = mode
-    if mk_hash_b64 is not None:
-        meta["mk_hash_b64"] = mk_hash_b64     # ← mirror hash into header for passwordless verify
+    _apply_yubi_public_meta(
+        meta,
+        mode=mode,
+        serial=serial,
+        slot=slot,
+        salt_b64=salt_b64 if mode == "yk_hmac_wrap" else None,
+        nonce_b64=nonce_b64 if mode == "yk_hmac_wrap" else None,
+        wrapped_b64=wrapped_b64 if mode == "yk_hmac_wrap" else None,
+        ykman_path=ykman_path,
+        mk_hash_b64=mk_hash_b64,
+    )
 
     n2, ct2 = _aes_enc(dmk, b"KQID-PAYLOAD", _canon(inner))
     _write_all(p, hdr, n2, ct2)
@@ -972,7 +1053,8 @@ def set_yubi_config(
 def get_yubi_config_public(username: str) -> dict | None:
     """
     Read only the public header meta (no password required).
-    Returns a dict with yubi_mode and mk_hash_b64 if present.
+    Includes mirrored WRAP artifacts so DPAPI / passwordless flows can still
+    perform Yubi WRAP without needing the encrypted identity payload.
     """
     p = _user_id_file(username, ensure_parent=False)
     if not p.exists():
@@ -982,9 +1064,48 @@ def get_yubi_config_public(username: str) -> dict | None:
     out = {
         "mode": meta.get("yubi_mode"),
         "mk_hash_b64": meta.get("mk_hash_b64"),
+        "serial": meta.get("yubi_serial"),
+        "slot": meta.get("yubi_slot"),
+        "salt_b64": meta.get("yubi_salt_b64"),
+        "nonce_b64": meta.get("yubi_nonce_b64"),
+        "wrapped_b64": meta.get("yubi_wrapped_b64"),
+        "ykman_path": meta.get("yubi_ykman_path"),
     }
-    # Only return if at least mode present
     return out if out.get("mode") else None
+
+
+def sync_yubi_public_meta(username: str, password_or_kek: str | bytes) -> dict | None:
+    """Best-effort one-time upgrade for older identities.
+
+    Loads the private Yubi config, mirrors the WRAP metadata into header.meta,
+    and returns the private config dict. Safe to call repeatedly.
+    """
+    p = _user_id_file(username, ensure_parent=False)
+    if not p.exists():
+        return None
+
+    dmk, inner, hdr = create_or_open_with_password(username, password_or_kek)
+    yubi = (inner.get("yubi") or {}) if isinstance(inner, dict) else {}
+    mode = (yubi.get("mode") or "").strip() or None
+    if not mode:
+        return yubi if isinstance(yubi, dict) and yubi else None
+
+    meta = hdr.setdefault("meta", {})
+    _apply_yubi_public_meta(
+        meta,
+        mode=mode,
+        serial=yubi.get("serial"),
+        slot=yubi.get("slot"),
+        salt_b64=yubi.get("salt_b64") if mode == "yk_hmac_wrap" else None,
+        nonce_b64=yubi.get("nonce_b64") if mode == "yk_hmac_wrap" else None,
+        wrapped_b64=yubi.get("wrapped_b64") if mode == "yk_hmac_wrap" else None,
+        ykman_path=yubi.get("ykman_path"),
+        mk_hash_b64=yubi.get("mk_hash_b64"),
+    )
+
+    n2, ct2 = _aes_enc(dmk, b"KQID-PAYLOAD", _canon(inner))
+    _write_all(p, hdr, n2, ct2)
+    return yubi if isinstance(yubi, dict) and yubi else None
 
 # SECURITY NOTE:
 # Compare public MK fingerprint (SHA-256) from header meta.
@@ -1045,14 +1166,44 @@ def get_yubi_meta_quick(username: str) -> tuple[bool, str | None]:
 def clear_yubi_config(username: str, password: str) -> None:
     """
     Remove YubiKey config and mark headers accordingly.
+
+    IMPORTANT:
+    WRAP enable adds a public-header wrapper of type "yk" via bind_yubi_wrapper().
+    If we only clear inner["yubi"] and header.meta, that stale wrapper remains and
+    later login/recovery code can still see old Yubi WRAP material. That leaves the
+    identity state out of sync with the vault after WRAP is disabled.
+
+    So on disable we must clear all three places:
+      1) encrypted payload: inner["yubi"]
+      2) public header meta: yubi_* fields / mode flags
+      3) header wrappers: remove "yk" (and legacy "yubi") wrapper entries
     """
     p = identities_file(username, ensure_parent=True)
     dmk, inner, hdr = create_or_open_with_password(username, password)
+
+    # 1) Clear encrypted payload copy
     inner["yubi"] = {}
+
+    # 2) Remove public header wrapper entries created by bind_yubi_wrapper()
+    wrappers = hdr.setdefault("wrappers", [])
+    before_types = [(w.get("type") or "").lower() for w in wrappers if isinstance(w, dict)]
+    wrappers = [
+        w for w in wrappers
+        if (w.get("type") or "").lower() not in ("yk", "yubi")
+    ]
+    hdr["wrappers"] = wrappers
+    after_types = [(w.get("type") or "").lower() for w in wrappers if isinstance(w, dict)]
+
+    # 3) Clear mirrored public meta (leave mk_hash_b64 intact for recovery-key checks)
     meta = hdr.setdefault("meta", {})
-    meta["yubi_enabled"] = False
-    meta["yubi_mode"] = None
-    # rewrite payload + keep updated header.meta
+    _apply_yubi_public_meta(meta, mode=None)
+
+    log.debug(
+        "[identity] clear_yubi_config user=%s wrappers_before=%s wrappers_after=%s",
+        username, before_types, after_types
+    )
+
+    # rewrite payload + keep updated header/meta/wrappers
     n2, ct2 = _aes_enc(dmk, b"KQID-PAYLOAD", _canon(inner))
     _write_all(p, hdr, n2, ct2)
 
@@ -1078,7 +1229,7 @@ def rewrap_identity_password(username: str, old_password: str, new_password: str
             return False, _tr("identity has no password wrapper")
 
         pw_salt = _b64d(pw["salt"]) if pw.get("salt") else os.urandom(16)
-        kek_new = derive_key_argon2id(new_password, pw_salt)
+        kek_new = _derive_identity_key_native(new_password, pw_salt)
 
         # Keep alignment with create_or_open_with_password()
         n1, ct1 = _aes_enc(kek_new, b"KQID-DMK", dmk)

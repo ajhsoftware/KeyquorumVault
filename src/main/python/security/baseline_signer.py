@@ -41,7 +41,7 @@ from app.paths import security_prefs_file
 # --- Pathsfrom app.paths ---
 from app.paths import ( profile_pic,  
     vault_file, shared_key_file, catalog_file, salt_file, identities_file, breach_cache,
-    catalog_seal_file, category_schema_file, trash_path, pw_cache_file, vault_wrapped_file,
+    trash_path, pw_cache_file, vault_wrapped_file,
     user_db_file,)
 from security.secure_audit import log_event_encrypted
 from auth.identity_store import verify_recovery_key
@@ -231,15 +231,12 @@ def verify_baseline(username: str, salt: bytes, files: Iterable[Any]) -> Tuple[l
             now_map[str(p)] = "__UNREADABLE__"
 
     base_set = set(base_map.keys())
-    want_set = set(str(p) for p in want)     # what caller cares about now (even if missing)
+    want_set = set(str(p) for p in want)
     now_set  = set(now_map.keys())           # existing & hashed
 
     missing = sorted(list(base_set - now_set))
-    # changed = in both maps but digests differ
     changed = sorted([k for k in (base_set & now_set) if base_map.get(k) != now_map.get(k)])
-    # new = in desired set but not in baseline
     new = sorted(list(want_set - base_set))
-
     return (changed, missing, new, mac_ok)
 
 def peek_verify_baseline(username: str, salt: bytes, files: Iterable[Any]) -> Tuple[list[str], list[str], list[str], bool]:
@@ -393,7 +390,6 @@ def _baseline_tracked_files(username: str) -> list[str]:
     # --- MANDATORY FILES (crypto-critical) ---
     mandatory_paths: list[Path] = [
         vault_file(username, ensure_parent=False),
-        salt_file(username, ensure_parent=False),
         identities_file(username, ensure_parent=False),
         user_db_file(username, ensure_parent=False),
     ]
@@ -404,17 +400,15 @@ def _baseline_tracked_files(username: str) -> list[str]:
 
     # --- OPTIONAL FILES (only if present) ---
     optional_paths: list[Path] = [
+        salt_file(username, ensure_parent=False),  # Note: salt file moved to identity store, nologer mandatory file Note: (older builds only) remove overtime
         security_prefs_file(username, ensure_parent=False, name_only=False),
-        category_schema_file(username, ensure_parent=False),  # can add later if stable
-        catalog_file(username, ensure_parent=False),          # KQ_Dev_KQ.kq; excluded for now
-        catalog_seal_file(username, ensure_parent=False),
+        catalog_file(username, ensure_parent=False),
         shared_key_file(username, ensure_parent=False),
         breach_cache(username, ensure_parent=False),
         profile_pic(username),
         trash_path(username, ensure_parent=False),
         pw_cache_file(username, ensure_parent=False),
-        vault_wrapped_file(username, ensure_parent=False),
-    ]
+        vault_wrapped_file(username, ensure_parent=False),]
 
     for p in optional_paths:
         if p and isinstance(p, Path) and p.exists():

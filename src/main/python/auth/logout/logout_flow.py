@@ -81,6 +81,7 @@ def __init__default_values(w):
     """
     # Reset cloud sync state and auto-sync timers
     try:
+        
         # Stop and release the auto-sync timer if present
         t = getattr(w, "_auto_sync_timer", None)
         if t:
@@ -92,6 +93,7 @@ def __init__default_values(w):
                 t.deleteLater()
             except Exception:
                 pass
+        
         w._auto_sync_timer = None
     except Exception:
         pass
@@ -191,106 +193,45 @@ def __init__default_values(w):
         pass
     # Use the helper to tear down auto-sync and sync engine and reinitialise
     try:
-        if hasattr(w, "__init__default_values"):
-            w.__init__default_values()
+        __init__default_values(w)
     except Exception:
         pass
 
-def _on_any_entry_changed(w):
-    if getattr(w, "_backup_remind_mode", "both") in ("changes", "both"):
-        if hasattr(w, "backupAdvisor") and w.backupAdvisor:
-            w.backupAdvisor.note_change()
+def _on_any_entry_changed(self):
+    if getattr(self, "_backup_remind_mode", "both") in ("changes", "both"):
+        if hasattr(self, "backupAdvisor") and self.backupAdvisor:
+            self.backupAdvisor.note_change()
 
-# ==============================
-# --- software
-# ==============================
-
-def _init_software_root(w) -> str:
-    # 1) from settings (if you persist this)
+    # Also nudge cloud auto-sync directly after real entry edits.
+    # This makes entry add/edit/delete reliable even if the filesystem watcher
+    # misses an atomic replace or a non-vault bundle member changed.
     try:
-        val = getattr(w, "settings", None)
-        if val:
-            sr = val.value("paths/software_root", type=str)
-            if sr:
-                sr = os.path.expandvars(os.path.expanduser(sr))
-                os.makedirs(sr, exist_ok=True)
-                return sr
+        from qtpy.QtCore import QTimer
+        QTimer.singleShot(900, self._schedule_auto_sync)
     except Exception:
-        pass
-
-    # 2) derive a sensible base directory
-    base_candidates = [
-        getattr(w, "appdata_dir", None),
-        os.getenv("KEYQUORUM_DATA_DIR"),
-        os.path.join(os.path.expanduser("~"), "AppData", "Local", "Keyquorum"),
-        os.path.join(os.path.expanduser("~"), "Documents", "Keyquorum"),
-        os.path.dirname(os.path.abspath(sys.argv[0])),  # app folder
-        os.getcwd(),
-    ]
-    for base in base_candidates:
-        if not base:
-            continue
         try:
-            root = os.path.normpath(os.path.join(base, "software"))
-            os.makedirs(root, exist_ok=True)
-            return root
+            self._schedule_auto_sync()
         except Exception:
-            continue
-
-    # 3) absolute last resort
-    root = os.path.join(os.path.expanduser("~"), "Keyquorum", "software")
-    os.makedirs(root, exist_ok=True)
-    return root
-
-# ==============================
-# --- open password gen
-# ==============================
-
-def open_generator(w):
-    if w.pro_only:
-        return
-    # Translate literal message directly without f‑string
-    w.set_status_txt(_tr("Opening Password Generator"))
-    return show_password_generator_dialog(target_field=None, confirm_field=None)
-
-# ==============================
-# --- AutoFill - Desktop AppFill
-# ==============================
-
-# --- helper to load app on auto fill (better debug)
-
-def _norm(w, s):
-    return (s or "").strip()
-
-def _as_bool(w, v) -> bool:
-    if isinstance(v, str):
-        return v.strip().lower() in ("1", "true", "yes", "on")
-    return bool(v)
-
-def _domain_from_url(w, url: str) -> str:
-    try:
-        net = urlparse(url).netloc
-        return net.split(":")[0]
-    except Exception:
-        return ""
-
-
- # --- logout ------------------------------------------
+            pass
 
 def logout_user(w, skip_backup=True):
     """
     Securely log out the user, stop timers, close open dialogs/windows,
     clear sensitive state, and switch back to the login screen.
     """
-        
     from features.security_center.security_center_ui import _security_center_clear_ui
+
     w.set_status_txt(_tr("Logging User Out"))
+
     # ---- re-entrancy guard ----
     if getattr(w, "_is_logging_out", False):
         return
     w._is_logging_out = True
 
-    # --- Stop USB watch timer if running
+    # Keep a local copy in case anything later still needs it
+    active_username = getattr(w, "current_username", None)
+
+    # --- Stop USB watch timer if running ---
     try:
         t = getattr(w, "_usb_watch_timer", None)
         if t and t.isActive():
@@ -299,12 +240,12 @@ def logout_user(w, skip_backup=True):
         pass
 
     # --- Cloud sync pause and reset ---
+    w.cloudsync.setText("")
     try:
         if hasattr(w, "sync_engine") and w.sync_engine:
             w.set_status_txt(_tr("Pausing Cloud Sync"))
             w.sync_engine.pause()
             w.sync_engine.reset_state()
-            # flush any pending queue or background thread if present
             if hasattr(w.sync_engine, "stop_all_threads"):
                 try:
                     w.sync_engine.stop_all_threads()
@@ -314,182 +255,210 @@ def logout_user(w, skip_backup=True):
     except Exception as e:
         log.debug(f"[logout_user] cloud sync reset failed: {e}")
 
+    # --- final chance to ask user to backup ---
+    if not skip_backup:
+        try:
+            cleanup_on_logout(w)
+        except Exception:
+            pass
 
-    # --- last change to ask user to backup
-    if skip_backup == False:
-        w._cleanup_on_logout()
-
-    # --- helpers (strong zeroize, container scrub)
-    w.clear_bridge_token()
+    # Mark vault locked early
     w.vault_unlocked = False
     w.current_mk = None
-    w.current_username = None
+
+    # Clear Security Center UI/session state
     _security_center_clear_ui(w)
-        
+
     def _secure_zeroize(buf):
-        """Best-effort in-place zeroization for bytearray/memoryview; bytes -> drop refs."""
+        """Best-effort in-place zeroization for bytearray/memoryview."""
         try:
             if buf is None:
                 return
-            # Windows: try to call RtlSecureZeroMemory for bytearray
+
             if isinstance(buf, bytearray):
                 try:
-                    w.set_status_txt(_tr("Attempt Clearing App Memory Stage 1"))
                     mv = (ctypes.c_char * len(buf)).from_buffer(buf)
-                    # RtlSecureZeroMemory is not exported on all Pythons; fallback to memset
                     try:
-                        w.set_status_txt(_tr("Attempt Clearing App Memory Stage 1 "))
                         RtlSecureZeroMemory = ctypes.windll.kernel32.RtlSecureZeroMemory
                         RtlSecureZeroMemory(ctypes.addressof(mv), len(buf))
-                        w.set_status_txt(_tr("Attempt Clearing App Memory Done"))
                     except Exception:
-                        w.set_status_txt(_tr("Attempt Clearing App Memory Stage 1 attempt 2"))
                         ctypes.memset(ctypes.addressof(mv), 0, len(buf))
                 except Exception:
-                    w.set_status_txt(_tr("Attempt Clearing App Memory attempt 3"))
                     for i in range(len(buf)):
                         buf[i] = 0
+
             elif isinstance(buf, memoryview):
                 try:
-                    w.set_status_txt(_tr("Attempt Clearing App Memory Stage 2"))
-                    mv = buf.cast('B')
+                    mv = buf.cast("B")
                     for i in range(mv.nbytes):
                         mv[i] = 0
-                    w.set_status_txt(_tr("Attempt Clearing App Memory Done"))
                 except Exception:
                     pass
-            # For immutable bytes/str: rebind & let GC collect
+
         except Exception:
             pass
 
     def _scrub_container(obj):
         try:
-            w.set_status_txt(_tr("Attempt Clearing App Memory  Stage 3"))
-
             if obj is None:
                 return
 
-            if isinstance(obj, (bytes, str, bytearray, memoryview)):
-                _secure_zeroize(bytearray(obj) if isinstance(obj, (bytes, str)) else obj)
+            if isinstance(obj, bytearray):
+                _secure_zeroize(obj)
+                return
+
+            if isinstance(obj, memoryview):
+                _secure_zeroize(obj)
+                return
+
+            if isinstance(obj, bytes):
+                _secure_zeroize(bytearray(obj))
+                return
+
+            if isinstance(obj, str):
+                # immutable; best effort is to drop references only
                 return
 
             if isinstance(obj, dict):
                 for k, v in list(obj.items()):
-                    if isinstance(v, (bytes, bytearray, memoryview)):
-                        _secure_zeroize(bytearray(v) if isinstance(v, bytes) else v)
+                    if isinstance(v, bytearray):
+                        _secure_zeroize(v)
+                    elif isinstance(v, memoryview):
+                        _secure_zeroize(v)
+                    elif isinstance(v, bytes):
+                        _secure_zeroize(bytearray(v))
                     elif isinstance(v, (dict, list, tuple)):
                         _scrub_container(v)
-                    # remove obviously sensitive keys
+
                     if str(k).lower() in ("password", "pass", "secret", "key", "token", "otp", "seed"):
                         obj[k] = None
 
-            elif isinstance(obj, (list, tuple)):
+            elif isinstance(obj, list):
                 for i, v in enumerate(list(obj)):
-                    if isinstance(v, (bytes, bytearray, memoryview)):
-                        _secure_zeroize(bytearray(v) if isinstance(v, bytes) else v)
+                    if isinstance(v, bytearray):
+                        _secure_zeroize(v)
+                    elif isinstance(v, memoryview):
+                        _secure_zeroize(v)
+                    elif isinstance(v, bytes):
+                        _secure_zeroize(bytearray(v))
+                    elif isinstance(v, (dict, list, tuple)):
+                        _scrub_container(v)
+                    obj[i] = None
+
+            elif isinstance(obj, tuple):
+                for v in obj:
+                    if isinstance(v, bytearray):
+                        _secure_zeroize(v)
+                    elif isinstance(v, memoryview):
+                        _secure_zeroize(v)
+                    elif isinstance(v, bytes):
+                        _secure_zeroize(bytearray(v))
                     elif isinstance(v, (dict, list, tuple)):
                         _scrub_container(v)
 
-            # ✅ clear status label after secure wipe completes
+        except Exception:
+            pass
+
+    def _safe_stop_timer(obj):
+        try:
+            if obj:
+                obj.stop()
+        except Exception:
+            pass
+
+    def _safe_close(widget):
+        try:
+            if not widget:
+                return
+
+            for attr in ("stop", "shutdown", "closeEventHook"):
+                m = getattr(widget, attr, None)
+                if callable(m):
+                    try:
+                        m()
+                    except Exception:
+                        pass
+
+            if isinstance(widget, QDialog):
+                try:
+                    widget.reject()
+                except Exception:
+                    try:
+                        widget.close()
+                    except Exception:
+                        pass
+            else:
+                try:
+                    widget.close()
+                except Exception:
+                    pass
+
             try:
-                w.set_status_txt("")
+                log.debug("%s [LOGOUT] %s Closed: %s", kql.i("ok"), kql.i("auth"), type(widget).__name__)
             except Exception:
                 pass
-
         except Exception:
             pass
 
     try:
-        log.debug(f"{ kql.i('auth')} -> {kql.i('ok')} [LOGOUT] %s Logout called")
+        log.debug(f"{kql.i('auth')} -> {kql.i('ok')} [LOGOUT] %s Logout called")
 
         # ensure we shrink back AFTER the login panel becomes visible
         QTimer.singleShot(0, w._apply_login_geometry)
-        # - auth store logout
+
+        # auth store logout
         try:
-            w._auth_set_enabled(False)   # safe even if never created
+            from features.auth_store.auth_ops import _auth_set_enabled
+            _auth_set_enabled(w, False)
         except Exception as e:
             log.debug(f"[auth] disable timer: {e}")
-        # scrub auth entries **before** dropping ref
+
+        # scrub authenticator entries before dropping refs
         try:
-            w.set_status_txt(_tr("Scrubing auth entries"))
-            _scrub_container(getattr(w, "_auth_entries", None))    # >>> added
+            w.set_status_txt(_tr("Scrubbing authenticator entries"))
+            _scrub_container(getattr(w, "_auth_entries", None))
         except Exception:
             pass
+
         w._auth_entries = []
         if hasattr(w, "authTable") and w.authTable:
-            w.authTable.setRowCount(0)
-
-        # --- helpers ---
-        def _safe_stop_timer(obj):
-            w.set_status_txt(_tr("stoping last timers"))
             try:
-                if obj:
-                    obj.stop()
+                w.authTable.setRowCount(0)
             except Exception:
                 pass
 
-        def _safe_close(w):
-            w.set_status_txt(_tr("safe shutdown"))
-            try:
-                if not w:
-                    return
-                # give custom hooks a chance (user popups, threads, etc.)
-                for attr in ("stop", "shutdown", "closeEventHook"):
-                    m = getattr(w, attr, None)
-                    if callable(m):
-                        try: m()
-                        except Exception: pass
-                if isinstance(w, QDialog):
-                    try: w.reject()
-                    except Exception:
-                        try: w.close()
-                        except Exception: pass
-                else:
-                    try: w.close()
-                    except Exception: pass
-                try:
-                    log.debug("%s [LOGOUT] %s Closed: %s", kql.i('ok'), kql.i('auth'), type(w).__name__)
-                except Exception:
-                    pass
-            except Exception:
-                pass
-
-        # --- zeroize key material (in-place if possible) ---
+        # --- close native session / clear handle ---
         try:
-            w.set_status_txt(_tr("Scrubing part 4"))
-            # --- close native session first (wipes vault key inside DLL) ---
+            w.set_status_txt(_tr("Scrubbing session"))
             try:
                 from native.native_core import get_core
                 core = get_core()
-                if core:
-                    core.close_session(getattr(w, "core_session_handle", None))
+                handle = getattr(w, "core_session_handle", None)
+                if core and handle:
+                    core.close_session(handle)
             except Exception:
                 pass
-            try:
-                w.core_session_handle = None
-            except Exception:
-                pass
-
-            _secure_zeroize(getattr(w, "userKey", None))           # >>> tightened
-
+            w.core_session_handle = None
         except Exception:
             pass
-        w.userKey = None
 
-        # If you cache other sensitive blobs, wipe them here too:
-        for attr in ("_decrypted_cache", "_current_entry", "_totp_cache",
-                        "_active_secret", "_session_token", "_api_key"):
+        # Clear username after session-dependent cleanup is done
+        w.current_username = None
+
+        # scrub other cached sensitive blobs
+        for attr in (
+            "_decrypted_cache", "_current_entry", "_totp_cache",
+            "_active_secret", "_session_token", "_api_key"
+        ):
             try:
-                w.set_status_txt(_tr("Scrubing part 5"))
                 v = getattr(w, attr, None)
-                _scrub_container(v)                                   # >>> added
+                _scrub_container(v)
                 setattr(w, attr, None)
             except Exception:
                 pass
 
-        # Wipe any in-memory models that might hold decrypted fields
+        # wipe in-memory models that may hold decrypted fields
         for name in ("vaultModel", "searchModel"):
-            w.set_status_txt(_tr("Scrubing part 5"))
             try:
                 m = getattr(w, name, None)
                 if m:
@@ -501,7 +470,7 @@ def logout_user(w, skip_backup=True):
             except Exception:
                 pass
 
-        # --- stop timers (explicit names) ---
+        # stop named timers
         for name in (
             "logout_timer", "logout_warning_timer", "clipboard_timer",
             "_tick", "glow_fade", "color_timer"
@@ -509,66 +478,89 @@ def logout_user(w, skip_backup=True):
             _safe_stop_timer(getattr(w, name, None))
             try:
                 setattr(w, name, None)
-                log.debug("%s [LOGOUT] %s Timer stopped: %s", kql.i('locked'), kql.i('auth'), name)
+                log.debug("%s [LOGOUT] %s Timer stopped: %s", kql.i("locked"), kql.i("auth"), name)
             except Exception:
                 pass
 
-        # --- stop any lingering QTimers attached as attributes (best effort) ---
+        # stop lingering QTimers attached as attributes
         try:
             for k, v in list(vars(w).items()):
                 if isinstance(v, QTimer):
                     _safe_stop_timer(v)
-                    try: setattr(w, k, None)
-                    except Exception: pass
+                    try:
+                        setattr(w, k, None)
+                    except Exception:
+                        pass
         except Exception:
             pass
 
-        # --- join/stop background threads (if you track them) ---  # >>> added
+        # stop background threads
         try:
-            w.set_status_txt(_tr("stopping background threads"))
+            w.set_status_txt(_tr("Stopping background threads"))
             for t in list(getattr(w, "_bg_threads", []) or []):
                 try:
-                    if hasattr(t, "stop"): 
-                        try: t.stop()
-                        except Exception: pass
-                    t.join(timeout=1.0)
+                    if isinstance(t, QThread):
+                        try:
+                            t.requestInterruption()
+                        except Exception:
+                            pass
+                        try:
+                            t.quit()
+                        except Exception:
+                            pass
+                        try:
+                            t.wait(1000)
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            if hasattr(t, "stop"):
+                                t.stop()
+                        except Exception:
+                            pass
+                        try:
+                            t.join(timeout=1.0)
+                        except Exception:
+                            pass
                 except Exception:
                     pass
             w._bg_threads = []
         except Exception:
             pass
 
-        # --- close tracked & owned dialogs ---
+        # close tracked child windows
         try:
-            w.set_status_txt(_tr("close tracked & owned dialogs"))
+            w.set_status_txt(_tr("Closing child windows"))
             for ref in list(getattr(w, "_child_windows", []) or []):
                 try:
                     child = ref() if callable(ref) else None
                 except Exception:
-                        child = None
+                    child = None
                 if child:
                     _safe_close(child)
             w._child_windows = []
         except Exception:
             pass
 
-        
-        # Close ALL top-level windows except main
-        _force_close_all_windows_except_main(w)
+        # close all top-level windows except main
+        try:
+            _force_close_all_windows_except_main(w)
+        except Exception:
+            pass
 
-        # Close common dialogs by attribute if present (not always tracked)
-        for name in ("pwdGenDialog", "addEntryDialog", "editEntryDialog",
-                        "changePasswordDialog", "otpDialog", "settingsDialog"):
+        # close common dialogs by attribute
+        for name in (
+            "pwdGenDialog", "addEntryDialog", "editEntryDialog",
+            "changePasswordDialog", "otpDialog", "settingsDialog"
+        ):
             try:
-                w.set_status_txt(_tr("close tracked & owned dialogs"))
                 _safe_close(getattr(w, name, None))
                 setattr(w, name, None)
             except Exception:
                 pass
 
-        # Close any top-level windows owned by w
+        # close any top-level windows owned by w
         try:
-            w.set_status_txt(_tr("close top-level windows"))
             for tw in QApplication.topLevelWidgets():
                 if tw is w:
                     continue
@@ -583,20 +575,26 @@ def logout_user(w, skip_backup=True):
         except Exception:
             pass
 
-        # --- stop internal bridge server & wipe token ---
+        # stop bridge
         try:
-            w.set_status_txt(_tr("stop internal bridge server & wipe token"))
-            w._set_bridge_offline()
-            w.stop_bridge_monitoring()
-            w.stop_bridge_server()
+            from bridge.bridge_ops import stop_bridge_server, stop_bridge_monitoring
+            w.set_status_txt(_tr("Stopping bridge"))
+            try:
+                w._set_bridge_offline()
+            except Exception:
+                pass
+            try:
+                stop_bridge_monitoring(w)
+            except Exception:
+                pass
+            try:
+                stop_bridge_server(w)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
-        except Exception:
-            pass
-        try:
-            w.stop_bridge_server()
-        except Exception:
-            pass
-        # also drop any env copy of tokens (best effort)              # >>> added
+        # wipe env token copies best-effort
         try:
             for k in list(os.environ.keys()):
                 if k.upper().startswith("KQ_BRIDGE") or k.upper().endswith("_TOKEN"):
@@ -604,28 +602,19 @@ def logout_user(w, skip_backup=True):
         except Exception:
             pass
 
-        # --- clear clipboard (all supported modes) ---
+        # clear clipboard
         try:
-            w.set_status_txt(_tr("clear clipboard"))
+            w.set_status_txt(_tr("Clearing clipboard"))
             try:
-                # Safe: clipboard must be accessed on the Qt GUI thread (Windows OLE/COM).
                 from features.clipboard.secure_clipboard import force_clear_clipboard_now
                 force_clear_clipboard_now()
             except Exception:
                 pass
-            log.debug("%s [LOGOUT] %s Clipboard cleared", kql.i('ok'), kql.i('auth'))
+            log.debug("%s [LOGOUT] %s Clipboard cleared", kql.i("ok"), kql.i("auth"))
         except Exception:
-            log.exception("%s [ERROR] %s Clear clipboard failed", kql.i('locked'), kql.i('auth'))
+            log.exception("%s [ERROR] %s Clear clipboard failed", kql.i("locked"), kql.i("auth"))
 
-        try:
-            if hasattr(w, "sync_engine") and w.sync_engine:
-                w.sync_engine.pause()
-                w.sync_engine.reset_state()
-                log.debug("[LOGOUT] Sync engine fully reset after logout.")
-        except Exception:
-            pass
-
-        # --- turn OFF debug logging quietly & sync the checkbox without dialogs ---
+        # turn off debug logging quietly
         w._suppress_logging_toasts = True
         try:
             if hasattr(w, "debug_set_") and w.debug_set_:
@@ -638,24 +627,23 @@ def logout_user(w, skip_backup=True):
         finally:
             w._suppress_logging_toasts = False
 
-        # --- reset runtime flags / cached prefs ---
+        # reset runtime flags / cached prefs
         w.expiry_days = None
         w.clipboard_clear_timeout_sec = None
         w.auto_logout_timeout_sec = None
         w.enable_breach_checker = None
-        log.debug("%s [LOGOUT] %s Runtime flags reset", kql.i('ok'), kql.i('auth'))
+        log.debug("%s [LOGOUT] %s Runtime flags reset", kql.i("ok"), kql.i("auth"))
 
-        # --- UI cleanup ---
+        # UI cleanup
         try:
-            w.set_status_txt(_tr("scrub login related fields"))
-            # scrub login-related fields (overwrite then clear)          # >>> added
+            w.set_status_txt(_tr("Clearing UI"))
             for name in ("currentUsername", "passwordField"):
                 fld = getattr(w, name, None)
                 if fld:
                     try:
                         t = fld.text()
                         if t:
-                            fld.setText("\u200B" * len(t))  # overwrite with zero-widths
+                            fld.setText("\u200B" * len(t))
                         fld.clear()
                     except Exception:
                         pass
@@ -663,8 +651,10 @@ def logout_user(w, skip_backup=True):
             for name in ("searchBox", "quickFindEdit"):
                 fld2 = getattr(w, name, None)
                 if fld2:
-                    try: fld2.clear()
-                    except Exception: pass
+                    try:
+                        fld2.clear()
+                    except Exception:
+                        pass
 
             if hasattr(w, "vaultTable") and w.vaultTable:
                 try:
@@ -674,8 +664,10 @@ def logout_user(w, skip_backup=True):
                 except Exception:
                     pass
                 finally:
-                    try: w.vaultTable.blockSignals(False)
-                    except Exception: pass
+                    try:
+                        w.vaultTable.blockSignals(False)
+                    except Exception:
+                        pass
 
             for label_name in ("profilePicLabel", "loginPicLabel"):
                 lab = getattr(w, label_name, None)
@@ -693,15 +685,16 @@ def logout_user(w, skip_backup=True):
                     pass
         except Exception:
             pass
-        log.debug("%s [LOGOUT] %s UI reset", kql.i('ok'), kql.i('auth'))
 
-        # --- switch to login and focus ---
+        log.debug("%s [LOGOUT] %s UI reset", kql.i("ok"), kql.i("auth"))
+
+        # show login UI
         try:
-            w.set_status_txt(_tr("Done show login ui"))
-            w.show_login_ui()  # shows the login container and hides tabs
-            log.debug("%s [LOGOUT] %s set_login_visible -> OK", kql.i('ok'), kql.i('auth'))
+            w.set_status_txt(_tr("Showing login screen"))
+            w.show_login_ui()
+            log.debug("%s [LOGOUT] %s set_login_visible -> OK", kql.i("ok"), kql.i("auth"))
         except Exception:
-            log.exception("%s [ERROR] %s set_login_visible failed", kql.i('locked'), kql.i('auth'))
+            log.exception("%s [ERROR] %s set_login_visible failed", kql.i("locked"), kql.i("auth"))
             try:
                 cw = w.centralWidget()
                 if cw:
@@ -709,7 +702,7 @@ def logout_user(w, skip_backup=True):
             except Exception:
                 pass
 
-        # --- bring window to front ---
+        # bring window to front
         try:
             w.showNormal()
             w.raise_()
@@ -717,23 +710,23 @@ def logout_user(w, skip_backup=True):
         except Exception:
             pass
 
-        # --- force a couple GC cycles after scrubbing buffers
+        # force a couple GC cycles after scrubbing buffers
         try:
             gc.collect()
             gc.collect()
         except Exception:
             pass
 
-        # --- remember username if set
+        # restore remembered username to login screen if applicable
         try:
             from ui.ui_bind import apply_remembered_username_to_login_screen
             QTimer.singleShot(0, lambda: apply_remembered_username_to_login_screen(w))
         except Exception:
             pass
-        log.debug("%s [LOGOUT] %s Complete", kql.i('ok'), kql.i('auth'))
+
+        log.debug("%s [LOGOUT] %s Complete (user=%r)", kql.i("ok"), kql.i("auth"), active_username)
 
     finally:
-        # clear the guard even if something throws, to avoid dead state
         try:
             w._is_logging_out = False
         except Exception:

@@ -39,6 +39,7 @@ class BreachCheckWorker(QThread):
         self._pwd = password or ""
         self._timeout = float(timeout)
 
+
     def _http_get_text(self, url: str, headers: dict) -> str:
         """Attempt HTTP GET (requests first, urllib fallback for frozen builds)."""
         try:

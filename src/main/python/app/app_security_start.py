@@ -45,3 +45,5 @@ def safe_preflight() -> tuple[bool, str]:
         log.error(str(f"{kql.i('err')} [ERROR] 🛑 Preflight checks crashed:\n{tb}"))
         return False, f"Preflight crashed: {e}"
 
+
+

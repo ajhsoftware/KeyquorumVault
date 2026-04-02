@@ -23,12 +23,6 @@ from qtpy.QtCore import Signal as pyqtSignal, Slot as pyqtSlot
 import os, sys
 from auth.logout.logout_flow import logout_user
 
-# ==============================
-# --- Dev Set
-# ==============================
-# set to True For Dev
-is_dev = True
-DEBUG_ON = True
 
 # ==============================
 # --- brighe ui ---
@@ -44,7 +38,6 @@ class _UiBus(QObject):
         try: fn()
         except Exception: pass
 
-
 # ==============================
 # --- App Helpers ---
 # ==============================
@@ -55,10 +48,9 @@ def get_app_version():
         log.debug(f"{kql.i('build')} [APP] VERSION {APP_VERSION}")
         return APP_VERSION
     except Exception:
-        APP_VERSION = "1.7.2"
+        APP_VERSION = "1.8.9"
         log.debug(f"{kql.i('build')} [APP] VERSION {APP_VERSION}")
         return APP_VERSION
-
 
 # ==============================
 # --- Restart App ---
@@ -79,3 +71,5 @@ def _restart_application(w):
         app = QApplication.instance()
         if app is not None:
             app.quit()
+
+

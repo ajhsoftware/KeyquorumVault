@@ -27,12 +27,11 @@ try:
 except Exception:
     AESGCM = None  # we'll guard for this below
 
-# --- Native core (optional) ---
-try:
-    from native.native_core import get_core  # type: ignore
-except Exception:  # native core not available
-    def get_core():
-        return None
+from app.dev import dev_ops
+is_dev = dev_ops.dev_set
+
+# --- Native core (REQUIRED: strict DLL-only mode for vault crypto) ---
+from native.native_core import get_core  # type: ignore
 
 
 log = logging.getLogger("keyquorum")
@@ -230,58 +229,28 @@ def unwrap_vault_key_dmk(username: str, dmk: bytes) -> bytes:
 # ==============================
 
 def save_encrypted(plaintext_obj: Any, path: str, key_or_session) -> None:
-    """Encrypt and write vault JSON.
+    """Encrypt and write vault JSON (STRICT: native session handle only).
 
-    key_or_session may be:
-      - bytes/bytearray(32): legacy key path (compat)
-      - int: native DLL session handle (preferred; key never enters Python)
+    key_or_session MUST be an int native session handle.
+    This prevents any Python-based crypto fallback for vault encryption.
     """
     data = json.dumps(plaintext_obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     iv = os.urandom(12)
 
+    if not isinstance(key_or_session, int):
+        raise RuntimeError("Vault encryption requires native session handle (int).")
+
     core = get_core()
-    ct: bytes
-    tag: bytes
+    ct_ba, tag_ba = core.session_encrypt(key_or_session, iv, data)
 
-    # Preferred: session handle (opaque int)
-    if isinstance(key_or_session, int):
-        if not core:
-            raise RuntimeError("Native core not available for session encryption")
-        ct_ba, tag_ba = core.session_encrypt(key_or_session, iv, data)
-        # tag_ba/ct_ba are bytearrays; not secret once written, but keep tidy
-        ct = bytes(ct_ba)
-        tag = bytes(tag_ba)
-        try:
-            core.secure_wipe(ct_ba)
-            core.secure_wipe(tag_ba)
-        except Exception:
-            pass
+    ct = bytes(ct_ba)
+    tag = bytes(tag_ba)
 
-    else:
-        key = key_or_session
-        if not isinstance(key, (bytes, bytearray)) or len(key) != 32:
-            raise ValueError("key must be 32 bytes (AES-256)")
-        # Use native core legacy encrypt if available; otherwise cryptography
-        if core:
-            key_ba = bytearray(key)
-            try:
-                ct_ba, tag_ba = core.encrypt_vault(key_ba, iv, data)
-                ct = bytes(ct_ba)
-                tag = bytes(tag_ba)
-                try:
-                    core.secure_wipe(ct_ba)
-                    core.secure_wipe(tag_ba)
-                except Exception:
-                    pass
-            finally:
-                try:
-                    core.secure_wipe(key_ba)
-                except Exception:
-                    pass
-        else:
-            encryptor = Cipher(algorithms.AES(key), modes.GCM(iv), backend=default_backend()).encryptor()
-            ct = encryptor.update(data) + encryptor.finalize()
-            tag = encryptor.tag
+    try:
+        core.secure_wipe(ct_ba)
+        core.secure_wipe(tag_ba)
+    except Exception:
+        pass
 
     obj: Dict[str, str] = {
         "iv":         base64.b64encode(iv).decode(),
@@ -293,19 +262,38 @@ def save_encrypted(plaintext_obj: Any, path: str, key_or_session) -> None:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, indent=2)
 
-def load_encrypted(path: str, key_or_session):
-    """Load and decrypt vault JSON. Accepts key bytes (legacy) or session handle (preferred)."""
-    obj = json.loads(Path(path).read_text(encoding="utf-8"))
-    iv  = base64.b64decode(obj["iv"])
-    tag = base64.b64decode(obj["tag"])
-    ct  = base64.b64decode(obj["vault_data"])
 
+def load_encrypted(path: str, key_or_session):
+    """Load and decrypt a vault JSON payload.
+
+    STRICT DLL-only mode: requires a native session handle (int).
+
+    Supports both formats automatically:
+      A) JSON envelope: {"iv","tag","vault_data"} base64 (text or bytes)
+      B) Binary blob: iv(12) || tag(16) || ct
+      C) Binary blob: iv(12) || ct || tag(16)
+    """
+    from pathlib import Path
+    import json, base64
+
+    if not isinstance(key_or_session, int) or not key_or_session:
+        raise RuntimeError("Vault decryption requires native session handle (int).")
+
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"Vault file not found: {path}")
+
+    blob = p.read_bytes()
     core = get_core()
 
-    if isinstance(key_or_session, int):
-        if not core:
-            raise RuntimeError("Native core not available for session decryption")
-        pt_buf = core.session_decrypt(key_or_session, iv, ct, tag)
+    def _decrypt(iv: bytes, ct: bytes, tag: bytes):
+        if is_dev:
+            log.debug("[VAULT] decrypt using session=%s iv=%s ct=%s tag=%s",
+                  key_or_session,
+                  len(iv) if iv else 0,
+                  len(ct) if ct else 0,
+                  len(tag) if tag else 0)
+        pt_buf = core.session_decrypt(int(key_or_session), iv, ct, tag)
         try:
             pt = bytes(pt_buf)
         finally:
@@ -313,30 +301,44 @@ def load_encrypted(path: str, key_or_session):
                 core.secure_wipe(pt_buf)
             except Exception:
                 pass
+        return json.loads(pt.decode("utf-8"))
 
-    else:
-        key = key_or_session
-        if core:
-            key_ba = bytearray(key)
-            try:
-                pt_buf = core.decrypt_vault(key_ba, iv, ct, tag)
-                try:
-                    pt = bytes(pt_buf)
-                finally:
-                    core.secure_wipe(pt_buf)
-            finally:
-                core.secure_wipe(key_ba)
-        else:
-            decryptor = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend()).decryptor()
-            pt = decryptor.update(ct) + decryptor.finalize()
+    # ---- A) JSON envelope
+    if blob[:1] in (b"{", b"["):
+        try:
+            obj = json.loads(blob.decode("utf-8"))
+            # allow plaintext JSON (dev/recovery)
+            if isinstance(obj, (list, dict)) and ("iv" not in obj or ("vault_data" not in obj and "data" not in obj)):
+                return obj
 
-    return json.loads(pt.decode("utf-8"))
+            iv = base64.b64decode(obj["iv"])
+            tag = base64.b64decode(obj["tag"])
+            ct  = base64.b64decode(obj.get("vault_data") or obj.get("data"))
+            return _decrypt(iv, ct, tag)
+        except Exception:
+            pass  # fall through to binary
 
+    # ---- B/C) binary
+    if len(blob) < 12 + 16:
+        raise RuntimeError("Encrypted file too small / invalid format")
 
+    iv = blob[:12]
+    rest = blob[12:]
 
-# ==============================
-# Vault CRUD
-# ==============================
+    # B: iv || tag || ct
+    if len(rest) >= 16:
+        tag1 = rest[:16]
+        ct1  = rest[16:]
+        try:
+            return _decrypt(iv, ct1, tag1)
+        except Exception:
+            pass
+
+    # C: iv || ct || tag
+    tag2 = rest[-16:]
+    ct2  = rest[:-16]
+    return _decrypt(iv, ct2, tag2)
+
 
 def _verify_vault_owner(vault_path: str, username: str, auto_claim=True) -> bool:
     """
@@ -373,10 +375,7 @@ def verify_vault_owner(vault_path: str, username: str, *, auto_claim: bool = Tru
     """
     return _verify_vault_owner(vault_path, username, auto_claim=auto_claim)
 
-def load_vault(username: str, key_or_session) -> list:
-    """
-    Read and decrypt the user's vault (list of entries). Returns [] if unreadable.
-    """
+def load_vault(username: str, key_or_session):
     try:
         raw = load_encrypted(get_vault_path(username), key_or_session)
         if isinstance(raw, list):
@@ -390,7 +389,11 @@ def load_vault(username: str, key_or_session) -> list:
             return parsed if isinstance(parsed, list) else []
         return []
     except Exception as e:
-        raise RuntimeError("Vault decryption failed") from e
+        vp = get_vault_path(username)
+        log.error("[VAULT] load_vault failed user=%s path=%s handle=%r err=%r", username, vp, key_or_session, e)
+        # return None so UI knows vault isn't ready yet
+        return None
+
 
 def save_vault(username: str, key_or_session, entries: list) -> bool:
     """

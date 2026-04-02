@@ -60,19 +60,25 @@ def hkdf_subkey(user_key: bytes, info: bytes) -> bytes:
     t = hmac.new(prk, bytes(info) + b"\x01", hashlib.sha256).digest()
     return t
 
-def rekey_user_stores(username: str, old_key: bytes, new_key: bytes) -> dict:
+def rekey_user_stores(
+    username: str,
+    old_key: bytes | None = None,
+    new_key: bytes | None = None,
+    *,
+    old_vault_session: int | None = None,
+    new_vault_session: int | None = None,
+) -> dict:
     """Re-encrypt all key-dependent user stores after a master-key change.
 
-    Guarantees:
-      • Main vault is re-encrypted old_key -> new_key (raises if old_key wrong).
-      • Authenticator secrets stored inside vault entries are rewrapped (best-effort).
-      • Password history fingerprints are cleared (they become invalid after key change).
+    Backward compatible call styles:
+      - rekey_user_stores(username, old_key_bytes, new_key_bytes)
+      - rekey_user_stores(username, old_key_bytes, new_key_bytes,
+                          old_vault_session=..., new_vault_session=...)
 
-    Best-effort:
-      • Sidecar encrypted stores in the same vault directory (trash/soft-delete/passkeys/etc).
-        We only touch files we can decrypt with old_key, and re-save with new_key.
-
-    Returns a small summary dict for logging/UI.
+    The main vault may require native session handles in strict DLL mode, so
+    supplied session handles are preferred for vault load/save when present.
+    Sidecar stores still use old_key/new_key bytes because they derive HKDF
+    subkeys from the vault key material.
     """
     summary = {
         "vault_reencrypted": False,
@@ -83,18 +89,31 @@ def rekey_user_stores(username: str, old_key: bytes, new_key: bytes) -> dict:
         "errors": [],
     }
 
-    if not isinstance(old_key, (bytes, bytearray)) or not isinstance(new_key, (bytes, bytearray)):
-        raise TypeError("rekey_user_stores: keys must be bytes")
+    old_has_bytes = isinstance(old_key, (bytes, bytearray))
+    new_has_bytes = isinstance(new_key, (bytes, bytearray))
+    old_has_session = isinstance(old_vault_session, int) and old_vault_session > 0
+    new_has_session = isinstance(new_vault_session, int) and new_vault_session > 0
 
-    # 1) Load + mutate vault -------
+    if not old_has_bytes and not old_has_session:
+        raise TypeError("rekey_user_stores: need old_key bytes or old_vault_session")
+
+    if not new_has_bytes and not new_has_session:
+        raise TypeError("rekey_user_stores: need new_key bytes or new_vault_session")
+
+    old_key_b = bytes(old_key) if old_has_bytes else None
+    new_key_b = bytes(new_key) if new_has_bytes else None
+
+    old_handle = old_vault_session if old_has_session else old_key_b
+    new_handle = new_vault_session if new_has_session else new_key_b
+
+    # 1) Load vault using session handle when available
     try:
         from vault_store.vault_store import load_vault, save_vault
-        data = load_vault(username, bytes(old_key))
+        data = load_vault(username, old_handle)
     except Exception as e:
         summary["errors"].append(f"vault_load:{e!r}")
         raise
 
-    # Extract entries list for migrations
     entries = None
     try:
         if isinstance(data, list):
@@ -108,12 +127,19 @@ def rekey_user_stores(username: str, old_key: bytes, new_key: bytes) -> dict:
     except Exception:
         entries = None
 
-    # Authenticator store migration (inside entries)
+    # Authenticator store migration (inside entries) requires raw key bytes
     try:
-        if entries is not None:
-            from vault_store.authenticator_store import rewrap_authenticator_entries
-            ok, msg, changed, failed = rewrap_authenticator_entries(entries, bytes(old_key), bytes(new_key))
+        if entries is not None and old_key_b is not None and new_key_b is not None:
+            try:
+                from vault_store.authenticator_store import rewrap_authenticator_entries
+            except Exception:
+                from features.auth_store.authenticator_store import rewrap_authenticator_entries
+            ok, msg, changed, failed = rewrap_authenticator_entries(entries, old_key_b, new_key_b)
             summary["authstore_migrated"] = bool(ok)
+            if not ok and msg:
+                summary["errors"].append(f"authstore:{msg}")
+        elif entries is not None:
+            summary["errors"].append("authstore_skipped:no_raw_key_material")
     except Exception as e:
         summary["errors"].append(f"authstore:{e!r}")
 
@@ -129,62 +155,81 @@ def rekey_user_stores(username: str, old_key: bytes, new_key: bytes) -> dict:
     except Exception as e:
         summary["errors"].append(f"pw_hist:{e!r}")
 
-    # Save vault under new key
+    # Save vault using session handle when available. In strict DLL-only mode,
+    # save_vault(username, session_handle, data) requires a native session handle
+    # for the *new* key; raw bytes are not accepted there.
+    created_new_session = None
     try:
-        save_vault(username, bytes(new_key), data)
+        if not (isinstance(new_handle, int) and new_handle > 0):
+            core = None
+            try:
+                from vault_store.vault_store import get_core
+                core = get_core()
+            except Exception:
+                try:
+                    from auth.login.auth_flow_ops import get_core
+                    core = get_core()
+                except Exception:
+                    core = None
+            if core is None or not hasattr(core, "open_session_from_key"):
+                raise RuntimeError("Vault encryption requires native session handle (int).")
+            created_new_session = int(core.open_session_from_key(bytearray(new_key_b)))
+            new_handle = created_new_session
+
+        # Correct save_vault signature in this project is (username, key_or_session, data)
+        save_vault(username, new_handle, data)
         summary["vault_reencrypted"] = True
     except Exception as e:
         summary["errors"].append(f"vault_save:{e!r}")
         raise
-
-    # 1b) Explicit migration of known encrypted JSON stores -------------------
-    # These are key-derived stores that are NOT guaranteed to be compatible with
-    # the generic "sidecar" heuristics (they use HKDF subkeys).
-    try:
-        from app.paths import trash_path, pw_cache_file
-        from sync.engine import decrypt_json_file, encrypt_json_file
-
-        # pwcache (password history)
-        try:
-            p_pw = str(pw_cache_file(username))
-            if os.path.exists(p_pw):
-                info = f"pwcache:{username}".encode("utf-8")
-                obj = decrypt_json_file(p_pw, hkdf_subkey(bytes(old_key), info)) or {}
-                encrypt_json_file(p_pw, hkdf_subkey(bytes(new_key), info), obj)
-                summary["pw_hist_cleared"] = True
-            else:
+    finally:
+        if created_new_session:
+            try:
+                core.close_session(created_new_session)
+            except Exception:
                 pass
-        except Exception as e:
-            summary["errors"].append(f"pwcache_migrate:{e!r}")
 
-        # Trash / soft delete
+    # Byte-dependent sidecar migrations
+    if old_key_b is not None and new_key_b is not None:
         try:
-            p_tr = str(trash_path(username))
-            if os.path.exists(p_tr):
-                rows = decrypt_json_file(p_tr, hkdf_subkey(bytes(old_key), b"trash")) or []
-                encrypt_json_file(p_tr, hkdf_subkey(bytes(new_key), b"trash"), rows)
-                # count as sidecar migrated for summary
-                summary["sidecars_migrated"] += 1
-            else:
-                pass
-        except Exception as e:
-            summary["errors"].append(f"trash_migrate:{e!r}")
+            import os
+            from app.paths import trash_path, pw_cache_file
+            from features.sync.engine import decrypt_json_file, encrypt_json_file
 
-        # User catalog overlay (+ seal)
-        try:
-            from catalog_category.catalog_user import migrate_user_catalog_overlay
-            ok, msg = migrate_user_catalog_overlay(username, bytes(old_key), bytes(new_key))
-            if not ok:
-                summary["errors"].append(f"catalog_migrate:{msg}")
-        except Exception as e:
-            summary["errors"].append(f"catalog_migrate:{e!r}")
+            try:
+                p_pw = str(pw_cache_file(username))
+                if os.path.exists(p_pw):
+                    info = f"pwcache:{username}".encode("utf-8")
+                    obj = decrypt_json_file(p_pw, hkdf_subkey(old_key_b, info)) or {}
+                    encrypt_json_file(p_pw, hkdf_subkey(new_key_b, info), obj)
+                    summary["pw_hist_cleared"] = True
+            except Exception as e:
+                summary["errors"].append(f"pwcache_migrate:{e!r}")
 
-    except Exception as e:
-        summary["errors"].append(f"explicit_store_migrate:{e!r}")
-        # 2) Best-effort sidecar migration --------------------------------------
+            try:
+                p_tr = str(trash_path(username))
+                if os.path.exists(p_tr):
+                    rows = decrypt_json_file(p_tr, hkdf_subkey(old_key_b, b"trash")) or []
+                    encrypt_json_file(p_tr, hkdf_subkey(new_key_b, b"trash"), rows)
+                    summary["sidecars_migrated"] += 1
+            except Exception as e:
+                summary["errors"].append(f"trash_migrate:{e!r}")
+
+            try:
+                from catalog_category.catalog_user import migrate_user_catalog_overlay
+                ok, msg = migrate_user_catalog_overlay(username, old_key_b, new_key_b)
+                if not ok:
+                    summary["errors"].append(f"catalog_migrate:{msg}")
+            except Exception as e:
+                summary["errors"].append(f"catalog_migrate:{e!r}")
+        except Exception as e:
+            summary["errors"].append(f"explicit_store_migrate:{e!r}")
+
+        # Best-effort sidecar migration
         try:
             from pathlib import Path as _Path
             from vault_store.vault_store import get_vault_path, load_encrypted, save_encrypted
+
             vpath = _Path(get_vault_path(username))
             base_dir = vpath.parent if vpath else None
             if base_dir and base_dir.exists():
@@ -194,25 +239,24 @@ def rekey_user_stores(username: str, old_key: bytes, new_key: bytes) -> dict:
                 candidates += list(base_dir.glob("*deleted*"))
                 candidates += list(base_dir.glob("passkeys_store.*"))
                 candidates += list(base_dir.glob("passkeys*"))
-                # De-duplicate
-                seen=set()
+
+                seen = set()
                 for p in candidates:
                     if p.is_file():
-                        s=str(p.resolve())
-                        if s not in seen:
-                            seen.add(s)
+                        seen.add(str(p.resolve()))
 
                 for s in sorted(seen):
                     p = _Path(s)
                     try:
-                        blob = load_encrypted(str(p), bytes(old_key))
-                        save_encrypted(blob, str(p), bytes(new_key))
+                        blob = load_encrypted(str(p), old_key_b)
+                        save_encrypted(blob, str(p), new_key_b)
                         summary["sidecars_migrated"] += 1
                     except Exception:
-                        summary["sidecars_skipped"] += 1    
+                        summary["sidecars_skipped"] += 1
         except Exception:
-            # If helpers don't exist in this build, skip silently (do not break WRAP enable)
             pass
+    else:
+        summary["errors"].append("sidecar_migration_skipped:no_raw_key_material")
 
-        update_baseline(username,verify_after=False, who="Yubi Key Wrap")
-        return summary
+    update_baseline(username, verify_after=False, who="Yubi Key Wrap")
+    return summary

@@ -35,18 +35,17 @@ from qtpy.QtCore import Qt
 # --- helpers ---
 import sys
 from pathlib import Path  
+from native.native_core import get_core
 import hashlib
 import secrets
 from auth.pw.password_utils import get_password_strength
 from auth.pw.password_generator import show_password_generator_dialog
 from new_users.account_creator import create_or_update_user
 from security.secure_audit import log_event_encrypted
-from vault_store.key_utils import derive_key_argon2id
-from auth.login.login_handler import _read_user_salt
 from auth.tfa.twofa_dialog import twofa_setup
 from auth.tfa.twofactor import enable_recovery_2of2_wrap
 from features.url.main_url import SITE_SUPPORT, SITE_GITHUB
-from auth.login.login_handler import get_user_setting, set_user_setting
+from auth.login.login_handler import get_user_setting, set_user_setting, get_user_record
 from auth.yubi.yubikeydialog import YubiKeySetupDialog
 from ui_gen.emergency_kit_dialog import EmergencyKitDialog
 from app.basic import get_app_version
@@ -81,6 +80,57 @@ def create_account(w):
 def _mask_secret(s: str | None) -> str | None:
     if not s: return None
     return (s[:4] + ("*" * max(0, len(s) - 6)) + s[-2:]) if len(s) > 6 else "***"
+
+
+
+def _derive_current_mk_native(username: str, password: str) -> bytes:
+    """
+    Strict DLL-only derivation of the current vault/master key for features that
+    still require the raw 32-byte key in Python (e.g. current YubiKey WRAP flow).
+
+    Reads the authoritative salt from the identity header and honors the user's
+    stored KDF profile. No Python Argon2 fallback is used.
+    """
+    username = (username or "").strip()
+    password = password or ""
+    if not username or not password:
+        raise ValueError("username and password are required")
+
+    from auth.salt_file import read_master_salt_strict
+
+    salt = read_master_salt_strict(username)
+    if not salt:
+        raise ValueError("User salt not found")
+
+    rec = get_user_record(username) or {}
+    kdf = rec.get("kdf") or {}
+
+    core = get_core()
+    if not core:
+        raise RuntimeError("Native core not loaded. DLL is required.")
+
+    pw_buf = bytearray(password.encode("utf-8"))
+    try:
+        if (
+            isinstance(kdf, dict)
+            and int(kdf.get("kdf_v", 1)) >= 2
+            and hasattr(core, "derive_vault_key_ex")
+            and getattr(core, "has_derive_vault_key_ex", lambda: False)()
+        ):
+            return bytes(core.derive_vault_key_ex(
+                pw_buf,
+                bytes(salt),
+                time_cost=int(kdf.get("time_cost", 3)),
+                memory_kib=int(kdf.get("memory_kib", 256000)),
+                parallelism=int(kdf.get("parallelism", 2)),
+            ))
+        return bytes(core.derive_vault_key(pw_buf, bytes(salt)))
+    finally:
+        try:
+            core.secure_wipe(pw_buf)
+        except Exception:
+            for i in range(len(pw_buf)):
+                pw_buf[i] = 0
 
 
 # ==============================
@@ -298,22 +348,25 @@ class InlineOnboardingWizard(QWizard):
 
             log_event_encrypted(username, "Account", f"{kql.i('ok')} (new) -> Hello World")
 
-            # Derive vault key (master key) from password + salt
-            userKey = derive_key_argon2id(password, _read_user_salt(username))
-
             # Make plaintext password available for identity-store operations used by dialogs
             self.current_password = password
+
+            # Only derive the current raw vault key if a YubiKey flow actually needs it.
+            # This stays strict DLL-only and uses identity-header salt + the user's stored KDF.
+            current_mk = None
+            if want_yk:
+                current_mk = _derive_current_mk_native(username, password)
 
             # ---------------- Optional YubiKey (GATE) ----------------
             try:
                 if want_yk:
-                    YubiKeySetupDialog(self, username=username, current_mk=userKey, identity_password=self.current_password).exec()
+                    YubiKeySetupDialog(self, username=username, current_mk=current_mk, identity_password=self.current_password).exec()
 
                     if recovery_mode:
                         # IMPORTANT: use the recovery *key* for the wrap
                         rk = res.get("recovery_key")
                         if rk:
-                            enable_recovery_2of2_wrap(username, master_key=userKey, recovery_key=rk)
+                            enable_recovery_2of2_wrap(username, master_key=current_mk, recovery_key=rk)
 
                     QMessageBox.information(self, self.tr("YubiKey"), self.tr("YubiKey (2-of-2 GATE) enabled for this account."))
             except Exception as e:

@@ -34,34 +34,59 @@ If you are looking for:
 - How signals are connected → look here
 """
 
-# - pysider
-from qtpy.QtCore import QTimer, QSettings, Qt
-from qtpy.QtWidgets import (QMenu, QToolButton, QLineEdit, QCheckBox, QMessageBox, 
-                            QAbstractItemView, QApplication,)
-
 # - import Logging
+from ast import Lambda
 import logging
 import app.kq_logging as kql
 log = kql.setup_logging("keyquorum")
 
 import os, sys
 from typing import Dict, List, Optional
-# --- ---
 from features.url.main_url import open_url
 from ui.ui_find import find_all
 from ui.ui_flags import on_reset_hide_flags_clicked, _maybe_show_release_notes
 from new_users.ui_wizard_create_account import create_account
 from new_users.tour import maybe_show_quick_tour
-from features.backup_advisor.ui_backup_bind import init__backup_avisor
+from features.backup_advisor.ui_backup_bind import init_backup_avisor
 from features.autofill.autofill_ui_bind import on_autofill_to_app_clicked
 from auth.logout.logout_flow import logout_user
-from features.url.main_url import MSSTORE_ADDONS
 from app.basic import _UiBus
 from security.baseline_signer import update_baseline
+from features.backup_advisor.ui_backup_bind import backup_software_folder, restore_software_folder
 from features.security_center.security_center_ui import _run_security_center_scan, on_security_open_integrity_clicked
-import webbrowser
-from app.basic import is_dev
 
+from features.sync.sync_ops import (on_autosync_clicked, one_time_mobile_transfer, on_stop_cloud_sync_keep_local,
+                                    on_toggle_extra_cloud_wrap, on_copy_vault_to_cloud, on_button_sync_cloud, on_select_cloud_vault, )
+
+from auth.login.auth_flow_ops import (on_yk_setup_clicked, on_generate_recovery_key_clicked,
+                           clear_passwordless_unlock_on_this_device, clear_remembered_username,)
+
+from features.auth_store.auth_ops import (_auth_add_from_screen, _auth_add_from_camera, _auth_edit_selected,
+                                          _auth_delete_selected,_auth_add_manual,
+                                            _auth_show_qr_selected,_auth_copy_code, _auth_import_safe, _auth_export_safe,
+                                            _auth_add_from_qr, init_authenticator_tab)
+import webbrowser
+
+from app.dev import dev_ops
+is_dev = dev_ops.dev_set
+
+from features.share.share_ops import(import_share_packet, make_share_packet, export_my_share_id,
+                                        quick_import_from_qr, quick_export_scan_only,)
+
+from bridge.bridge_ops import on_pair_browser_, on_install_ext_, _on_bridge_toggle
+from features.systemtray.systemtry_ops import setup_tray
+
+from app.update import AppUpdater
+
+def setup_update_button(self):
+    self.updater = AppUpdater(parent=self)
+    self.update_btn.clicked.connect(self.updater.check_for_updates)
+
+
+try:
+    from app.qt_imports import *  # noqa: F401,F403
+except Exception:
+    pass
 
 def bind_all(w):
     find_all(w)
@@ -73,11 +98,14 @@ def bind_all(w):
     init_spin_box(w)
     init_authenticator_tab(w)
     init_watchtower(w)
-    init__backup_avisor(w)
+    init_backup_avisor(w)
     init__default(w)
     init__setitems(w)        
     install_windows_auto_lock(w)
     init_login_remember_username(w)
+    setup_tray(w)
+    setup_update_button(w)
+
 
 def init_login_remember_username(w):
     try:
@@ -147,6 +175,8 @@ def init_buttons(w):
     # --- settings menu buttons
     # ==============================
 
+    w.mainTabs.currentChanged.connect(w.on_tab_changed)
+
     getattr(w, 'restHidden', None) and w.restHidden.clicked.connect(lambda: on_reset_hide_flags_clicked(w))   # - reset all hiden flages (must update when adding new ones)
     w.newBug.clicked.connect(lambda: _maybe_show_release_notes(w))                # - show whats new/bug
     w.general_.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(0))        # - change widget
@@ -157,10 +187,9 @@ def init_buttons(w):
     w.pre_security_.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(5))   # - change widget
     w.categoryeditor_.clicked.connect(w.categury_load_schema)                     # - load schema
     w.sync_button.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(7))     # - cloud sync 
-    
-    w.clear_passwordless.clicked.connect(w.clear_passwordless_unlock_on_this_device)    # - clear passwordless
-    w.deleteAccountButton.clicked.connect(lambda: w.open_delete_account_dialog(w, (w.currentUsername.text() or "").strip()))    # - delete user
-    w.clear_username.clicked.connect(w.clear_remembered_username)    
+    w.clear_passwordless.clicked.connect(lambda: clear_passwordless_unlock_on_this_device(w))    # - clear passwordless
+    w.deleteAccountButton.clicked.connect(lambda: w.open_delete_account_dialog(w.currentUsername.text() or "").strip())    # - delete user
+    w.clear_username.clicked.connect(lambda: clear_remembered_username(w))    
     
     try:
         from features.url.main_url import SITE_SUPPORT_ME
@@ -184,22 +213,23 @@ def init_buttons(w):
 
     w.selectUsbButton.clicked.connect(w.on_select_usb_clicked)
     # setup ykSetupBtn 
-    w.btnDeviceUnlock.clicked.connect(w.on_yk_setup_clicked)  # meybe update fore hello on new versions
-    w.regen_key_.clicked.connect(lambda: w.on_generate_recovery_key_clicked("login"))
-    w.regen_key_2fa.clicked.connect(lambda: w.on_generate_recovery_key_clicked("2fa"))
-    w.regen_key_both.clicked.connect(lambda: w.on_generate_recovery_key_clicked("both"))
+    w.btnDeviceUnlock.clicked.connect(lambda: on_yk_setup_clicked(w))
+    w.regen_key_.clicked.connect(lambda: on_generate_recovery_key_clicked(w, "login"))
+    w.regen_key_2fa.clicked.connect(lambda: on_generate_recovery_key_clicked(w, "2fa"))
+    w.regen_key_both.clicked.connect(lambda: on_generate_recovery_key_clicked(w, "both"))
     # - Logout Screen Button
     w.logoutButton.clicked.connect(lambda: logout_user(w, skip_backup=False))
 
     # ==============================
     # --- backup restore
     # ==============================
-    w.exportVaultButton.clicked.connect(w.export_vault)                                                   # - backup
-    w.importVaultButton.clicked.connect(w.import_vault_custom)                                            # - restore full data
-    w.exportWithPasswordButton.clicked.connect(lambda: w.export_vault_with_password(skip_ask=False))      # - export with password
-    w.importWithPasswordButton.clicked.connect(w.import_vault_with_password)                              # - import with password
-    w.backup_software.clicked.connect(w.backup_software_folder)                                           # - export software
-    w.restore_software.clicked.connect(w.restore_software_folder)                                         # - import software
+
+    w.exportVaultButton.clicked.connect(w.export_vault)
+    w.importVaultButton.clicked.connect(w.import_vault_custom)
+    w.exportWithPasswordButton.clicked.connect(lambda: w.export_vault_with_password(skip_ask=False))
+    w.importWithPasswordButton.clicked.connect(w.import_vault_with_password)
+    w.backup_software.clicked.connect(lambda: backup_software_folder(w))
+    w.restore_software.clicked.connect(lambda: restore_software_folder(w))
 
     # ==============================
     # --- Portable
@@ -240,61 +270,67 @@ def init_buttons(w):
     w.check_baseline.clicked.connect(lambda: w.integrity_check_and_prompt(w.currentUsername.text()))
     w.check_baseline_2.clicked.connect(lambda: w.integrity_check_and_prompt(w.currentUsername.text()))
     # --- backup code regen login/yubi & tfa ---
-    w.regen_key_1.clicked.connect(lambda: w.on_generate_recovery_key_clicked("login"))
-    w.regen_key_2fa_2.clicked.connect(lambda: w.on_generate_recovery_key_clicked("2fa"))
-    
-    # ==============================
-    # --- vault table
-    # ==============================
-    w.openSite.clicked.connect(w.on_open_site_clicked)                            # - open site item
-    w.addEntryButton.clicked.connect(w.open_add_entry_dialog)                     # - vault add item
-    w.editEntryButton.clicked.connect(w.handle_edit_button)                       # - vault edit item
-    w.vaultDeleteButton.clicked.connect(w.delete_selected_vault_entry)            # - vault delete item
-    w.autofill_app.clicked.connect(lambda checked=False, w=w: on_autofill_to_app_clicked(w, checked))
-    w._wire_move_button()                                                         # - move vatacury
-    if w.vaultTable is not None:                                                  # - if table not empty
-        w.vaultTable.cellDoubleClicked.connect(w.on_table_double_clicked)         # - dubble click button
-        w.vaultTable.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)    # - set context menu (right click) 
-        w.vaultTable.customContextMenuRequested.connect(w.show_entry_context_menu) # - link to funcsion 
-    w.qrshow_.clicked.connect(w.show_qr_for_selected)                             # - qrcode show
-    w.softdelete_.clicked.connect(w.show_trash_manager)                           # - link to show show soft delete
-    w.reminder_btn.clicked.connect(w.open_reminders_dialog)                       # - windows reminder
-    # ==============================
-    # --- other
-    # ==============================
+    w.regen_key_1.clicked.connect(lambda: on_generate_recovery_key_clicked(w, "login"))
+    w.regen_key_2fa_2.clicked.connect(lambda: on_generate_recovery_key_clicked(w, "2fa"))
 
-    w.ontop_.toggled.connect(w.on_enable_ontop_toggled)                           # - enable/disable ontop
-    w.debug_set_.toggled.connect(w.enable_debug_logging_change)                   # - enable/disable debuging
-    w.deleteAuditLogs.clicked.connect(w.delete_audit_logs)                        # - del audit
-    w.audit_export_.clicked.connect(w.on_export_audit_clicked)                    # - del Edit
+
+    # ==============================
+    # - vault table
+    # ==============================
+    w.openSite.clicked.connect(w.on_open_site_clicked)                         
+    w.addEntryButton.clicked.connect(w.open_add_entry_dialog)                   
+    w.editEntryButton.clicked.connect(w.handle_edit_button)
+    from vault_store.soft_delete_ops import delete_selected_vault_entry, show_trash_manager
+    w.vaultDeleteButton.clicked.connect(lambda: delete_selected_vault_entry(w))
+    w.softdelete_.clicked.connect(lambda: show_trash_manager(w))
+    from features.reminders.reminder_ops import notify_due_reminders
+    w.recheck_btn.clicked.connect(lambda: notify_due_reminders(w, force_not=True))
+    w.autofill_app.clicked.connect(lambda checked=False, w=w: on_autofill_to_app_clicked(w, checked))
+    w._wire_move_button()                                                        
+    if w.vaultTable is not None:                                              
+        w.vaultTable.cellDoubleClicked.connect(w.on_table_double_clicked)     
+        w.vaultTable.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)   
+        w.vaultTable.customContextMenuRequested.connect(w.show_entry_context_menu)
+    w.qrshow_.clicked.connect(w.show_qr_for_selected)
+    w.reminder_btn.clicked.connect(w.open_reminders_dialog)  
+    # ==============================
+    # - other
+    # ==============================
+    w.ontop_.toggled.connect(w.on_enable_ontop_toggled)                      
+    w.debug_set_.toggled.connect(w.enable_debug_logging_change)            
+    w.deleteAuditLogs.clicked.connect(w.delete_audit_logs)                 
+    w.audit_export_.clicked.connect(w.on_export_audit_clicked)     
     w.refreshAuditLogs_.clicked.connect(w.load_audit_table)
-    w.changePasswordButton.clicked.connect(w.open_change_password_dialog)         # - change password
-    w.twoFACheckbox.toggled.connect(w.toggle_2fa_setting)                         # - enable/disable 2FA
-    w.changePicButton.clicked.connect(w.change_profile_picture)                   # - change profile picture
-    w.import_csv_entries_bn.clicked.connect(w.import_csv_entries)                 # - import csv 
-    w.export_csv_entries_bn.clicked.connect(w.export_csv)                         # - export csv 
-    w.password_generator.clicked.connect(w.open_generator)                        # -  password gen button
+    w.changePasswordButton.clicked.connect(w.open_change_password_dialog) 
+    w.twoFACheckbox.toggled.connect(w.toggle_2fa_setting)                    
+    w.changePicButton.clicked.connect(w.change_profile_picture)       
+    from features.backup_advisor.ui_backup_bind import export_csv, import_csv_entries
+    w.import_csv_entries_bn.clicked.connect(lambda: import_csv_entries(w))
+    w.export_csv_entries_bn.clicked.connect(lambda: export_csv(w))              
+    w.password_generator.clicked.connect(w.open_generator)      
     # -----------------------
-    # --- Cloud Sync ----------------
+    # - Cloud Sync
     # -----------------------
-    w.on_sync_now.clicked.connect(w.on_button_sync_cloud)                         # - 
-    w.select_cloud.clicked.connect(w.on_select_cloud_vault)                       # - 
-    w.move_vault_to_cloud.clicked.connect(w.on_copy_vault_to_cloud)               # - 
-    w.extra_cloud_wrap.clicked.connect(w.on_toggle_extra_cloud_wrap)              # - 
-    w.stop_cloud_sync.clicked.connect(w.on_stop_cloud_sync_keep_local)            # - 
-    w.one_time_mobile_transfer_.clicked.connect(w.one_time_mobile_transfer) 
-    w.autosync_.clicked.connect(w.on_autosync_clicked)                            # - auto sync to cloud
+    w.on_sync_now.clicked.connect(lambda: on_button_sync_cloud(w))                   
+    w.select_cloud.clicked.connect(lambda: on_select_cloud_vault(w))
+    w.select_cloud_2.clicked.connect(lambda: on_select_cloud_vault(w))
+    w.move_vault_to_cloud.clicked.connect(lambda: on_copy_vault_to_cloud(w))       
+    w.extra_cloud_wrap.clicked.connect(lambda: on_toggle_extra_cloud_wrap(w))    
+    w.stop_cloud_sync.clicked.connect(lambda: on_stop_cloud_sync_keep_local(w))    
+    w.one_time_mobile_transfer_.clicked.connect(lambda: one_time_mobile_transfer(w))
+    w.autosync_.clicked.connect(lambda c: on_autosync_clicked(w,c))
+
     w.tuchmode_.toggled.connect(w.save_to_user_on_touch)
     w.tuchmode_2.toggled.connect(w.on_touch_mode_toggled_set)
     # -----------------------
-    # --- First time boot/tour button----------------
+    # - First time boot/tour button
     # -----------------------
     w.bowser_btn_2.clicked.connect(lambda: maybe_show_quick_tour(w, "core"))
     w.bowser_btn_3.clicked.connect(lambda: maybe_show_quick_tour(w, "authenticator"))
     w.bowser_btn_4.clicked.connect(lambda: maybe_show_quick_tour(w, "audit"))
     w.bowser_btn_7.clicked.connect(lambda: maybe_show_quick_tour(w, "backup"))
     # -----------------------
-    # --- Passkey ----------------
+    # - Passkey
     # -----------------------
     import features.passkeys.passkeys_windows as pkwin
     import features.passkeys.capabilities as cap
@@ -306,7 +342,7 @@ def init_buttons(w):
     )
     w.btnInstallPasskey.clicked.connect(w.on_install_passkeys_clicked)
     w.btnUninstallPasskey.clicked.connect(w.on_uninstall_passkeys_clicked)
-    # --- Stored Passkeys manager ---
+    # - Stored Passkeys manager
     w._init_passkeys_table()
     w.btnPasskeyRefresh.clicked.connect(w._reload_passkeys_for_current_user)
     w.btnPasskeyDelete.clicked.connect(w._delete_selected_passkey)
@@ -315,38 +351,39 @@ def init_buttons(w):
     w.btnPasskeyRename.clicked.connect(w._rename_selected_passkey)
     w.pair_passkey.clicked.connect(w.launch_passkey_manager_with_token)
     # -----------------------
-    # --- catalog ----------------
+    # - catalog 
     # -----------------------
     w.catalog_edit_.clicked.connect(w.open_catalog_editor)
     # -----------------------
-    # --- Security Center tab ----------------
+    # - Security Center tab 
     # -----------------------
     w.securityRefreshButton.clicked.connect(lambda: _run_security_center_scan(w))        
     w.securityOpenIntegrityButton.clicked.connect(lambda: on_security_open_integrity_clicked(w))
     w.securityPreflightConfigButton.clicked.connect(w.open_security_prefs)
-    w.changePasswordButton_2.clicked.connect(w.open_change_password_dialog)         # - change password
-    w.btnDeviceUnlock_2.clicked.connect(w.on_yk_setup_clicked)  # meybe update fore hello on new versions
-    w.exportWithPasswordButton_2.clicked.connect(lambda: w.export_vault_with_password(skip_ask=False))      # - export with password
+    w.changePasswordButton_2.clicked.connect(w.open_change_password_dialog)  
+    w.btnDeviceUnlock_2.clicked.connect(lambda: on_yk_setup_clicked(w))
+    w.exportWithPasswordButton_2.clicked.connect(lambda: w.export_vault_with_password(skip_ask=False)) 
     w.exportVaultButton_2.clicked.connect(w.export_vault)
     w.exportVaultButton_3.clicked.connect(w.export_vault)
     # -----------------------
-    # --- bridge ----------------
+    # - bridge 
     # -----------------------
-    if hasattr(w, "bridgeEnableSwitch") and w.bridgeEnableSwitch:
-        w.bridgeEnableSwitch.toggled.connect(w._on_bridge_toggle)
+
+    if hasattr(w, "bridgeEnableSwitch"):
+        w.bridgeEnableSwitch.toggled.connect(lambda checked: _on_bridge_toggle(w, checked))
     # -----------------------
-    # --- authenticator ----------------
+    # - authenticator 
     # -----------------------
-    w.btnAuthAdd.clicked.connect(w._auth_add_manual)
-    w.btnAuthAddQR.clicked.connect(w._auth_add_from_qr)
-    w.btnAuthAddScreen.clicked.connect(w._auth_add_from_screen)
-    w.btnAuthEdit.clicked.connect(w._auth_edit_selected)
-    w.btnAuthDelete.clicked.connect(w._auth_delete_selected)
-    w.btnAuthCopy.clicked.connect(w._auth_copy_code)
-    w.btnAuthAddCam.clicked.connect(w._auth_add_from_camera)
-    w.auth_qr_.clicked.connect(w._auth_show_qr_selected)
-    w.btnAuthSafeExport.clicked.connect(w._auth_export_safe)
-    w.btnAuthSafeImport.clicked.connect(w._auth_import_safe)
+    w.btnAuthAdd.clicked.connect(lambda: _auth_add_manual(w))
+    w.btnAuthAddQR.clicked.connect(lambda: _auth_add_from_qr(w))
+    w.btnAuthAddScreen.clicked.connect(lambda: _auth_add_from_screen(w))
+    w.btnAuthEdit.clicked.connect(lambda: _auth_edit_selected(w))
+    w.btnAuthDelete.clicked.connect(lambda: _auth_delete_selected(w))
+    w.btnAuthCopy.clicked.connect(lambda: _auth_copy_code(w))
+    w.btnAuthAddCam.clicked.connect(lambda: _auth_add_from_camera(w))
+    w.auth_qr_.clicked.connect(lambda: _auth_show_qr_selected(w))
+    w.btnAuthSafeExport.clicked.connect(lambda: _auth_export_safe(w))
+    w.btnAuthSafeImport.clicked.connect(lambda: _auth_import_safe(w))
 
     # ------------------------
     # Watchtower scan button
@@ -509,48 +546,49 @@ def init_menu_list(w):
     # -----------------------
     # --- browser menu ----------------
     # -----------------------
-    menu = QMenu(w.bowser_btn)                                                                           # - set button as qmenu
-    menu.addAction(w.actionInstall_Extension)                                                            # - add to menu
-    menu.addAction(w.actionPair_Browser_Token)                                                           # - add to menu
-    menu.addAction(w.actionAutofill_test_site)                                                           # - test site
-    menu.addAction(w.actionExtension_Help)                                                               # - help site
-    w.bowser_btn.setMenu(menu)                                                                           # - set menu
-    w.bowser_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)                           # - set toolbutton as popup       
-    w.actionPair_Browser_Token.triggered.connect(w.on_pair_browser_)                                  # - show token
-    w.actionInstall_Extension.triggered.connect(w.on_install_ext_)                                    # - load browser
-    w.actionAutofill_test_site.triggered.connect(lambda: open_url("SITE_BROW_TEST", default_=True))      # - Test site browser 
-    w.actionExtension_Help.triggered.connect(lambda: open_url("SITE_BROWSER", default_=True))            # - Help 
-    w.bowser_btn.setDefaultAction(w.actionPair_Browser_Token)                                         # - make button click run action
+    menu = QMenu(w.bowser_btn)                      
+    menu.addAction(w.actionInstall_Extension)                        
+    menu.addAction(w.actionPair_Browser_Token)         
+    menu.addAction(w.actionAutofill_test_site)  
+    menu.addAction(w.actionExtension_Help)           
+    w.bowser_btn.setMenu(menu)                 
+    w.bowser_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+
+    w.actionPair_Browser_Token.triggered.connect(lambda: on_pair_browser_(w))        
+    w.actionInstall_Extension.triggered.connect(lambda: on_install_ext_(w)) 
+    w.actionAutofill_test_site.triggered.connect(lambda: open_url("SITE_BROW_TEST", default_=True)) 
+    w.actionExtension_Help.triggered.connect(lambda: open_url("SITE_BROWSER", default_=True)) 
+    w.bowser_btn.setDefaultAction(w.actionPair_Browser_Token)     
 
     # -----------------------
     # --- shared ----------------
     # -----------------------
-    menu2 = QMenu(w.share_)                                                                              # - set button as qmenu
-    menu2.addAction(w.actionMake_Share_Packet)                                                           # - add to menu
-    menu2.addAction(w.actionImport_Share_Packet)                                                         # - add to menu
-    menu2.addAction(w.actionExport_My_Share_ID)                                                          # - add to menu
+    menu2 = QMenu(w.share_)                            
+    menu2.addAction(w.actionMake_Share_Packet) 
+    menu2.addAction(w.actionImport_Share_Packet)  
+    menu2.addAction(w.actionExport_My_Share_ID)  
     menu2.addAction(w.action_quick_scan_qr)  
     menu2.addAction(w.actionQuick_Export_Scan_Only)  
 
-    w.share_.setMenu(menu2)                                                                              # - set menu
-    w.share_.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)                               # - set toolbutton as popup
-    w.actionMake_Share_Packet.triggered.connect(w.make_share_packet)                                  # - show token
-    w.actionExport_My_Share_ID.triggered.connect(w.export_my_share_id)                                # - load browse
-    w.actionImport_Share_Packet.triggered.connect(w.import_share_packet)                              # - load browser
-    w.action_quick_scan_qr.triggered.connect(w.quick_import_from_qr)                                  # - share qr package
-    w.actionQuick_Export_Scan_Only.triggered.connect(w.quick_export_scan_only)
+    w.share_.setMenu(menu2)                                                  
+    w.share_.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)  
+    w.actionMake_Share_Packet.triggered.connect(lambda: make_share_packet(w))      
+    w.actionExport_My_Share_ID.triggered.connect(lambda: export_my_share_id(w))   
+    w.actionImport_Share_Packet.triggered.connect(lambda: import_share_packet(w))   
+    w.action_quick_scan_qr.triggered.connect(lambda: quick_import_from_qr(w))  
+    w.actionQuick_Export_Scan_Only.triggered.connect(lambda: quick_export_scan_only(w))
         
     # -----------------------
     # --- Breach menu ----------------
     # -----------------------
-    menu3 = QMenu(w.bowser_btn)                                                                          # - set button as qmenu
-    menu3.addAction(w.actionCheck_Email)                                                                 # - add to menu
-    menu3.addAction(w.actionCheck_Password)                                                              # - add to menu
-    w.breach_check_.setMenu(menu3)                                                                       # - set menu
-    w.breach_check_.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)                        # - set toolbutton as popup     
-    w.actionCheck_Password.triggered.connect(w.open_password_breach_checker)                          # - show token
-    w.actionCheck_Email.triggered.connect(w.check_selected_email_breach)                              # - load browser
-    w.breach_check_.setDefaultAction(w.actionCheck_Email)                                             # - make button click run action
+    menu3 = QMenu(w.bowser_btn)                                       
+    menu3.addAction(w.actionCheck_Email)                      
+    menu3.addAction(w.actionCheck_Password)      
+    w.breach_check_.setMenu(menu3)            
+    w.breach_check_.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup) 
+    w.actionCheck_Password.triggered.connect(w.open_password_breach_checker)    
+    w.actionCheck_Email.triggered.connect(w.check_selected_email_breach)  
+    w.breach_check_.setDefaultAction(w.actionCheck_Email)  
 
     # -----------------------
     # --- launch/install menu ----------------
@@ -559,8 +597,8 @@ def init_menu_list(w):
 
 
 def init_setText(w):
-    w.vaultSearchBox.setText("")                                 # - Clear SearchBox
-    if w.tr("Label") != "Label":                                 # - Translate text from auth store
+    w.vaultSearchBox.setText("")              
+    if w.tr("Label") != "Label":   # - Translate text from auth store
         msg1 = w.tr(
             "Translate: Label = {label}, Code = {code}, Remaining = {remaining}, "
             "Account = {account}, Issuer = {issuer}, Algorithm = {algorithm}, "
@@ -615,39 +653,6 @@ def init_spin_box(w):
 
     log.debug("%s [UI] SpinBox", kql.i("ok"))
     
-
-def init_authenticator_tab(w):
-    tbl = getattr(w, "authTable", None)
-    if tbl is None:
-        return
-
-    # ensure headers (in case Designer didn’t save them)
-    try:
-        if tbl.columnCount() < 8:
-            tbl.setColumnCount(8)
-        tbl.setHorizontalHeaderLabels(
-            ["Label", "Code", "Remaining", "Account", "Issuer", "Algorithm", "Digits", "Period"]
-        )
-        tbl.setEditTriggers(tbl.EditTrigger.NoEditTriggers)
-        tbl.setSelectionBehavior(tbl.SelectionBehavior.SelectRows)
-    except Exception:
-        pass
-    # 1-sec timer for rolling codes
-    try:
-        w._auth_timer = QTimer(w)
-        w._auth_timer.setInterval(1000)
-        w._auth_timer.timeout.connect(w._auth_refresh_codes)
-        w._auth_timer.start()
-    except Exception:
-        pass
-    # start locked on login screen
-    try:
-        w._auth_set_enabled(False)
-    except Exception:
-        pass
-
-    log.debug("%s [UI] Authenticator tab (table config + timer)", kql.i("ok"))
-
 
 def init_watchtower(w):
     """Initialise Watchtower.
@@ -740,6 +745,7 @@ def init__default(w):
     w.debug_set = False
     w.zoom_factor = 1.0
     w.threshold = None
+    w._last_watchtower_counts = {}
 
     w._pending_values = {}   # type: Dict[str, float]  # type: ignore
     w._last_saved = {}       # type: Dict[str, float]  # type: ignore
@@ -765,10 +771,6 @@ def init__default(w):
     w._touch_init_done = True
     w.ps_score = None
 
-    # buy in MS store
-    w.MS_MONTHLY_URL = "ms-windows-store://pdp/?productid=" + MSSTORE_ADDONS["month"]
-    w.MS_YEARLY_URL = "ms-windows-store://pdp/?productid=" + MSSTORE_ADDONS["year"]
-
     # vault state
     w.vault_unlocked = False          # type: bool  # type: ignore
     w.current_username = None         # type: Optional[str]  # type: ignore
@@ -779,7 +781,6 @@ def init__default(w):
 
 def init__lang(w):
     from ui import ui_language as _lang
-
     w._init_language_from_file = lambda: _lang._init_language_from_file(w)
     w._startup_language_code = lambda: _lang._startup_language_code(w)
     w._init_language_selector = lambda code=None: _lang._init_language_selector(w, code)
@@ -787,11 +788,12 @@ def init__lang(w):
 
 
 def init__setitems(w):
+    from bridge.bridge_ops import stop_bridge_server
     STORE_BUILD = os.getenv("KQ_STORE_BUILD", "").lower() in ("1", "true", "yes")
     w.vaultTable.setEditTriggers(QAbstractItemView.NoEditTriggers)                   # - Vault table Edited Triggers
     w.auditTable.setEditTriggers(QAbstractItemView.NoEditTriggers)                   # - Audit table Edited Triggers
     w.authTable.setEditTriggers(QAbstractItemView.NoEditTriggers)                    # - Auth table Edited Triggers
-    QApplication.instance().aboutToQuit.connect(w.stop_bridge_server)                # - Stop Bridge
+    QApplication.instance().aboutToQuit.connect(lambda: stop_bridge_server(w))                # - Stop Bridge
 
     from features.backup_advisor.backup_advisor import FullBackupReminder
     w.full_backup_reminder = FullBackupReminder(                                     # - Hook full backup reminders

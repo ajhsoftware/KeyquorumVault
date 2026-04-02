@@ -23,6 +23,7 @@
 #include <cstring>
 #include <argon2.h>
 #include <openssl/evp.h>
+#include <openssl/rand.h>
 
 
 // -----------------------------------------------------------------------------
@@ -38,7 +39,7 @@
 //   - Session key is wiped on close.
 // -----------------------------------------------------------------------------
 
-// --- MUST match your app settings (or pass them from Python if you prefer)
+// --- MUST match app settings (or pass them from Python if you prefer)
 static constexpr uint32_t ARGON_T_COST = 3;
 static constexpr uint32_t ARGON_M_COST_KIB = 256000;
 static constexpr uint32_t ARGON_PARALLELISM = 2;
@@ -179,7 +180,7 @@ extern "C" {
 
 
     KQ_API int kq_version() {
-        return 171; // bump when you ship changes
+        return 172; // adds kq_session_open_ex / derive_vault_key_ex (KDF v2+)
     }
 
     KQ_API const char* kq_crypto_backend() {
@@ -189,9 +190,7 @@ extern "C" {
 
     // -----------------------------------------------------------------------------
     // Backwards compatible: derive_vault_key (salt length fixed previously)
-    // Now uses salt_len passed by caller? Your old signature has no salt_len.
-    // We'll keep your signature and assume caller salt is 16 or 32 based on your app.
-    // If you need both lengths, prefer session_open which accepts salt_len.
+    // Now uses salt_len passed by caller? old signature has no salt_len.
     // -----------------------------------------------------------------------------
     KQ_API int derive_vault_key(
         const unsigned char* password_buffer,
@@ -202,9 +201,6 @@ extern "C" {
         if (!password_buffer || password_len == 0 || !salt || !out_key)
             return -1;
 
-        // IMPORTANT: choose salt length that matches your app.
-        // If your app uses 16 bytes, keep 16. If 32, set 32.
-        // Better: use kq_session_open where salt_len is explicit.
         constexpr size_t SALT_LEN_ASSUMED = 16;
 
         int rc = argon2id_hash_raw(
@@ -221,6 +217,44 @@ extern "C" {
 
         return 0;
     }
+
+
+KQ_API int derive_vault_key_ex(
+    const unsigned char* password_buffer,
+    size_t password_len,
+    const unsigned char* salt, size_t salt_len,
+    uint32_t time_cost,
+    uint32_t memory_kib,
+    uint32_t parallelism,
+    unsigned char* out_key, size_t out_key_len
+) {
+    if (!password_buffer || password_len == 0 || !salt || salt_len == 0 || !out_key)
+        return -1;
+
+    if (out_key_len < VK_LEN)
+        return -2;
+
+    // Basic sanity limits to avoid accidental DoS or absurd values.
+    // You can tighten these later if you want.
+    if (time_cost < 1 || time_cost > 20) return -3;
+    if (memory_kib < 8 * 1024 || memory_kib > 4 * 1024 * 1024) return -4;   // 8MB .. 4GB
+    if (parallelism < 1 || parallelism > 16) return -5;
+
+    int rc = argon2id_hash_raw(
+        (uint32_t)time_cost,
+        (uint32_t)memory_kib,
+        (uint32_t)parallelism,
+        password_buffer, password_len,
+        salt, salt_len,
+        out_key, VK_LEN
+    );
+
+    if (rc != ARGON2_OK)
+        return -6;
+
+    return 0;
+}
+
 
     KQ_API int decrypt_vault(
         const unsigned char* key,
@@ -276,7 +310,7 @@ extern "C" {
         // Copy key into session-owned storage
         std::memcpy(s->key, key32, VK_LEN);
 
-        // Optional: lock key memory to reduce paging (best effort)
+        // Lock key memory to reduce paging (best effort)
         s->locked = false;
         if (VirtualLock(s->key, VK_LEN)) {
             s->locked = true;
@@ -315,7 +349,7 @@ extern "C" {
             return -3;
         }
 
-        // Optional: lock key memory to reduce paging (best effort)
+        // Lock key memory to reduce paging (best effort)
         s->locked = false;
         if (VirtualLock(s->key, VK_LEN)) {
             s->locked = true;
@@ -324,6 +358,52 @@ extern "C" {
         *out_session = (kq_session_t)s;
         return 0;
     }
+
+
+KQ_API int kq_session_open_ex(
+    const unsigned char* password_buffer, size_t password_len,
+    const unsigned char* salt, size_t salt_len,
+    uint32_t time_cost,
+    uint32_t memory_kib,
+    uint32_t parallelism,
+    kq_session_t* out_session
+) {
+    if (!password_buffer || password_len == 0 || !salt || salt_len == 0 || !out_session)
+        return -1;
+
+    // Basic sanity limits to avoid accidental DoS or absurd values.
+    if (time_cost < 1 || time_cost > 20) return -3;
+    if (memory_kib < 8 * 1024 || memory_kib > 4 * 1024 * 1024) return -4;   // 8MB .. 4GB
+    if (parallelism < 1 || parallelism > 16) return -5;
+
+    // Allocate session
+    KqSession* s = new (std::nothrow) KqSession();
+    if (!s) return -2;
+
+    int rc = argon2id_hash_raw(
+        (uint32_t)time_cost,
+        (uint32_t)memory_kib,
+        (uint32_t)parallelism,
+        password_buffer, password_len,
+        salt, salt_len,
+        s->key, VK_LEN
+    );
+
+    if (rc != ARGON2_OK) {
+        secure_bzero(s->key, VK_LEN);
+        delete s;
+        return -6;
+    }
+
+    // Lock key memory to reduce paging (best effort)
+    s->locked = false;
+    if (VirtualLock(s->key, VK_LEN)) {
+        s->locked = true;
+    }
+
+    *out_session = (kq_session_t)s;
+    return 0;
+}
 
     KQ_API void kq_session_close(kq_session_t session) {
         if (!session) return;
@@ -376,7 +456,87 @@ extern "C" {
         );
     }
 
+    
     // -----------------------------------------------------------------------------
+    // Session key wrapping (no key material leaves the DLL)
+    // -----------------------------------------------------------------------------
+
+    KQ_API int kq_session_wrap_session_key(
+        kq_session_t key_session,
+        kq_session_t wrapping_session,
+        unsigned char* out_iv, size_t iv_len,
+        unsigned char* out_ciphertext, size_t ct_len,
+        unsigned char* out_tag, size_t tag_len
+    ) {
+        if (!key_session || !wrapping_session || !out_iv || !out_ciphertext || !out_tag) return -1;
+        if (iv_len != GCM_IV_DEFAULT_LEN) return -2;
+        if (ct_len != VK_LEN) return -3;
+        if (tag_len != GCM_TAG_LEN) return -4;
+
+        KqSession* ks = (KqSession*)key_session;
+        KqSession* ws = (KqSession*)wrapping_session;
+
+        // Generate fresh IV
+        if (RAND_bytes(out_iv, (int)iv_len) != 1) {
+            return -5;
+        }
+
+        // Encrypt the 32-byte key from ks using wrapping key ws->key
+        int rc = aes_gcm_encrypt_key(
+            ws->key,
+            out_iv, iv_len,
+            ks->key, VK_LEN,
+            out_ciphertext,
+            out_tag, tag_len
+        );
+        return rc;
+    }
+
+    KQ_API int kq_session_unwrap_to_session(
+        kq_session_t wrapping_session,
+        const unsigned char* iv, size_t iv_len,
+        const unsigned char* ciphertext, size_t ct_len,
+        const unsigned char* tag, size_t tag_len,
+        kq_session_t* out_session
+    ) {
+        if (!wrapping_session || !iv || !ciphertext || !tag || !out_session) return -1;
+        if (iv_len != GCM_IV_DEFAULT_LEN) return -2;
+        if (ct_len != VK_LEN) return -3;
+        if (tag_len != GCM_TAG_LEN) return -4;
+
+        KqSession* ws = (KqSession*)wrapping_session;
+
+        unsigned char tmp_key[VK_LEN];
+        std::memset(tmp_key, 0, VK_LEN);
+
+        int rc = aes_gcm_decrypt_key(
+            ws->key,
+            iv, iv_len,
+            ciphertext, ct_len,
+            tag, tag_len,
+            tmp_key
+        );
+        if (rc != 0) {
+            secure_wipe(tmp_key, VK_LEN);
+            return rc;
+        }
+
+        // Create a new session from the decrypted key (copy happens inside)
+        kq_session_t new_sess = nullptr;
+        rc = kq_session_open_from_key(tmp_key, VK_LEN, &new_sess);
+
+        // Always wipe temp
+        secure_wipe(tmp_key, VK_LEN);
+
+        if (rc != 0 || !new_sess) {
+            return (rc != 0) ? rc : -5;
+        }
+
+        *out_session = new_sess;
+        return 0;
+    }
+
+// -----------------------------------------------------------------------------
     // Wipe helper
     // -----------------------------------------------------------------------------
     KQ_API void secure_wipe(void* ptr, size_t len) {
@@ -385,6 +545,4 @@ extern "C" {
         }
     }
 
-
-
-} // extern "C"
+}

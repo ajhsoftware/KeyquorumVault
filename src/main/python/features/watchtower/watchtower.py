@@ -105,6 +105,7 @@ class WatchtowerPanel(QObject):
         self.weak_threshold = int(weak_threshold)
         self.enable_breach_provider = enable_breach_provider
         self.on_fix = on_fix
+        self.show_msg = False
 
         # thread pool for running scans
         self.threadpool = QThreadPool.globalInstance()
@@ -131,6 +132,7 @@ class WatchtowerPanel(QObject):
             self.chk_missing_url,
             self.chk_2fa,
             self.chk_cards,
+            self.chk_expired,
         ):
             if cb is not None:
                 try:
@@ -154,6 +156,16 @@ class WatchtowerPanel(QObject):
                 self.export_btn.clicked.connect(self.export_report)
             except Exception:
                 pass
+
+        try:
+            self.ignoreSelectedBtn.clicked.connect(self.on_ignore_selected)
+        except Exception as e:
+            pass
+
+        try:
+            self.unignoreSelectedBtn.clicked.connect(self.on_unignore_selected)
+        except Exception as e:
+            pass
 
         # Load saved rules into the UI
         self._load_rules_into_ui()
@@ -213,7 +225,8 @@ class WatchtowerPanel(QObject):
         self.scan_btn = mw.findChild(QPushButton, "scan_btn")
         self.preflight_btn = mw.findChild(QPushButton, "preflight_btn")
         self.export_btn = mw.findChild(QPushButton, "export_btn")
-
+        self.ignoreSelectedBtn = mw.findChild(QPushButton, "ignoreSelectedBtn")
+        self.unignoreSelectedBtn = mw.findChild(QPushButton, "unignoreSelectedBtn")
         # Filters / checkboxes
         self.chk_weak = mw.findChild(QCheckBox, "chk_weak")
         self.chk_reused = mw.findChild(QCheckBox, "chk_reused")
@@ -222,6 +235,11 @@ class WatchtowerPanel(QObject):
         self.chk_missing_url = mw.findChild(QCheckBox, "chk_missing_url")
         self.chk_2fa = mw.findChild(QCheckBox, "chk_2fa")
         self.chk_cards = mw.findChild(QCheckBox, "chk_cards")
+        self.chk_expired = (
+            mw.findChild(QCheckBox, "chk_password_expired")
+            or mw.findChild(QCheckBox, "chk_expired")
+            or mw.findChild(QCheckBox, "pw_exp")
+        )
 
         # Summary value labels
         self.lbl_reused = mw.findChild(QLabel, "lbl_reused")
@@ -232,7 +250,6 @@ class WatchtowerPanel(QObject):
         self.lbl_missing_user = mw.findChild(QLabel, "lbl_missing_user")
         self.lbl_missing_url = mw.findChild(QLabel, "lbl_missing_url")
         self.lbl_2fa = mw.findChild(QLabel, "lbl_2fa")
-        # lbl_cards may not exist in some UI versions
         self.lbl_cards = mw.findChild(QLabel, "lbl_cards")
 
         # Preserve the original label text so we can append counts without
@@ -252,11 +269,28 @@ class WatchtowerPanel(QObject):
         self.tbl = mw.findChild(QTableWidget, "tbl")
         self.tbl_ignored = mw.findChild(QTableWidget, "tbl_ignored")
 
+        # Context menu for Ignore/Unignore (no per-row widgets)
+        try:
+            if self.tbl is not None:
+                self.tbl.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+                self.tbl.customContextMenuRequested.connect(self._on_active_context_menu)
+        except Exception:
+            pass
+
+        try:
+            if self.tbl_ignored is not None:
+                self.tbl_ignored.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+                self.tbl_ignored.customContextMenuRequested.connect(self._on_ignored_context_menu)
+        except Exception:
+            pass
+
         # Defensive warning for missing widgets
         missing: List[str] = []
         for attr in (
             "scan_btn",
             "preflight_btn",
+            "ignoreSelectedBtn",
+            "unignoreSelectedBtn",
             "export_btn",
             "chk_weak",
             "chk_reused",
@@ -265,6 +299,7 @@ class WatchtowerPanel(QObject):
             "chk_missing_url",
             "chk_2fa",
             "chk_cards",
+            # chk_expired is optional in older UI builds
             "lbl_reused",
             "lbl_weak",
             "lbl_old",
@@ -286,6 +321,7 @@ class WatchtowerPanel(QObject):
                 "Watchtower: missing UI widgets in keyquorum_ui.ui: %s",
                 ", ".join(missing),
             )
+
 
     # ------------------------
     # Settings helpers
@@ -376,6 +412,25 @@ class WatchtowerPanel(QObject):
         # Cancelled
         return False
 
+    def _get_selected_issue(self, table, rows_list):
+        r = table.currentRow()
+        if r < 0 or r >= len(rows_list):
+            return None
+        return rows_list[r]
+
+    def on_unignore_selected(self):
+        it, which = self._wt_get_selected_issue()
+        if not it:
+            return
+        if which != "ignored":
+            return
+
+        self._wt_unignore_issue(it.entry_id, it.kind)
+        try:
+            self._rebuild_tables(getattr(self, "_last_issues", []) or [])
+        except Exception:
+            pass
+
     # ------------------------
     # Rules + ignored handling
     # ------------------------
@@ -389,6 +444,7 @@ class WatchtowerPanel(QObject):
             "missing_url": True,
             "missing_2fa": True,
             "card_expire": True,
+            "password_expired": True,
         }
 
     def _load_rules_dict(self) -> dict:
@@ -447,6 +503,8 @@ class WatchtowerPanel(QObject):
                 self.chk_2fa.setChecked(bool(rules.get("missing_2fa", True)))
             if self.chk_cards is not None:
                 self.chk_cards.setChecked(bool(rules.get("card_expire", True)))
+            if self.chk_expired is not None:
+                self.chk_expired.setChecked(bool(rules.get("password_expired", True)))
         except Exception:
             pass
 
@@ -461,6 +519,7 @@ class WatchtowerPanel(QObject):
                 "missing_url": bool(self.chk_missing_url.isChecked()) if self.chk_missing_url is not None else True,
                 "missing_2fa": bool(self.chk_2fa.isChecked()) if self.chk_2fa is not None else True,
                 "card_expire": bool(self.chk_cards.isChecked()) if self.chk_cards is not None else True,
+                "password_expired": bool(self.chk_expired.isChecked()) if self.chk_expired is not None else True,
             }
             self._save_rules_dict(rules)
         except Exception:
@@ -478,6 +537,9 @@ class WatchtowerPanel(QObject):
             "Account Missing 2FA": "missing_2fa",
             "Card Expired": "card_expire",
             "Card Expiring Soon": "card_expire",
+            "Old Password": "password_expired",
+            "Expired Item": "password_expired",
+            "Password Expired": "password_expired",
             # Breach & Old always on if present
         }
         return mapping.get(k)
@@ -594,11 +656,12 @@ class WatchtowerPanel(QObject):
             pass
         self.start_scan()
 
-    def start_scan(self) -> None:
+    def start_scan(self, show_msg=True) -> None:
         """
         Launch a background scan over all entries.  Resets UI state,
         kicks off a `ScanTask`, and wires up progress/finished/error.
         """
+        self.show_msg = show_msg
         try:
             if self.progress is not None:
                 self.progress.setValue(0)
@@ -635,13 +698,27 @@ class WatchtowerPanel(QObject):
             return
 
 
+        # Match the same expiry-days setting used by the vault table.
+        max_age_days = int(self.max_age_days)
+        try:
+            from auth.login.login_handler import get_user_setting, _canonical_username_ci
+            raw_name = ""
+            try:
+                raw_name = (self._mw.currentUsername.text() or "").strip()
+            except Exception:
+                raw_name = ""
+            username_ci = _canonical_username_ci(raw_name) or raw_name
+            max_age_days = int(get_user_setting(username_ci, "password_expiry_days", max_age_days))
+        except Exception:
+            pass
+
         # Launch ScanTask
         task = ScanTask(
             entries=entries,
             id_fn=self._stable_id,
             get_strength=self.get_strength,
             breach_check=self.breach_check,
-            max_age_days=self.max_age_days,
+            max_age_days=max_age_days,
             weak_threshold=self.weak_threshold,
             enable_breach=bool(self.enable_breach_provider()),
             enable_card_expiry=bool(self.chk_cards.isChecked()) if self.chk_cards else True,
@@ -691,33 +768,113 @@ class WatchtowerPanel(QObject):
     # Table + summary rebuilding
     # ------------------------
 
-    def _rebuild_tables(self, issues: List[WTIssue]) -> None:
-        # Clear tables
+    def _on_active_context_menu(self, pos):
+        from qtpy.QtWidgets import QMenu
+        if self.tbl is None:
+            return
+        row = self.tbl.rowAt(pos.y())
+        if row < 0:
+            return
+        self.tbl.selectRow(row)
+        it = None
         try:
-            if self.tbl is not None:
-                self.tbl.setRowCount(0)
+            rows = getattr(self, "_wt_active_rows", [])
+            if 0 <= row < len(rows):
+                it = rows[row]
         except Exception:
-            pass
-        try:
-            if self.tbl_ignored is not None:
-                self.tbl_ignored.setRowCount(0)
-        except Exception:
-            pass
+            it = None
+        if not it:
+            return
 
-        # Load rules and ignored list
+        m = QMenu(self._mw)
+        act_ignore = m.addAction(_tr("Ignore selected issue"))
+        chosen = m.exec(self.tbl.viewport().mapToGlobal(pos))
+        if chosen == act_ignore:
+            self._wt_ignore_issue(it.entry_id, it.kind)
+
+    def _on_ignored_context_menu(self, pos):
+        from qtpy.QtWidgets import QMenu
+        if self.tbl_ignored is None:
+            return
+        row = self.tbl_ignored.rowAt(pos.y())
+        if row < 0:
+            return
+        self.tbl_ignored.selectRow(row)
+        it = None
+        try:
+            rows = getattr(self, "_wt_ignored_rows", [])
+            if 0 <= row < len(rows):
+                it = rows[row]
+        except Exception:
+            it = None
+        if not it:
+            return
+
+        m = QMenu(self._mw)
+        act_unignore = m.addAction(_tr("Unignore selected issue"))
+        chosen = m.exec(self.tbl_ignored.viewport().mapToGlobal(pos))
+        if chosen == act_unignore:
+            self._wt_unignore_issue(it.entry_id, it.kind)
+
+    def _rebuild_tables(self, issues: List[WTIssue]) -> None:
+        from qtpy.QtCore import Qt, QSignalBlocker, QTimer
+        from qtpy.QtWidgets import QTableWidgetItem
+
+        # ---------- helpers ----------
         rules = self._load_rules_dict()
         ignored = self._load_ignored_list()
 
-        # Helper to decide if rule enabled
         def rule_enabled(kind: str) -> bool:
             key = self._issue_rule_key(kind)
             if not key:
-                return True  # no dedicated rule => always on
+                return True
             return bool(rules.get(key, True))
 
-        # Score weights (copy from original)
+        def _prep_table(tbl):
+            if not tbl:
+                return
+            b = QSignalBlocker(tbl)
+            tbl.setSortingEnabled(False)
+            tbl.setUpdatesEnabled(False)
+            tbl.clearContents()
+            tbl.setRowCount(0)
+            # ensure columns exist (Type, Title, Detail, Action)
+            if tbl.columnCount() < 4:
+                tbl.setColumnCount(4)
+
+            try:
+                tbl.setHorizontalHeaderLabels([_tr("Type"), _tr("Entry"), _tr("Detail"), _tr("Action")])
+            except Exception:
+                pass
+            try:
+                tbl.setUniformRowHeights(True)
+            except Exception:
+                pass
+            # keep blockers alive until end of function
+            return b
+
+        bt = _prep_table(self.tbl)
+        bi = _prep_table(self.tbl_ignored)
+
+        # ---------- build active/ignored lists ----------
+        active_list: List[WTIssue] = []
+        ignored_list: List[WTIssue] = []
+
+        for it in (issues or []):
+            if not rule_enabled(it.kind):
+                continue
+            if self._is_issue_ignored(it, ignored):
+                ignored_list.append(it)
+            else:
+                active_list.append(it)
+
+        # Keep row->issue mapping for click handlers
+        self._wt_active_rows = active_list
+        self._wt_ignored_rows = ignored_list
+
+        # ---------- scoring ----------
         score = 100
-        score_weights: Dict[str, int] = {
+        score_weights = {
             "Known Breach": 15,
             "Reused Password": 10,
             "Weak Password": 8,
@@ -729,10 +886,10 @@ class WatchtowerPanel(QObject):
             "Account Missing 2FA": 15,
             "Card Expired": 4,
             "Card Expiring Soon": 2,
+            "Expired Item": 12,
+            "Password Expired": 12,
         }
-
-        # Counts for each type
-        counts: Dict[str, int] = {
+        counts = {
             "Reused Password": 0,
             "Weak Password": 0,
             "Old Password": 0,
@@ -744,96 +901,225 @@ class WatchtowerPanel(QObject):
             "Account Missing 2FA": 0,
             "Card Expired": 0,
             "Card Expiring Soon": 0,
+            "Expired Item": 0,
+            "Password Expired": 0,
         }
 
-        # Table population
-        for it in issues:
+        for it in active_list:
             k = it.kind
-            # Skip if rule disabled
-            if not rule_enabled(k):
-                continue
-            is_ignored = self._is_issue_ignored(it, ignored)
-            # Decide which table
-            tgt_tbl = self.tbl_ignored if is_ignored else self.tbl
-            if tgt_tbl is not None:
-                try:
-                    row = tgt_tbl.rowCount()
-                    tgt_tbl.insertRow(row)
-                    # Column 0: Type (translated)
-                    item0 = QTableWidgetItem(_tr(it.kind))
-                    tgt_tbl.setItem(row, 0, item0)
-                    # Column 1: Entry title
-                    item1 = QTableWidgetItem(it.title)
-                    tgt_tbl.setItem(row, 1, item1)
-                    # Column 2: Detail
-                    item2 = QTableWidgetItem(it.detail)
-                    tgt_tbl.setItem(row, 2, item2)
-                    # Column 3: Action buttons
-                    cell = QWidget()
-                    lay = QHBoxLayout(cell)
-                    lay.setContentsMargins(0, 0, 0, 0)
-                    lay.setSpacing(4)
-                    # Fix button for active issues
-                    if not is_ignored:
-                        fix_btn = QPushButton(_tr("Fix…"))
-                        fix_btn.setProperty("entry_id", it.entry_id)
-                        fix_btn.setProperty("kind", it.kind)
-                        fix_btn.clicked.connect(self._fix_from_button)
-                        lay.addWidget(fix_btn)
-                    # Ignore/unignore button
-                    if is_ignored:
-                        un_btn = QPushButton(_tr("Unignore"))
-                        un_btn.setProperty("entry_id", it.entry_id)
-                        un_btn.setProperty("kind", it.kind)
-                        un_btn.clicked.connect(self._unignore_from_button)
-                        lay.addWidget(un_btn)
-                    else:
-                        ign_btn = QPushButton(_tr("Ignore"))
-                        ign_btn.setProperty("entry_id", it.entry_id)
-                        ign_btn.setProperty("kind", it.kind)
-                        ign_btn.clicked.connect(self._ignore_from_button)
-                        lay.addWidget(ign_btn)
-                    lay.addStretch(1)
-                    tgt_tbl.setCellWidget(row, 3, cell)
-                except Exception:
-                    pass
-            # Update counts and score only for active issues
-            if not is_ignored:
-                if k in counts:
-                    counts[k] = counts.get(k, 0) + 1
-                score -= score_weights.get(k, 0)
+            if k in counts:
+                counts[k] = counts.get(k, 0) + 1
+            score -= score_weights.get(k, 0)
 
-        # Clamp score
         score = max(0, min(100, score))
-        # Compute aggregated values for summary
-        reused = counts.get("Reused Password", 0)
-        weak = counts.get("Weak Password", 0)
-        old = counts.get("Old Password", 0)
-        breach = counts.get("Known Breach", 0)
-        http = counts.get("Insecure URL (HTTP)", 0)
-        miss_user = counts.get("Missing Username", 0)
-        miss_url = counts.get("Missing URL", 0)
-        twofa = counts.get("Missing 2FA", 0) + counts.get("Account Missing 2FA", 0)
-        cards = counts.get("Card Expired", 0) + counts.get("Card Expiring Soon", 0)
-        self._set_summary(reused, weak, old, breach, http, miss_user, miss_url, twofa, cards, score=score)
-        # Enable export
+
+        # update summary (keep your existing fields; these names match your original)
         try:
-            if self.export_btn is not None:
-                self.export_btn.setEnabled(True)
+            self._set_summary(
+                counts.get("Reused Password", 0),
+                counts.get("Weak Password", 0),
+                counts.get("Old Password", 0) + counts.get("Expired Item", 0) + counts.get("Password Expired", 0),
+                counts.get("Known Breach", 0),
+                counts.get("Insecure URL (HTTP)", 0),
+                counts.get("Missing Username", 0),
+                counts.get("Missing URL", 0),
+                counts.get("Missing 2FA", 0),
+                counts.get("Account Missing 2FA", 0),
+                score=score,
+            )
+            if self.score_lbl is not None:
+                self.score_lbl.setText(_tr(f"Security Score: {score}/100"))
         except Exception:
             pass
+
+        last_counts = getattr(self._mw, "_last_watchtower_counts", {}) or {}
+
+        if self.show_msg and counts != last_counts:  # warn user only if counts changed
+            try:
+                self._mw._last_watchtower_counts = counts.copy()  # Cache for reminder/watcher
+
+                from features.systemtray.systemtry_ops import notify_update_watchtower
+
+                mw = getattr(self, "_mw", None)
+                if mw is not None:
+                    notify_update_watchtower(
+                        mw,
+                        weak_pw=counts.get("Weak Password", 0),
+                        reused_pw=counts.get("Reused Password", 0),
+                        breach_pw=counts.get("Known Breach", 0), 
+                        http_only_urls=counts.get("Insecure URL (HTTP)", 0),
+                        missing_username=counts.get("Missing Username", 0),
+                        missing_urls=counts.get("Missing URL", 0),
+                        tfa_disabled=counts.get("Missing 2FA", 0) + counts.get("Account Missing 2FA", 0),
+                        card_exp=counts.get("Card Expired", 0) + counts.get("Card Expiring Soon", 0),
+                        item_exp=counts.get("Expired Item", 0) + counts.get("Password Expired", 0) + counts.get("Old Password", 0),
+                    )
+                else:
+                    log.warning("[Watchtower] main window reference missing; tray notify skipped")
+            except Exception as e:
+                log.error(f"[Watchtower] tray notify failed: {e}")
+
+        try:
+            expired_rows = [it.title for it in active_list if it.kind == "Expired Item"]
+            log.info("[WT-UI] active expired items count=%s", len(expired_rows))
+        except Exception:
+            pass
+
+
+        # ---------- ensure click handlers connected once ----------
+        def _disconnect(tbl):
+            try:
+                tbl.cellClicked.disconnect()
+            except Exception:
+                pass
+
+        def _connect(tbl, handler):
+            if not tbl:
+                return
+            _disconnect(tbl)
+            tbl.cellClicked.connect(handler)
+
+        def _on_active_click(row: int, col: int):
+            # Only react to Action column (3)
+            if col != 3:
+                return
+            if row < 0 or row >= len(getattr(self, "_wt_active_rows", [])):
+                return
+            it = self._wt_active_rows[row]
+
+            # Decide action from cell text
+            txt = (self.tbl.item(row, 3).text() if self.tbl and self.tbl.item(row, 3) else "").strip().lower()
+            if "fix" in txt:
+                # call same fix path as your button did
+                self._wt_fix_issue(it.entry_id, it.kind)
+            else:
+                # default ignore
+                self._wt_ignore_issue(it.entry_id, it.kind)
+
+        def _on_ignored_click(row: int, col: int):
+            if col != 3:
+                return
+            if row < 0 or row >= len(getattr(self, "_wt_ignored_rows", [])):
+                return
+            it = self._wt_ignored_rows[row]
+            self._wt_unignore_issue(it.entry_id, it.kind)
+
+        _connect(self.tbl, _on_active_click)
+        _connect(self.tbl_ignored, _on_ignored_click)
+
+        # ---------- fast + batched fill ----------
+        def _fill(tbl, data: List[WTIssue], mode: str):
+            if not tbl:
+                return
+
+            tbl.setRowCount(len(data))
+            tbl.setUpdatesEnabled(True)   # IMPORTANT – enable updates BEFORE filling
+
+            for r, it in enumerate(data):
+                tbl.setItem(r, 0, QTableWidgetItem(_tr(it.kind)))
+                tbl.setItem(r, 1, QTableWidgetItem(it.title))
+                tbl.setItem(r, 2, QTableWidgetItem(it.detail))
+
+                act = QTableWidgetItem(_tr("Unignore") if mode == "ignored" else _tr("Fix"))
+                act.setTextAlignment(Qt.AlignCenter)
+                act.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+                tbl.setItem(r, 3, act)
+
+        # turn updates back on AFTER batches finish
+        if self.tbl:
+            self.tbl.setUpdatesEnabled(False)
+        if self.tbl_ignored:
+            self.tbl_ignored.setUpdatesEnabled(False)
+
+        _fill(self.tbl, active_list, mode="active")
+        _fill(self.tbl_ignored, ignored_list, mode="ignored")
+
+    def _wt_fix_issue(self, entry_id: str, kind: str) -> None:
+        # Fix uses your existing handler (on_fix)
+        try:
+            if callable(getattr(self, "on_fix", None)):
+                self.on_fix(str(entry_id))
+        except Exception as e:
+            log.error(f"[Watchtower] fix failed: {e}")
+
+    def _wt_get_selected_issue(self):
+        """
+        Returns (issue, which_table) where which_table is "active" or "ignored".
+        Does NOT rely on a tab widget name. It checks which table has a valid selection.
+        """
+        # 1) Prefer ignored table if it has a real selection
+        try:
+            if self.tbl_ignored is not None:
+                r = self.tbl_ignored.currentRow()
+                rows = getattr(self, "_wt_ignored_rows", []) or []
+                if 0 <= r < len(rows):
+                    return rows[r], "ignored"
+        except Exception:
+            pass
+
+        # 2) Otherwise fall back to active table
+        try:
+            if self.tbl is not None:
+                r = self.tbl.currentRow()
+                rows = getattr(self, "_wt_active_rows", []) or []
+                if 0 <= r < len(rows):
+                    return rows[r], "active"
+        except Exception:
+            pass
+
+        return None, None
+
+    def on_ignore_selected(self):
+        it, which = self._wt_get_selected_issue()
+        if not it:
+            return
+
+        # If user is on ignored tab, ignore doesn't make sense
+        if which == "ignored":
+            return
+
+        self._wt_ignore_issue(it.entry_id, it.kind)
+
+        # refresh UI using last scan results (so the row moves immediately)
+        try:
+            self._rebuild_tables(getattr(self, "_last_issues", []) or [])
+        except Exception:
+            pass
+
+    def _wt_ignore_issue(self, entry_id: str, kind: str) -> None:
+        # Your existing ignore implementation expects (kind, entry_id)
+        try:
+            self._ignore_issue(str(kind), str(entry_id))
+        except Exception as e:
+            log.error(f"[Watchtower] ignore failed: {e}")
+
+    def _wt_unignore_issue(self, entry_id: str, kind: str) -> None:
+        # Your existing unignore implementation expects (kind, entry_id)
+        try:
+            self._unignore_issue(str(kind), str(entry_id))
+        except Exception as e:
+            log.error(f"[Watchtower] unignore failed: {e}")
 
     # ------------------------
     # Fix / ignore handlers
     # ------------------------
 
-    def _fix(self, entry_id: str) -> None:
-        # Delegate to provided fix handler if any
-        if self.on_fix:
-            try:
-                self.on_fix(entry_id)
-            except Exception as e:
-                log.error(f"[Watchtower] fix handler failed: {e}")
+    def _fill(tbl, data: List[WTIssue], mode: str):
+        if not tbl:
+            return
+
+        tbl.setRowCount(len(data))
+        tbl.setUpdatesEnabled(True)   # IMPORTANT – enable updates BEFORE filling
+
+        for r, it in enumerate(data):
+            tbl.setItem(r, 0, QTableWidgetItem(_tr(it.kind)))
+            tbl.setItem(r, 1, QTableWidgetItem(it.title))
+            tbl.setItem(r, 2, QTableWidgetItem(it.detail))
+
+            act = QTableWidgetItem(_tr("Unignore") if mode == "ignored" else _tr("Fix… / Ignore"))
+            act.setTextAlignment(Qt.AlignCenter)
+            act.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+            tbl.setItem(r, 3, act)
 
     def _fix_from_button(self) -> None:
         try:
@@ -1106,7 +1392,7 @@ def _iter_vault_entries(w):
     except Exception:
         username = ""
     try:
-        key = getattr(w, "userKey", None)
+        key = getattr(w, "core_session_handle", None)
     except Exception:
         key = None
 
@@ -1132,6 +1418,9 @@ def _iter_vault_entries(w):
 
             pw = r.get("password") or r.get("pwd") or r.get("pass") or r.get("secret") or r.get("Password") or ""
             upd = (r.get("pw_changed_at") or r.get("updated_at") or r.get("last_changed") or r.get("Date") or r.get("created_at") or "")
+            password_expired = (
+                r.get("Password Expired") or r.get("password_expired") or r.get("password expired") or False
+            )
 
             # Card expiry (pass through so watchtower_scan can evaluate it)
             expiry = (
@@ -1154,6 +1443,7 @@ def _iter_vault_entries(w):
                 "updated_at": upd,
                 "kind": _classify_kind(str(cat)),
                 "expiry": expiry,
+                "password_expired": password_expired,
                 "__wt_idx": i,
             }
         except Exception:
@@ -1188,7 +1478,7 @@ succeeds, an informational message is shown.  Otherwise, an error
 
     # Load the existing entry for display purposes
     try:
-        entries = load_vault(w.currentUsername.text(), w.userKey)
+        entries = load_vault(w.currentUsername.text(), w.core_session_handle)
         entry = dict(entries[idx]) if 0 <= idx < len(entries) else {}
     except Exception:
         entry = {}
@@ -1227,7 +1517,7 @@ succeeds, an informational message is shown.  Otherwise, an error
     ok = _persist_entry_with_history(
         w,
         w.currentUsername.text(),
-        w.userKey,
+        w.core_session_handle,
         idx,
         entry,
         max_hist=5,
@@ -1308,7 +1598,7 @@ def _watchtower_fix_entry(w, entry_id: str) -> None:
     # Load entries to retrieve the category for switching
     try:
         try:
-            all_entries = load_vault(w.currentUsername.text(), w.userKey) or []
+            all_entries = load_vault(w.currentUsername.text(), w.core_session_handle) or []
         except TypeError:
             all_entries = load_vault(w.currentUsername.text()) or []
     except Exception:
@@ -1535,9 +1825,9 @@ def _watchtower_fix_entry_old(w, entry_id: str):
     # --- 4) Load entries and get this entry's category ----------------------
     try:
         try:
-            all_entries = load_vault(w.currentUsername.text(), w.userKey) or []
+            all_entries = load_vault(w.currentUsername.text(), w.core_session_handle) or []
         except TypeError:
-            # Fallback signature if userKey isn't expected
+            # Fallback signature if core_session_handle isn't expected
             all_entries = load_vault(w.currentUsername.text()) or []
     except Exception:
         all_entries = []

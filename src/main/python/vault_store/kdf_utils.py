@@ -15,146 +15,143 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 """
 
 from __future__ import annotations
-"""Module for vault store functionality.
 
-This file is part of the Keyquorum Vault codebase.
-"""
+import os
+from typing import Dict, Any
 
-from argon2.low_level import Type, hash_secret_raw
-
-"""
-Argon2id parameters — defaults for desktop/laptop users.
-These match your PasswordHasher in crypto_utils.py:
-  time_cost    = 3
-  memory_cost  = 256_000 KiB  (≈256 MB)
-  parallelism  = 2
-  hash_len     = 32 bytes
-"""
-
-ARGON2_TIME_COST   = 3
-ARGON2_MEMORY_KIB  = 256_000   # ~256 MB
-ARGON2_PARALLELISM = 2
-ARGON2_KEY_LEN     = 32
-
-
-def _derive_key_argon2id_python(
-    password: str,
-    salt: bytes,
-    length: int = ARGON2_KEY_LEN,
-    time_cost: int = ARGON2_TIME_COST,
-    memory_kib: int = ARGON2_MEMORY_KIB,
-    parallelism: int = ARGON2_PARALLELISM,
-) -> bytes:
-    if not isinstance(password, (bytes, bytearray)):
-        password = password.encode("utf-8")
-    if not isinstance(salt, (bytes, bytearray)):
-        raise TypeError("salt must be bytes")
-    if len(salt) < 8:
-        raise ValueError("argon2 salt is too short (need >= 8 bytes)")
-    return hash_secret_raw(
-        secret=password,
-        salt=salt,
-        time_cost=time_cost,
-        memory_cost=memory_kib,
-        parallelism=parallelism,
-        hash_len=length,
-        type=Type.ID,
-    )
+# STRICT DLL-ONLY MODE:
+# - No Python Argon2 implementation is kept here.
+# - If the native core (DLL) isn't loaded, key derivation MUST fail.
 
 from native.native_core import get_core
 
+# Legacy profile (v1) is compiled into older DLL builds.
+# These values are NOT used by the DLL unless it exposes a parameterized API.
+ARGON2_KEY_LEN      = 32
+ARGON2_TIME_COST    = 3
+ARGON2_MEMORY_KIB   = 256_000
+ARGON2_PARALLELISM  = 2
 
 
-def _derive_key_argon2id_python_bytes(
-    password_bytes: bytes,
+def recommended_argon2_params() -> Dict[str, int]:
+    """
+    Default KDF profile for NEW accounts (KDF v2).
+
+    Note:
+      These parameters only take effect if the native DLL supports the *_ex APIs
+      (kq_session_open_ex / derive_vault_key_ex). Otherwise, accounts fall back
+      to legacy profile v1 (fixed params compiled into the DLL).
+    """
+    cpu = os.cpu_count() or 2
+    return {
+        "algo": "argon2id",
+        "kdf_v": 2,
+        "time_cost": 4,
+        "memory_kib": 512_000,
+        "parallelism": 2 if cpu < 4 else 4,
+        "hash_len": ARGON2_KEY_LEN,
+    }
+
+
+def normalize_kdf_params(kdf: Dict[str, Any] | None) -> Dict[str, Any]:
+    """
+    Ensure a KDF dict is complete + well-typed.
+    """
+    kdf = dict(kdf or {})
+    kdf.setdefault("algo", "argon2id")
+    kdf.setdefault("kdf_v", 1)
+    kdf.setdefault("time_cost", ARGON2_TIME_COST)
+    kdf.setdefault("memory_kib", ARGON2_MEMORY_KIB)
+    kdf.setdefault("parallelism", ARGON2_PARALLELISM)
+    kdf.setdefault("hash_len", ARGON2_KEY_LEN)
+
+    # Coerce ints
+    for k in ("kdf_v", "time_cost", "memory_kib", "parallelism", "hash_len"):
+        try:
+            kdf[k] = int(kdf[k])
+        except Exception:
+            kdf[k] = int(ARGON2_TIME_COST) if k == "time_cost" else int(kdf.get(k, 0) or 0)
+
+    # Floors (avoid accidental 0/negative)
+    kdf["time_cost"] = max(1, int(kdf["time_cost"]))
+    kdf["memory_kib"] = max(8_192, int(kdf["memory_kib"]))  # 8MB floor (sanity)
+    kdf["parallelism"] = max(1, int(kdf["parallelism"]))
+    kdf["hash_len"] = max(16, int(kdf["hash_len"]))
+
+    return kdf
+
+
+def derive_key_argon2id_from_buf(password_buf: bytearray, salt: bytes) -> bytes:
+    """
+    Derive using the legacy fixed-params DLL API.
+    """
+    core = get_core()
+    if not core:
+        raise RuntimeError("Native core not loaded (DLL required).")
+
+    key = core.derive_vault_key(password_buf, salt)
+    return bytes(key)
+
+
+def derive_key_argon2id_ex_from_buf(
+    password_buf: bytearray,
     salt: bytes,
-    length: int = ARGON2_KEY_LEN,
-    time_cost: int = ARGON2_TIME_COST,
-    memory_kib: int = ARGON2_MEMORY_KIB,
-    parallelism: int = ARGON2_PARALLELISM,
+    *,
+    time_cost: int,
+    memory_kib: int,
+    parallelism: int,
+    hash_len: int = ARGON2_KEY_LEN,
 ) -> bytes:
-    """Python fallback Argon2id that accepts bytes (avoids creating a str copy)."""
-    return hash_secret_raw(
-        secret=password_bytes,
-        salt=salt,
-        time_cost=time_cost,
-        memory_cost=memory_kib,
-        parallelism=parallelism,
-        hash_len=length,
-        type=Type.ID,
+    """
+    Derive using the parameterized DLL API (if supported).
+    """
+    core = get_core()
+    if not core:
+        raise RuntimeError("Native core not loaded (DLL required).")
+
+    if not hasattr(core, "derive_vault_key_ex"):
+        raise RuntimeError("Native DLL does not support derive_vault_key_ex. Please upgrade the DLL.")
+
+    key = core.derive_vault_key_ex(
+        password_buf,
+        salt,
+        int(time_cost),
+        int(memory_kib),
+        int(parallelism),
+        int(hash_len),
     )
+    return bytes(key)
+
 
 def derive_key_argon2id(password: str, salt: bytes) -> bytes:
     """
-    Fast path: use native core if available, else Python Argon2id.
+    Convenience wrapper for key derivation (DLL-only).
+    Uses the legacy fixed-params DLL derivation.
     """
     core = get_core()
-    if core:
-        pw_buf = bytearray(password, "utf-8")
-        try:
-            key = core.derive_vault_key(pw_buf, salt)
-        finally:
-            core.secure_wipe(pw_buf)
-        return bytes(key)
+    if not core:
+        raise RuntimeError("Native core not loaded (DLL required).")
 
-    # Fallback to Python Argon2
-    return _derive_key_argon2id_python(password, salt)
+    pw_buf = bytearray(password.encode("utf-8"))
+    try:
+        return derive_key_argon2id_from_buf(pw_buf, salt)
+    finally:
+        try:
+            core.secure_wipe(pw_buf)
+        except Exception:
+            for i in range(len(pw_buf)):
+                pw_buf[i] = 0
 
 
 def derive_key_argon2id_safe(
     password: str,
     salt: bytes,
     *,
-    min_memory_kib: int = 64_000,  # ~64 MB floor
+    min_memory_kib: int = 64_000,
 ) -> bytes:
     """
-    Safe mode: try native first (fast). If native isn't available, use Python Argon2id.
-    If Python runs out of memory, automatically reduce Argon2 memory_cost until it succeeds.
-
-    NOTE: The native DLL uses fixed Argon2 parameters compiled into the DLL,
-    so we cannot reduce memory on the native path without changing the DLL API.
+    Kept for API compatibility, but in strict DLL-only mode this is the same as derive_key_argon2id().
+    (The "safe memory downshift" behaviour only existed for the old Python fallback.)
     """
-    core = get_core()
-    if core:
-        # Native path (fixed memory params in DLL)
-        pw_buf = bytearray(password, "utf-8")
-        try:
-            key = core.derive_vault_key(pw_buf, salt)
-        finally:
-            core.secure_wipe(pw_buf)
-        return bytes(key)
-
-    # Python adaptive path
-    mkib = int(ARGON2_MEMORY_KIB)
-    while True:
-        try:
-            return _derive_key_argon2id_python(
-                password=password,
-                salt=salt,
-                length=ARGON2_KEY_LEN,
-                time_cost=ARGON2_TIME_COST,
-                memory_kib=mkib,
-                parallelism=ARGON2_PARALLELISM,
-            )
-        except MemoryError:
-            mkib //= 2
-            if mkib < int(min_memory_kib):
-                # last attempt at floor; if it still fails, let it raise
-                return _derive_key_argon2id_python(
-                    password=password,
-                    salt=salt,
-                    length=ARGON2_KEY_LEN,
-                    time_cost=ARGON2_TIME_COST,
-                    memory_kib=int(min_memory_kib),
-                    parallelism=ARGON2_PARALLELISM,
-                )
-
-
-#  attempt_login doesn’t need pw_str
-def derive_key_argon2id_from_buf(pw_buf: bytearray, salt: bytes) -> bytes:
-    core = get_core()
-    if core:
-        key = core.derive_vault_key(pw_buf, salt)
-        return bytes(key)
-    # fallback (creates one unavoidable copy)
-    return _derive_key_argon2id_python_bytes(bytes(pw_buf), salt)
+    _ = min_memory_kib
+    return derive_key_argon2id(password, salt)

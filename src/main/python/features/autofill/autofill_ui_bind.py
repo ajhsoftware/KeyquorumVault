@@ -23,6 +23,15 @@ import os
 from pathlib import Path
 from catalog_category.catalog_user import load_effective_catalogs_from_user
 
+from catalog_category.my_catalog_builtin import CLIENTS, ALIASES, PLATFORM_GUIDE
+
+# translat helpers
+from app.app_translation_fields import PLATFORM_LABELS, INSTALL_LINK_LABELS, EMAIL_LABELS, PRIMARY_PASSWORD_LABELS
+from app.platform_utils import open_path
+
+import time as _t
+import subprocess
+
 _MAIN = (
     _sys.modules.get("__main__")
     or _sys.modules.get("main")
@@ -37,32 +46,8 @@ try:
     from app.qt_imports import *  # noqa: F401,F403
 except Exception:
     pass
-# --- log ---
-import logging
-log = logging.getLogger("keyquorum")
-import app.kq_logging as kql
 
-# ---  Pysider6 backend QtWidgets ---
-#from qtpy.QtWidgets import (QApplication, QDialog, QMessageBox, QVBoxLayout, QTableWidget, QLabel, QProgressBar, QPushButton, QHBoxLayout, QTableWidgetItem, )
-# ---  Pysider6 backend QtCore ---
-#from qtpy.QtCore import QEventLoop, QTimer, QCoreApplication, Qt
 
-# --- helper ---
-#import os, re
-#from pathlib import Path
-import time as _t
-# ---
-from auth.login.login_handler import  get_user_setting
-import subprocess
-import re
-from app.app_translation_fields import _entry_value_by_labelset
-from ui.ui_flags import _maybe_show_autofill_tip
-from app.platform_utils import open_path
-from catalog_category.category_fields import preferred_url_fields
-from app.app_translation_fields import _entry_value_by_labelset, AUTOFILL_ALLOWED_CATEGORY_LABELS, PLATFORM_LABELS, INSTALL_LINK_LABELS
-from features.autofill.window_picker import WindowPickerDialog
-from features.autofill.desktop_autofill import autofill_to_window 
-from catalog_category.my_catalog_builtin import CLIENTS
 def _try_launch_from_catalog(w, username: str, client_key: str):
     """Tier-1 launch: use effective catalog (built-in + user overrides).
 
@@ -74,7 +59,7 @@ def _try_launch_from_catalog(w, username: str, client_key: str):
         ALIASES = getattr(w, "ALIASES", None) or getattr(w, "_ALIASES", None) or {}
         PLATFORM_GUIDE = getattr(w, "PLATFORM_GUIDE", None) or getattr(w, "_PLATFORM_GUIDE", None) or {}
 
-        user_key = getattr(w, "userKey", None) or getattr(w, "user_key", None)
+        user_key = getattr(w, "core_session_handle", None) or getattr(w, "user_key", None)
         clients, aliases, guide, recipes, _overlay = load_effective_catalogs_from_user(
             username, CLIENTS, ALIASES, PLATFORM_GUIDE, getattr(w, 'AUTOFILL_RECIPES', None), user_key=user_key
         )
@@ -92,6 +77,7 @@ def _try_launch_from_catalog(w, username: str, client_key: str):
         # --- 1) exe paths ---
         exe_paths = client.get("exe_paths") or []
         for raw in exe_paths:
+            import glob
             raw = (raw or "").strip()
             if not raw:
                 continue
@@ -148,7 +134,7 @@ def _key_from_hint(hint: str) -> str | None:
     # try alias map first
     try:
         from __main__ import ALIASES, CLIENTS  # ensure we use the same dicts
-        import glob
+
         from catalog_category.catalog_user import load_effective_catalogs_from_user
     except Exception:
         return None
@@ -215,7 +201,6 @@ def _try_protocols(client_key: str) -> bool:
     return False
 
 
-
 def _fallback_open_vendor_url(url: str, label: str | None = None) -> None:
     """Fallback opener when we don't have a UI host window."""
     try:
@@ -237,7 +222,6 @@ def _open_installer_or_page(w, client_key: str) -> None:
     webbrowser.open().
     """
     import webbrowser
-
     key = (client_key or "").strip()
     if not key:
         return
@@ -775,6 +759,107 @@ def _autofill_split_flow(w, entry, *, hwnd=None, titlere: str = "", pid=None) ->
     except Exception:
         pass
     return True
+
+
+# helper to read a specific column from the current row
+def _row_field(w, row: int, names: tuple[str, ...], label_set: set[str] | None = None) -> str:
+    """
+    Read a value from the current row by matching the localized header text.
+    """
+    tbl = getattr(w, "vaultTable", None)
+    if tbl is None or row < 0:
+        return ""
+    wanted = {n.strip().lower() for n in names}
+    if label_set:
+        wanted |= {lab.strip().lower() for lab in label_set}
+
+    for col in range(tbl.columnCount()):
+        header = tbl.horizontalHeaderItem(col)
+        key = (header.text() if header else "").strip().lower()
+        if key in wanted:
+            item = tbl.item(row, col)
+            return (item.text().strip() if item and item.text() else "")
+    return ""
+
+
+def _row_secret_local(w, row: int, names: tuple[str, ...], label_set: set[str] | None = None) -> str:
+    """Read a secret from the table using Qt.UserRole (never from display text)."""
+    tbl = getattr(w, "vaultTable", None)
+    if tbl is None or row < 0:
+        return ""
+    wanted = {n.strip().lower() for n in names}
+    if label_set:
+        wanted |= {lab.strip().lower() for lab in label_set}
+
+    for col in range(tbl.columnCount()):
+        header = tbl.horizontalHeaderItem(col)
+        key = (header.text() if header else "").strip().lower()
+        if key in wanted:
+            item = tbl.item(row, col)
+            if not item:
+                return ""
+            for role in (Qt.UserRole, Qt.UserRole + 1, Qt.UserRole + 2):
+                try:
+                    v = item.data(role)
+                    if isinstance(v, str) and v.strip():
+                        return v.strip()
+                except Exception:
+                    pass
+            return ""
+    return ""
+
+
+def _entry_value_by_labelset(entry: dict, labels) -> str:
+    """
+    Return the first non-empty value from an entry dict whose key matches
+    any label in the provided label set, case-insensitively.
+    """
+    if not isinstance(entry, dict) or not labels:
+        return ""
+
+    try:
+        wanted = {str(x).strip().lower() for x in labels if str(x).strip()}
+    except Exception:
+        wanted = set()
+
+    if not wanted:
+        return ""
+
+    # Exact case-insensitive key match
+    for k, v in entry.items():
+        try:
+            key_norm = str(k).strip().lower()
+        except Exception:
+            continue
+
+        if key_norm in wanted:
+            if v is None:
+                continue
+            s = str(v).strip()
+            if s:
+                return s
+
+    # Loose fallback: ignore extra spaces
+    def _norm(s: str) -> str:
+        return " ".join((s or "").strip().lower().split())
+
+    wanted_loose = {_norm(x) for x in wanted}
+
+    for k, v in entry.items():
+        try:
+            key_norm = _norm(str(k))
+        except Exception:
+            continue
+
+        if key_norm in wanted_loose:
+            if v is None:
+                continue
+            s = str(v).strip()
+            if s:
+                return s
+
+    return ""
+
     
 def on_autofill_to_app_clicked(w, checked: bool = False) -> bool:
     """
@@ -956,52 +1041,6 @@ def on_autofill_to_app_clicked(w, checked: bool = False) -> bool:
         s = str(v).strip().lower()
         return s in ("1", "true", "yes", "y", "on", "enabled")
 
-    # helper to read a specific column from the current row
-    def _row_field(row: int, names: tuple[str, ...], label_set: set[str] | None = None) -> str:
-        """
-        Read a value from the current row by matching the localized header text.
-        """
-        tbl = getattr(w, "vaultTable", None)
-        if tbl is None or row < 0:
-            return ""
-        wanted = {n.strip().lower() for n in names}
-        if label_set:
-            wanted |= {lab.strip().lower() for lab in label_set}
-
-        for col in range(tbl.columnCount()):
-            header = tbl.horizontalHeaderItem(col)
-            key = (header.text() if header else "").strip().lower()
-            if key in wanted:
-                item = tbl.item(row, col)
-                return (item.text().strip() if item and item.text() else "")
-        return ""
-
-
-    def _row_secret_local(row: int, names: tuple[str, ...], label_set: set[str] | None = None) -> str:
-        """Read a secret from the table using Qt.UserRole (never from display text)."""
-        tbl = getattr(w, "vaultTable", None)
-        if tbl is None or row < 0:
-            return ""
-        wanted = {n.strip().lower() for n in names}
-        if label_set:
-            wanted |= {lab.strip().lower() for lab in label_set}
-
-        for col in range(tbl.columnCount()):
-            header = tbl.horizontalHeaderItem(col)
-            key = (header.text() if header else "").strip().lower()
-            if key in wanted:
-                item = tbl.item(row, col)
-                if not item:
-                    return ""
-                for role in (Qt.UserRole, Qt.UserRole + 1, Qt.UserRole + 2):
-                    try:
-                        v = item.data(role)
-                        if isinstance(v, str) and v.strip():
-                            return v.strip()
-                    except Exception:
-                        pass
-                return ""
-        return ""
 
     # ---------------- entry & prefs ----------------
     entry = w._get_selected_entry()
@@ -1028,20 +1067,6 @@ def on_autofill_to_app_clicked(w, checked: bool = False) -> bool:
         "program": "software",
     }
     current_cat = _cat_norm(aliases.get(current_cat, current_cat))
-
-    if current_cat not in AUTOFILL_ALLOWED_CATEGORY_LABELS:
-        log.debug(f"[AUTOFILL] blocked: category '{current_cat}' not allowed for desktop autofill")
-        msg = _tr(
-            "Auto-fill to desktop apps is only supported for categories like:\n"
-            " • Games\n"
-            " • Social Media\n"
-            " • Streaming\n"
-            " • Apps\n"
-            " • Software\n\n"
-            "Your current category: "
-        ) + f"'{current_cat_raw or _tr('Unknown')}'"
-        QMessageBox.information(w, _tr("Auto-fill to App"), msg)
-        return False
 
     if not entry:
         QMessageBox.warning(w, _tr("Auto-fill"), _tr("Select an entry first."))
@@ -1087,7 +1112,7 @@ def on_autofill_to_app_clicked(w, checked: bool = False) -> bool:
     # Prefer the real secret stored on the table item (Qt.UserRole) if available.
     if row_idx >= 0:
         try:
-            pw_secret = _row_secret_local(row_idx, ("Password",), PRIMARY_PASSWORD_LABELS)
+            pw_secret = _row_secret_local(w, row_idx, ("Password",), PRIMARY_PASSWORD_LABELS)
             if pw_secret:
                 password = pw_secret.strip()
         except Exception:
@@ -1115,11 +1140,13 @@ def on_autofill_to_app_clicked(w, checked: bool = False) -> bool:
     entry["password"] = password
 
     try:
+        from ui.ui_flags import _maybe_show_autofill_tip
         _maybe_show_autofill_tip(w)
     except Exception:
         pass
 
     try:
+        from auth.login.login_handler import get_user_setting
         u = (w.currentUsername.text() or "").strip()
         raw = get_user_setting(u, "autofill_launch_first")
         launch_first = _as_bool(raw)
@@ -1134,9 +1161,9 @@ def on_autofill_to_app_clicked(w, checked: bool = False) -> bool:
         exe_hint, title_hint = "", ""
 
     w.set_status_txt(_tr("AutoFill: Getting Platform"))
-    platform_raw = _row_field(row_idx, ("Platform", "Platform / Store"), PLATFORM_LABELS)
+    platform_raw = _row_field(w, row_idx, ("Platform", "Platform / Store"), PLATFORM_LABELS)
     w.set_status_txt(_tr("AutoFill: Getting Install Link"))
-    install_link = _row_field(row_idx, ("Install Link", "Link"), INSTALL_LINK_LABELS)
+    install_link = _row_field(w, row_idx, ("Install Link", "Link"), INSTALL_LINK_LABELS)
 
     if not platform_raw:
         platform_raw = (
@@ -1354,6 +1381,7 @@ def on_autofill_to_app_clicked(w, checked: bool = False) -> bool:
     else:
         dlg.set_stage(3, _tr("No app found running – select manually"), "doing")
 
+    from features.autofill.window_picker import WindowPickerDialog
     picker = WindowPickerDialog(w)
     if picker.exec() != QDialog.Accepted:
         dlg.set_stage(3, _tr("No app found running – select manually"), "fail")
@@ -1452,7 +1480,6 @@ def launch_then_autofill(w, entry: dict, title_hint: str, *, prefer_launch_first
     Returns True if autofill succeeded.
     """
     username = (entry.get("username") or entry.get("email") or "").strip()
-    # password = (entry.get("password") or "").strip()
 
     from app.app_translation_fields import PRIMARY_PASSWORD_LABELS
 
@@ -1464,7 +1491,7 @@ def launch_then_autofill(w, entry: dict, title_hint: str, *, prefer_launch_first
         row_idx = -1
 
     # try table secret FIRST
-    password = _row_secret_local(row_idx, ("Password",), PRIMARY_PASSWORD_LABELS)
+    password = _row_secret_local(w, row_idx, ("Password",), PRIMARY_PASSWORD_LABELS)
 
     # fallback only if needed
     if not password:
@@ -1500,6 +1527,7 @@ def launch_then_autofill(w, entry: dict, title_hint: str, *, prefer_launch_first
         for pat in pats:
             try:
                 # desktop_autofill.autofill_to_window takes a title regex and handles the keystrokes
+                from features.autofill.desktop_autofill import autofill_to_window
                 ok = autofill_to_window(pat, username=username, password=password, recipe_key="generic", pid=None)
                 if ok:
                     log.debug(f"[AUTOFILL] success with title pattern: {pat}")

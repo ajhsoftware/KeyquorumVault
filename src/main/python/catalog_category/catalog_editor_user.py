@@ -53,7 +53,7 @@ class CatalogEditorUserDialog(QDialog):
         PLATFORM_GUIDE,
         *args,
         parent=None,
-        user_key=None,
+        session_handle=None,
         username=None,
         AUTOFILL_RECIPES=None,
         **kwargs,
@@ -62,12 +62,12 @@ class CatalogEditorUserDialog(QDialog):
 
         # ---- Backward/forward compatible args handling ----
         # Accept calls:
-        #   CatalogEditorUserDialog(user_cfg_dir, CLIENTS, ALIASES, PLATFORM_GUIDE, parent=..., user_key=...)
-        #   CatalogEditorUserDialog(user_cfg_dir, CLIENTS, ALIASES, PLATFORM_GUIDE, AUTOFILL_RECIPES, parent=..., user_key=...)
+        #   CatalogEditorUserDialog(user_cfg_dir, CLIENTS, ALIASES, PLATFORM_GUIDE, parent=..., session_handle=...)
+        #   CatalogEditorUserDialog(user_cfg_dir, CLIENTS, ALIASES, PLATFORM_GUIDE, AUTOFILL_RECIPES, parent=..., session_handle=...)
         if AUTOFILL_RECIPES is None:
             AUTOFILL_RECIPES = kwargs.get("AUTOFILL_RECIPES", None)
 
-        # Determine parent/user_key if accidentally passed positionally
+        # Determine parent/session_handle if accidentally passed positionally
         if args:
             first = args[0]
             try:
@@ -79,19 +79,19 @@ class CatalogEditorUserDialog(QDialog):
 
             if isinstance(first, dict) and AUTOFILL_RECIPES is None:
                 AUTOFILL_RECIPES = first
-            elif isinstance(first, (bytes, bytearray)) and user_key is None:
-                user_key = first
+            elif isinstance(first, (bytes, bytearray)) and session_handle is None:
+                session_handle = first
             elif is_widget and parent is None:
                 parent = first
 
         if parent is None:
             parent = kwargs.get("parent", None)
-        if user_key is None:
-            user_key = kwargs.get("user_key", None)
+        if session_handle is None:
+            session_handle = kwargs.get("session_handle", None)
 
-        # Canonical naming in Keyquorum is userKey; keep snake_case alias for safety.
-        self.userKey = user_key
-        self.user_key = self.userKey
+        # Canonical naming in Keyquorum is core_session_handle; keep snake_case alias for safety.
+        self.core_session_handle = session_handle
+        self.session_handle = self.core_session_handle
         self.user_cfg_dir = user_cfg_dir
         self.AUTOFILL_RECIPES = AUTOFILL_RECIPES or {}
         self._BUILTIN_AUTOFILL_RECIPES = dict(self.AUTOFILL_RECIPES)
@@ -221,7 +221,7 @@ class CatalogEditorUserDialog(QDialog):
                 self.tr("Failed to export catalog") + f":\n{e}"
             )
 
-    def _on_import_encrypted(self):
+    def _on_import_encrypted(self):  # NOTE: change now in build
         """
         Ask the host (MainWindow) to import an encrypted catalog for this user.
         """
@@ -456,8 +456,8 @@ class CatalogEditorUserDialog(QDialog):
             return
 
         username = (getattr(self, "username", "") or "").strip()
-        user_key = getattr(self, "userKey", None) or getattr(self, "user_key", None)
-        if not username or not user_key:
+        session_handle = getattr(self, "core_session_handle", None) or getattr(self, "session_handle", None)
+        if not username or not session_handle:
             QMessageBox.information(
                 self,
                 self.tr("Import Emails"),
@@ -466,7 +466,7 @@ class CatalogEditorUserDialog(QDialog):
             return
 
         try:
-            entries = _load_vault(username, user_key) or []
+            entries = _load_vault(username, session_handle) or []
         except Exception as e:
             QMessageBox.critical(
                 self,
@@ -640,7 +640,7 @@ class CatalogEditorUserDialog(QDialog):
                 self.username,
                 self.CLIENTS, self.ALIASES, self.PLATFORM_GUIDE,
                 getattr(self, '_BUILTIN_AUTOFILL_RECIPES', None),
-                user_key=self.user_key
+                session_handle=self.session_handle
             )
         except Exception as e:
             log.debug(f"[CATALOG] ⚠️ load failed: {e}")
@@ -751,20 +751,29 @@ class CatalogEditorUserDialog(QDialog):
                 "AUTOFILL_RECIPES": self._collect_autofill_recipes_from_table(),
                 "version": 1,
             }
-            save_user_catalog(self.username, payload, user_key=self.user_key)
+            save_user_catalog(self.username, payload, session_handle=self.session_handle)
+
+            # attempt reload without logout
+            try:
+                self.CLIENTS = {}
+                self.ALIASES = {} 
+                self.PLATFORM_GUIDE = {}
+                self.AUTOFILL_RECIPES = {}
+                from catalog_category.catalog_category_ops import _load_catalog_effective
+                self.CLIENTS, self.ALIASES, self.PLATFORM_GUIDE, self.AUTOFILL_RECIPES, _ = _load_catalog_effective(self, self.username)
+                self.load_vault_table()
+
+            except Exception as e:
+                # Don't block save on baseline errors.
+                log.debug(f"[CATALOG] ⚠️ updatebaseline after save failed: {e}")
 
             # ---- Baseline update (per-user, for integrity system) ----
-            host = self._find_host_with("updatebaseline")
-            if host:
-                try:
-                    host.updatebaseline(
-                        self.username,
-                        verify_after=False,
-                        who=self.tr("Catalog Save"),
-                    )
-                except Exception as e:
-                    # Don't block save on baseline errors.
-                    log.debug(f"[CATALOG] ⚠️ updatebaseline after save failed: {e}")
+            try:
+                from security.baseline_signer import update_baseline
+                update_baseline(self.username, verify_after=False, who=self.tr("Catalog Save"),)
+            except Exception as e:
+                # Don't block save on baseline errors.
+                log.debug(f"[CATALOG] ⚠️ updatebaseline after save failed: {e}")
 
             QMessageBox.information(self, self.tr("Saved"), self.tr("Catalog saved successfully."))
             self.saved.emit()
@@ -785,7 +794,7 @@ class CatalogEditorUserDialog(QDialog):
                 "PLATFORM_GUIDE": self.PLATFORM_GUIDE,
                 "version": 1,
             }
-            save_user_catalog(self.username, payload, user_key=self.user_key)
+            save_user_catalog(self.username, payload, session_handle=self.session_handle)
             self._load_into_ui()
             self._reapply_clients_filter()
 

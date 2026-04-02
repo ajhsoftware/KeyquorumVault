@@ -150,23 +150,25 @@ def set_user_record(username: str, rec: dict) -> bool:
     return _write_user(username, rec)
 
 def _read_user_salt(username: str) -> bytes:
-    """Read-only salt load via new paths."""
-    from app.paths import salt_file
+    """Read master salt using the salt_file helper (identity-header first)."""
     try:
-        p = salt_file(username)
-        return p.read_bytes() if p.exists() else b""
+        from auth.salt_file import read_master_salt_readonly
+        return read_master_salt_readonly(username)
     except Exception:
         return b""
 
 def _load_vault_salt_for(user: str) -> bytes:
-    # legacy helper used for baseline writes; keep behavior
+    """Compatibility helper used around the app.
+
+    IMPORTANT (2026+):
+      - Salt may live in the Identity Store public header (authoritative),
+        not just a legacy .slt file.
+      - This helper must therefore use auth.salt_file (header-first).
+    """
     try:
-        log.debug(f"[USB] salt_file fn id={id(salt_file)} "
-            f"mode={_paths.is_portable_mode()} users_root={users_root()}")
-        sp = salt_file(user, ensure_parent=False)
-        return sp.read_bytes()
-    except Exception:
         return _read_user_salt(user) or b""
+    except Exception:
+        return b""
 
 # --- Settings ---
 
@@ -216,30 +218,39 @@ def set_recovery_mode(username: str, value: bool) -> bool:
     rec["recovery_mode"] = bool(value)
     return _write_user(username, rec)
 
-# --- Cloud profile (structure preserved) ---
+# --- Cloud profile (baseline-safe: volatile sync state is NOT stored in user_db) ---
+
 
 def _default_sync_profile() -> dict:
+    """Persistent cloud configuration only.
+
+    IMPORTANT: Do NOT store volatile per-device sync state here.
+    (e.g. last_local_sha256/last_remote_sha256/last_remote_version/timestamps)
+
+    Those belong in per-device storage (QSettings) to avoid breaking baseline signing.
+    """
     return {
         "enabled": False,
         "provider": "localpath",
         "remote_path": "",
         "cloud_wrap": False,
-        "last_sync_ts": 0,
-        "last_local_sha256": "",
-        "last_remote_sha256": "",
-        "last_remote_version": "",
+        # Bundle mode = sync a single .kqsync container containing multiple files.
+        "bundle": True,
         "sync_enable": False,
     }
+
 
 def get_user_cloud(username: str) -> dict:
     rec = _read_user(username)
     if not rec:
         return _default_sync_profile()
+
     cloud = rec.get("cloud") or {}
     prof = _default_sync_profile()
     for k in prof.keys():
         prof[k] = cloud.get(k, prof[k])
     return prof
+
 
 def set_user_cloud(
     username: str,
@@ -249,18 +260,17 @@ def set_user_cloud(
     wrap: Optional[bool] = None,
     *,
     sync_enable: Optional[bool] = None,
-    last_sync_ts: Optional[int] = None,
-    last_local_sha256: Optional[str] = None,
-    last_remote_sha256: Optional[str] = None,
-    last_remote_version: Optional[str] = None,
+    bundle: Optional[bool] = None,
 ) -> Optional[dict]:
+    """Update persistent cloud sync configuration.
+
+    NOTE: This function intentionally does NOT store volatile sync state.
+    """
     rec = _read_user(username)
     if not rec:
         return None
-    prof = rec.get("cloud") or _default_sync_profile()
 
-    old_provider = prof.get("provider")
-    old_path     = prof.get("remote_path")
+    prof = rec.get("cloud") or _default_sync_profile()
 
     if enable is not None:
         prof["enabled"] = bool(enable)
@@ -272,28 +282,27 @@ def set_user_cloud(
         prof["cloud_wrap"] = bool(wrap)
     if sync_enable is not None:
         prof["sync_enable"] = bool(sync_enable)
-
-    target_changed = ((old_provider or "") != (prof.get("provider") or "")) or \
-                     ((old_path or "")     != (prof.get("remote_path") or ""))
-
-    if target_changed:
-        prof["last_sync_ts"]       = 0
-        prof["last_local_sha256"]  = ""
-        prof["last_remote_sha256"] = ""
-        prof["last_remote_version"]= ""
-    else:
-        if last_sync_ts is not None:
-            prof["last_sync_ts"] = int(last_sync_ts)
-        if last_local_sha256 is not None:
-            prof["last_local_sha256"] = last_local_sha256 or ""
-        if last_remote_sha256 is not None:
-            prof["last_remote_sha256"] = last_remote_sha256 or ""
-        if last_remote_version is not None:
-            prof["last_remote_version"] = last_remote_version or ""
+    if bundle is not None:
+        prof["bundle"] = bool(bundle)
 
     rec["cloud"] = prof
     _write_user(username, rec)
     return prof
+
+
+def stop_user_cloud(username: str) -> Optional[dict]:
+    rec = _read_user(username)
+    if not rec:
+        return None
+    prof = _default_sync_profile()
+    rec["cloud"] = prof
+    try:
+        _write_user(username, rec)
+        return True
+    except Exception as e:
+        log.exception(f"Stop Synic error: {e}")
+        return e
+
 
 # --- Login lockout (per-user settings blob) ---
 

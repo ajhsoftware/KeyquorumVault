@@ -10,8 +10,16 @@ from native.keyquorum_core_ctypes import KeyquorumCore
 _core: KeyquorumCore | None = None
 
 
-def get_core() -> KeyquorumCore | None:
-    """Return a cached native core instance, or None if unavailable."""
+# Fail-closed: do not allow Python crypto fallback for vault operations.
+
+from app.dev.dev_ops import STRICT_NATIVE_CORE
+
+def get_core() -> KeyquorumCore:
+    """Return a cached native core instance (STRICT mode: never returns None).
+
+    In STRICT_NATIVE_CORE mode, failure to load the DLL is a fatal error. This prevents
+    any accidental downgrade to Python-based crypto paths.
+    """
     global _core
     if _core is not None:
         return _core
@@ -19,7 +27,7 @@ def get_core() -> KeyquorumCore | None:
     try:
         from app.paths import dll_file
 
-        resolved = dll_file()  # <-- CALL IT
+        resolved = dll_file()  # <-- CALL DLL
         dll_path = resolved if isinstance(resolved, Path) else Path(resolved)
 
         log.info("[NativeCore] Resolved DLL path: %s (exists=%s)", dll_path, dll_path.exists())
@@ -35,11 +43,16 @@ def get_core() -> KeyquorumCore | None:
         _core = KeyquorumCore(str(dll_path))
 
         log.info("[NativeCore] Loaded DLL OK: %s", dll_path)
-        print("[NativeCore] Loaded DLL OK:", dll_path)
         return _core
 
     except Exception as e:
         log.exception("[NativeCore] FAILED to load native core: %s", e)
-        print("[NativeCore] FAILED to load native core:", repr(e))
         _core = None
-        return None
+        if STRICT_NATIVE_CORE:
+            raise RuntimeError(
+                "Native core (keyquorum_core.dll) is required. "
+                "Keyquorum Vault cannot run securely without it."
+            ) from e
+        # Non-strict (dev/test) mode: allow callers to handle None.
+        return None  # type: ignore[return-value]
+

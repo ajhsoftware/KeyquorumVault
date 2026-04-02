@@ -21,44 +21,15 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 from __future__ import annotations
 from typing import Callable, Optional, Dict
 from urllib.parse import urlparse
+from bridge.bridge_values import *
 import re
-
+import secrets
+from pathlib import Path
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QTableWidget, QTableWidgetItem
-
-# ---- Roles (aligned with how load_vault_table stores sensitive values) ----
-ENTRY_ID_ROLE = int(Qt.ItemDataRole.UserRole) + 101
-HAS_TOTP_ROLE = int(Qt.ItemDataRole.UserRole) + 102
-SECRET_ROLE   = int(Qt.ItemDataRole.UserRole)          # clear sensitive value is stored here
-URL_ROLE      = int(Qt.ItemDataRole.UserRole) + 104    # optional canonical URL (if you ever set it)
-
-# ---- Header label synonyms (lowercased) ----
-URL_LABELS   = {"website", "url", "site", "login url", "web site", "web", "domain"}
-USER_LABELS  = {"email", "e-mail", "username", "user", "login", "account", "email address", "user name"}
-PASS_LABELS  = {"password", "pass", "passcode", "pwd", "secret", "pin", "key"}
-TOTP_LABELS  = {"2fa", "totp", "otp", "two-factor"}
-TITLE_LABELS = {"title", "name", "label"}
-
-BULLETS = set("•●▪▮∙∗*◦ ")
-
-WEBFILL_COL = {
-    "HONORIFIC": "Name Title",
-    "FORENAME": "First name",
-    "MIDDLENAME": "Middle name",
-    "SURNAME": "Surname",
-    "EMAIL": "Email",
-    "PHONE": "Phone number",
-    "ADDR1": "address line 1",
-    "ADDR2": "address line 2",
-    "CITY": "City / Town",
-    "REGION": "State / Province / Region",
-    "POSTAL": "Postal code / ZIP",
-    "COUNTRY": "Country",
-}
-
-# -----------------------------------
-# Utilities
-# -----------------------------------
+import logging
+log = logging.getLogger("keyquorum")
+from bridge.bridge_ops import *
 
 # NOTE: Your table headers sometimes include emojis or extra words (e.g. '🔒 Password').
 # We normalise headers so column matching stays reliable across UI tweaks.
@@ -121,7 +92,7 @@ def extract_url(table: QTableWidget, row: int) -> str:
         if not hasattr(table, "_kq_url_col"):
             table._kq_url_col = _find_col(table, URL_LABELS)
         col = getattr(table, "_kq_url_col", -1)
-        if col < 0:
+        if col < 0: 
             return ""
         it = table.item(row, col)
         if not it:
@@ -138,15 +109,33 @@ def extract_url(table: QTableWidget, row: int) -> str:
 
 def extract_username(table: QTableWidget, row: int) -> str:
     try:
+        # ---- 1) Try Username column ----
         if not hasattr(table, "_kq_user_col"):
             table._kq_user_col = _find_col(table, USER_LABELS)
-        col = getattr(table, "_kq_user_col", -1)
-        if col < 0:
-            return ""
-        it = table.item(row, col)
-        return _get_text(it)
+
+        user_col = getattr(table, "_kq_user_col", -1)
+        if user_col >= 0:
+            it = table.item(row, user_col)
+            val = _get_text(it).strip()
+            if val:
+                return val
+
+        # ---- 2) Fallback to Email column ----
+        if not hasattr(table, "_kq_email_col"):
+            table._kq_email_col = _find_col(table, {"email", "e-mail", "email address"})
+
+
+        email_col = getattr(table, "_kq_email_col", -1)
+        if email_col >= 0:
+            it = table.item(row, email_col)
+            val = _get_text(it).strip()
+            if val:
+                return val
+
     except Exception:
-        return ""
+        pass
+
+    return ""
 
 def extract_password(table: QTableWidget, row: int) -> str:
     """Return decrypted password from SECRET_ROLE (fallback to visible text if not bullets)."""
@@ -323,3 +312,72 @@ def entries_for_origin(table: QTableWidget,
             try: logger.exception("[BRIDGE] entries_for_origin failed")
             except Exception: pass
     return out
+
+
+# ========================
+# Token persistence
+# ========================
+
+def check_bridge_token_headless(self, presented: str) -> bool:
+    # compare with store as the current token / auth mode
+    expected = (self.bridgeToken.text() or "").strip()
+    mode = (self.authMode.currentText() or "Authorization").lower()
+    if mode in ("none", "disabled"):
+        return True
+    return bool(presented) and presented == expected
+
+
+# For simplicity, we store a single token per user in a file. 
+# The token is a random string that the app generates and shares with the extension for authentication. The file is stored in a user-specific directory determined by the app's paths module. This approach avoids complex databases and allows easy reset by deleting the file.
+def _bridge_token_path_for(username: str) -> Path:
+    from app.paths import bridge_token_dir
+    u = (username or "").strip()
+    if not u:
+        raise ValueError("username is required for bridge token persistence")
+    return Path(bridge_token_dir(u))
+
+
+# Load the token for this user, or return empty string if not found/invalid.
+def load_bridge_token(username: str) -> str:
+    try:
+        tok = _bridge_token_path_for(username).read_text(encoding="utf-8").strip()
+        return tok if len(tok) >= 24 else ""
+    except Exception:
+        return ""
+
+
+# Save a token for this user (overwrites existing). If token is empty, it effectively clears it.
+def save_bridge_token(username: str, token: str) -> None:
+    try:
+        p = _bridge_token_path_for(username)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(p.suffix + ".tmp")
+        tmp.write_text((token or "").strip(), encoding="utf-8")
+        tmp.replace(p)
+    except Exception:
+        pass
+
+
+# For security, we want to allow token reset (e.g. if a user suspects compromise or just wants to force re-pairing).
+# This is a simple helper to clear the token; the app can call ensure_bridge_token() again to create a new one.
+def clear_bridge_token(username: str) -> None:
+    save_bridge_token(username, "")
+
+
+# Get or create a token for this user. If `new` is True, always create a new token and persist it; otherwise, return existing or create if missing.
+def ensure_bridge_token(username: str, *, new: bool = False) -> str:
+    """Return a token for this user (create & persist if missing)."""
+    if new:
+        tok = secrets.token_urlsafe(32)
+        save_bridge_token(username, tok)
+        return tok
+
+    tok = load_bridge_token(username)
+    if tok:
+        return tok
+
+    tok = secrets.token_urlsafe(32)
+    save_bridge_token(username, tok)
+    return tok
+
+

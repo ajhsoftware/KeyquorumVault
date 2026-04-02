@@ -178,6 +178,103 @@ def main():
     print("[ERROR] JSON file is not a vault envelope (missing iv/tag/vault_data).")
     return 2
 
+# tools/check_identity_header.py
+import argparse, base64, json, struct
+from pathlib import Path
+
+def b64_try(s: str):
+    try:
+        return base64.b64decode(s.encode(), validate=True)
+    except Exception:
+        return None
+
+def parse_header(p: Path) -> dict:
+    raw = p.read_bytes()
+    if not raw.startswith(b"KQID1"):
+        raise ValueError("Missing KQID1 magic (not an identity store)")
+    if len(raw) < 9:
+        raise ValueError("Truncated identity file")
+
+    header_len = struct.unpack(">I", raw[5:9])[0]
+    if header_len <= 0 or header_len > (len(raw) - 9):
+        raise ValueError(f"Invalid header_len={header_len} (file_len={len(raw)})")
+
+    hdr_bytes = raw[9:9+header_len]
+    header = json.loads(hdr_bytes.decode("utf-8"))
+    if not isinstance(header, dict):
+        raise ValueError("Header JSON is not an object")
+    return header
+
+def validate_header(header: dict) -> list[str]:
+    probs = []
+    wrappers = header.get("wrappers")
+    if not isinstance(wrappers, list):
+        probs.append("missing/invalid 'wrappers' list")
+
+    pw = None
+    if isinstance(wrappers, list):
+        for w in wrappers:
+            if isinstance(w, dict) and w.get("type") == "password":
+                pw = w
+                break
+    if pw is None:
+        probs.append("no wrapper with type='password'")
+    else:
+        for k in ("salt", "nonce", "ct"):
+            if k not in pw:
+                probs.append(f"password wrapper missing '{k}'")
+        if "nonce" in pw:
+            b = b64_try(str(pw["nonce"]))
+            if b is None or len(b) != 12:
+                probs.append("password wrapper nonce invalid (needs base64 of 12 bytes)")
+        if "salt" in pw:
+            b = b64_try(str(pw["salt"]))
+            if b is None or len(b) < 8:
+                probs.append("password wrapper salt invalid (base64 decode failed/too short)")
+        if "ct" in pw:
+            b = b64_try(str(pw["ct"]))
+            if b is None or len(b) < 16:
+                probs.append("password wrapper ct invalid (base64 decode failed/too short)")
+
+    meta = header.get("meta")
+    if isinstance(meta, dict):
+        ms = (meta.get("master_salt_b64") or "").strip()
+        if ms:
+            b = b64_try(ms)
+            if b is None:
+                probs.append("meta.master_salt_b64 is not valid base64")
+            else:
+                # Change 16 if your EXPECTED_SALT_LEN differs
+                if len(b) != 16:
+                    probs.append(f"meta.master_salt_b64 length={len(b)} (expected 16)")
+
+    return probs
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("identity_store", help="Path to identity store file (e.g. identity.kq)")
+    ap.add_argument("--inspect", action="store_true", help="Print header JSON")
+    args = ap.parse_args()
+
+    p = Path(args.identity_store)
+    header = parse_header(p)
+    probs = validate_header(header)
+
+    if args.inspect:
+        print(json.dumps(header, indent=2))
+
+    if probs:
+        print("\n[FAIL] Identity header problems:")
+        for pr in probs:
+            print(f" - {pr}")
+        raise SystemExit(10)
+
+    print("[OK] Identity header looks valid.")
+    # Helpful summary (salt presence)
+    meta = header.get("meta") or {}
+    ms = (meta.get("master_salt_b64") or "").strip()
+    print(f"[INFO] master_salt_in_header={'YES' if ms else 'NO'}")
 
 if __name__ == "__main__":
     main()
+

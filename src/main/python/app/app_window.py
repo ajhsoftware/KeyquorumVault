@@ -14,19 +14,47 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 """
 
+"""
+This module is currently being refactored and split into smaller parts.
+
+At present, it still serves as both the main window implementation and a
+central hub for application bootstrap logic, shared imports, and utility
+wiring. This is a temporary arrangement and will be improved as the codebase
+is further separated into clearer functional areas.
+
+Current refactor goals:
+- Move as much logic as possible out of the main window class
+- Separate code by responsibility without breaking working behaviour
+- Keep the application stable during the transition
+- Improve maintainability, readability, and security
+
+During this process, some duplicate or overlapping functions may still exist
+across files. This is temporary and part of the staged refactor.
+
+Current rough structure:
+- app_window.py: main window class, bootstrap logic, imports, logging, paths,
+  baseline handling, USB binding, and shared integration points
+- app_window_ui.py: UI layout generated from the Qt Designer `.ui` file
+- Other modules: gradually split out by feature and responsibility
+
+This note is here to explain the temporary structure while the refactor is in progress.
+"""
+
+
 # ==============================
 # --- sysimport/environ/pyside6 backend(important)/F401/
 # ==============================
 
 from unittest import skip
 import _fbs_bootstrap
-import os, hmac, hashlib, sys, traceback
+import hmac, hashlib
 from app.platform_utils import open_path
-from features.url.main_url import open_url, pnwed_url
-
+from features.url.main_url import open_url
+from app.qt_imports import *
+from vault_store.soft_delete_ops import _pwlast_save, _pwlast_load
 # Force QtPy to use PySide6 BEFORE importing qtpy
 os.environ["QT_API"] = "pyside6"
-STORE_BUILD = os.getenv("KQ_STORE_BUILD", "").lower() in ("1", "true", "yes")
+
 
 # ==============================
 # --- PySide6
@@ -34,6 +62,13 @@ STORE_BUILD = os.getenv("KQ_STORE_BUILD", "").lower() in ("1", "true", "yes")
 from qtpy import PYSIDE6, API_NAME
 assert PYSIDE6, f"[API NAME] QtPy backend is {API_NAME}, expected PySide6"
 from app.single_app import get_app
+
+# ==============================
+# --- Dev
+# ==============================
+from app.dev import dev_ops
+dev_ops.set_dev_values()
+is_dev = dev_ops.dev_set
 
 # ==============================
 # - touchscreen frendly
@@ -78,23 +113,7 @@ def has_touch_device() -> bool:
 
 app = get_app()
 
-# --- qtpy (pyside6 backend)
-from qtpy import uic
-from qtpy import QtCore, QtWidgets
-from qtpy.QtCore import (
-    QSettings, Qt, QUrl, QObject, QThread, QCoreApplication,
-    QSize, QPoint, QEvent, QTimer,
-    QPropertyAnimation, QEasingCurve, Signal,)
-from qtpy.QtCore import Signal as pyqtSignal, Slot as pyqtSlot
-from qtpy.QtGui import (
-    QIcon, QPixmap, QColor, QPalette, QImage, QGuiApplication,
-    QDesktopServices,) 
-from qtpy.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QDialog, QLabel, QLineEdit, QPushButton,
-    QAbstractItemView, QTabWidget, QComboBox, QTableWidget, QTableWidgetItem,
-    QMessageBox, QDialogButtonBox, QProgressDialog, QStackedLayout,
-    QGraphicsOpacityEffect, QFileDialog, QVBoxLayout, QTextEdit, QFormLayout, QProgressBar,
-    QInputDialog, QHBoxLayout, QToolTip, QCheckBox, QSplashScreen,)    
+from app.qt_imports import *
 
 # --- logging ---
 import app.kq_logging as kql
@@ -104,10 +123,9 @@ from app.kq_logging import (
 
 from pathlib import Path
 from app.paths import (
-    log_dir, users_root, user_root, CONFIG_DIR, profile_pic,  
+    log_dir, users_root, profile_pic,  
     vault_file, shared_key_file, catalog_file, salt_file, identities_file, breach_cache,
-    catalog_seal_file, debug_log_paths, category_schema_file,
-    is_portable_mode, users_root,
+    debug_log_paths, is_portable_mode, users_root,
     config_dir, trash_path, pw_cache_file, vault_dir, vault_wrapped_file,
     user_log_file, user_db_file, LICENSES_DIR, 
     LICENSE_CACHE_DIR, ui_file, icon_file)
@@ -124,43 +142,34 @@ def per_user_root(username: str, *, ensure_parent: bool = False):
     return p
 from features.portable.portable_user_usb import install_binding_overrides
 from workers.worker_status import Worker 
-from features.qr.qr_tools import show_qr_for_object
-from features.share.share_keys import ensure_share_keys
 from ui.frameless_window import FramelessWindowMixin
-from features.clipboard.secure_clipboard import install_clipboard_guard, copy_secret
 from security.preflight import (
-    load_security_prefs, save_security_prefs,add_process_to_watch, add_allowlist_process,
+    load_security_prefs, save_security_prefs, add_process_to_watch, add_allowlist_process,
     run_preflight_checks, ensure_preflight_defaults,)
 from security.secure_audit import is_locked_out, log_event_encrypted
 from auth.change_pw.change_password_dialog import ChangePasswordDialog
 from security.security_prefs_dialog import SecurityPrefsDialog
-from features.breach_check.breach_check_dialog import BreachCheckDialog
+
 from catalog_category.category_editor import patch_mainwindow_class
 # --- passkey ---
 import features.passkeys.capabilities as cap
 import features.passkeys.passkeys_windows as pkwin
-from vault_store.authenticator_store import (
-    list_authenticators, add_authenticator, add_from_otpauth_uri, delete_authenticator,
-    update_authenticator, get_current_code, import_otpauth_from_qr_image, build_otpauth_uri, export_otpauth_qr_bytes
-)
-from auth.tfa.twofactor import has_recovery_wrap, yk_twofactor_enabled
+
 from auth.login.login_handler import (
-    validate_login, is_locked_out,
-    set_recovery_mode, _canonical_username_ci,
-    get_user_setting, get_user_cloud, set_user_cloud,
-    get_recovery_mode, set_user_setting, get_user_record)
-from catalog_category.catalog_editor_user import CatalogEditorUserDialog
+     is_locked_out,
+     _canonical_username_ci,
+    get_user_setting, get_user_cloud,
+    set_user_setting, get_user_record)
+
 from catalog_category.catalog_user import (
-            ensure_user_catalog_created, load_user_catalog_raw,
-            load_effective_catalogs_from_user, verify_hmac_seal, write_hmac_seal)
+    ensure_user_catalog_created,
+    load_effective_catalogs_from_user,)
 
 from catalog_category.my_catalog_builtin import CLIENTS, ALIASES, PLATFORM_GUIDE
 from auth.identity_store import get_login_backup_count_quick, set_totp_secret, replace_backup_codes, mark_totp_header, verify_recovery_key
-from features.share.share_keys import ensure_share_keys, export_share_id_json
 from auth.pw.password_generator import show_password_generator_dialog, generate_strong_password
 from vault_store.vault_store import (
-    add_vault_entry, load_vault, save_vault,
-    export_full_backup,)
+    add_vault_entry, load_vault, save_vault,)
 
 # ==============================
 # --- Third party link 
@@ -170,7 +179,7 @@ from typing import Optional
 import weakref
 import ctypes
 from ctypes import wintypes
-from urllib.parse import urlparse, quote
+from urllib.parse import urlparse
 import urllib.request, urllib.error
 import http.client
 import datetime as dt 
@@ -181,14 +190,11 @@ import time as _t
 # ==============================
 import re as _re
 import tempfile
-import json, threading, socket, secrets
+import json, socket, secrets
 import subprocess
 import string
-from shutil import copy2, rmtree
-from contextlib import contextmanager
-from zipfile import ZipFile
+from shutil import copy2
 import hashlib
-import numpy as np
 try:
     import winreg
 except ImportError:
@@ -197,13 +203,20 @@ try:
     import cv2  # OpenCV for QR decoding
 except Exception:
     cv2 = None
-   
+
+# ==============================
+# --- message ---
+# ==============================
+from ui.message_ops import show_message_vault_change, message_backup_error, show_message_user_login
+
 # ==============================
 # --- logging ---
 # ==============================
 # --- Logging bootstrap (unified paths) ---
 from app.paths import log_dir
-from app.basic import is_dev
+
+
+
 # Tell kq_logging where to write files (use the unified log_dir())
 os.environ.setdefault("KEYQUORUM_LOG_DIR", str(log_dir()))
 
@@ -217,7 +230,8 @@ except Exception:
 
 # Keep console + debug level in sync with dev mode
 from app.kq_logging import apply_debug_flag
-apply_debug_flag(enabled=is_dev, keep_console=is_dev)
+apply_debug_flag(enabled=dev_ops.dev_set, keep_console=dev_ops.dev_set)
+
 
 # --- Unified helpers (per-user logging + licensing + baseline wrappers) ---
 import logging, os, json, hashlib, hmac
@@ -243,11 +257,14 @@ def switch_to_user_log(username: str) -> None:
         # Preferred: paths.user_log_file(); Fallback: log_dir()/users/<user>.log
         try:
             target = Path(user_log_file(username, ensure_parent=True))
+            log.info(f"LOG DIR: {target}")
         except Exception:
             target = Path(log_dir()) / "users" / f"{username}.log"
+            log.info(f"LOG DIR: {target}")
             target.parent.mkdir(parents=True, exist_ok=True)
-
+        
         existing = _find_file_handler_for(target)
+        
         if existing:
             _KQ_USER_HANDLER = existing
             app_log.info("%s using existing per-user log → %s", kql.i("ok"), target)
@@ -334,7 +351,13 @@ LOG_DIR_ = str(Path(get_logfile_path()).parent)
 log.debug(f"{kql.i('path')} [LOG] Open Path {get_logfile_path()}")
 
 # ==============================
-# --- uppdate windows header with tint ---
+# - bridge
+# ==============================
+from bridge.bridge_ops import ensure_origins_file
+
+
+# ==============================
+# --- uppdate windows header with tint
 # ==============================
 if sys.platform == "win32":
     _DWMWA_USE_IMMERSIVE_DARK_MODE_TRY = (20, 19)
@@ -389,12 +412,14 @@ def _read_user_salt(username: str) -> bytes:
 # ==============================
 # --- language
 # ==============================
+
 def _tr(text: str) -> str:
     return QCoreApplication.translate("main", text)
 
 def _load_ui_language() -> str:
     from ui.ui_language import _load_ui_language as __load_ui_language
     return __load_ui_language()
+
 
 # ==============================
 # --- first time run wizard
@@ -450,15 +475,9 @@ def _needs_first_run() -> bool:
     except Exception:
         return True
 
-# ==============================
-# --- YubiKey login worker --- (runs in background thread) 
-# ==============================
-# - YubiKey backend (bundle-first ykman with CLI fallbacks)
-from auth.yubi.yk_backend import YKBackend
-from auth.yubi.yubikeydialog import YubiKeySetupDialog
-from auth.yubi.yk_backend import set_probe_enabled
+
 # - how long to wait before showing recovery or failed screen 
-PRESENCE_GRACE_SECS = 25.0           
+# PRESENCE_GRACE_SECS = 25.0           
 
 # --- backup code + recovery key verification (login-backup, not TOTP) ---
 from auth.login.login_handler import use_backup_code as _use_backup_code  # uses identity store
@@ -484,784 +503,6 @@ def _verify_recovery_key(username: str, recovery_key: str) -> bool:
     return bool(_verify_recovery_key_local(username, recovery_key))
 
 
-from qtpy.QtCore import QThread, Signal
-
-try:
-    from auth.yubi.yk_backend import set_probe_enabled
-except Exception:
-    def set_probe_enabled(val: bool):
-        pass
-
-class _YKTouchWorker(QThread):
-    ok = Signal()
-    err = Signal(str)
-    def __init__(self, *, slot: int, serial: str | None, ykman_path: str | None, challenge_hex: str, timeout_s: int = 25):
-        super().__init__()
-        self.slot = int(slot or 2)
-        self.serial = (serial or "").strip() or None
-        self.ykman_path = (ykman_path or "").strip() or None
-        self.challenge_hex = (challenge_hex or "").strip()
-        self.timeout_s = int(max(5, timeout_s))
-
-    def run(self):
-        try:
-
-            # If cancelled before even start, just exit
-            if self.isInterruptionRequested():
-                return
-
-
-            yk = YKBackend(self.ykman_path)
-            # If the slot clearly doesn't require touch, fail early so don't hang
-            try:
-                if hasattr(yk, "slot_requires_touch") and not yk.slot_requires_touch(self.slot):
-                    raise RuntimeError("This YubiKey slot isn’t set to require touch. Reprogram it with touch in Settings → YubiKey.")
-            except Exception:
-                pass
-
-            # Break the wait into small slices so requestInterruption() can stop us fast
-            deadline = _t.monotonic() + float(self.timeout_s)
-            while _t.monotonic() < deadline and not self.isInterruptionRequested():
-                if self.isInterruptionRequested():
-                    return
-                
-                slice_s = min(3.0, deadline - _t.monotonic())
-                if slice_s <= 0:
-                    break
-                # one short attempt
-                try:
-                    _ = yk.calculate_hmac(self.slot, self.challenge_hex, self.serial, timeout=float(slice_s))
-                    if self.isInterruptionRequested():
-                        return
-                    self.ok.emit()
-                    return
-                except Exception as e:
-                    # Only continue looping for touch/timeouts; surface other errors
-                    msg = str(e).lower()
-                    if any(x in msg for x in ("timed out", "touch")):
-                        continue
-                    raise
-            raise RuntimeError("Timed out waiting for YubiKey touch.")
-        except Exception as e:
-            self.err.emit(str(e))
-
-
-class _YKWrapWorker(QThread):
-    ok = Signal(bytes)    # unwrapped master key
-    err = Signal(str)
-
-    def __init__(self, *, password_key: bytes, cfg: dict, timeout_s: int = 25):
-        super().__init__()
-        self.password_key = bytes(password_key or b"")
-        self.cfg = dict(cfg or {})
-        self.timeout_s = int(max(5, timeout_s))
-
-    def run(self):
-        try:
-            if self.isInterruptionRequested():
-                return
-            # Run unwrap in background (may require touch)
-            from auth.yubi.yubihmac_wrap import unwrap_master_key_with_yubi
-
-
-            # unwrap_master_key_with_yubi will perform the YubiKey challenge internally
-            mk = unwrap_master_key_with_yubi(b"", password_key=self.password_key, cfg=self.cfg)
-            if self.isInterruptionRequested():
-                return
-            if not isinstance(mk, (bytes, bytearray)) or len(mk) < 16:
-                raise RuntimeError("YubiKey unwrap returned empty key")
-            self.ok.emit(bytes(mk))
-        except Exception as e:
-            self.err.emit(str(e) or repr(e))
-
-
-class YubiKeyLoginGateDialog(QDialog):
-    """
-    Waits for insert → then touch.
-    After timeout, auto-switches to Backup code + Recovery key.
-    """
-    fallback_success = Signal()
-
-    def __init__(
-        self,
-        *,
-        username: str,
-        password: str,
-        cfg: dict,
-        challenge_hex: str,
-        password_key: bytes | None = None,
-        insert_poll_ms: int = 1200,
-        touch_timeout_s: int = 25,
-        parent=None,
-    ):
-        super().__init__(parent)
-        self.setWindowTitle(self.tr("YubiKey Required"))
-        self.setModal(True)
-        self.setMinimumWidth(460)
-
-        self.username = username
-        self.password = password
-        self.cfg = dict(cfg or {})
-        self.challenge_hex = challenge_hex
-        self.password_key = bytes(password_key) if isinstance(password_key, (bytes, bytearray, memoryview)) else None
-        self.insert_poll_ms = int(max(400, insert_poll_ms))
-        self.touch_timeout_s = int(max(5, touch_timeout_s))
-        self._t0 = _t.monotonic()
-
-        # YK config
-        self.slot = int(self.cfg.get("slot", 2) or 2)
-        self.serial = (self.cfg.get("serial") or "").strip() or None
-        self.ykman_path = (self.cfg.get("ykman_path") or "").strip() or None
-
-        # Internal flags / workers
-        self._presence_inflight = False
-        self._touch_inflight = False
-        self._presence_worker = None
-        self._worker: _YKTouchWorker | None = None
-        self._closed = False
-        # Mode: gate vs wrap
-        self.mode = (self.cfg.get("mode") or "").strip()  # "yk_hmac_gate" or "yk_hmac_wrap"
-        self.stack = QStackedLayout()
-
-        # ----------------------------
-        # Page 0: insert + touch prompt
-        # ----------------------------
-        p0 = QVBoxLayout()
-        self.p0_status = QLabel(self.tr("Insert your YubiKey…"))
-        self.p0_status.setWordWrap(True)
-        p0.addWidget(self.p0_status)
-
-        self.p0_bar = QProgressBar()
-        self.p0_bar.setRange(0, 0)
-        p0.addWidget(self.p0_bar)
-
-        row0 = QHBoxLayout()
-        # Button text depends on mode
-        if self.mode == "yk_hmac_gate":
-            backup_btn_text = self.tr("Use backup code")
-        else:
-            backup_btn_text = self.tr("Use backup code + Recovery Key")
-
-        self.p0_backup_btn = QPushButton(backup_btn_text)
-        self.p0_cancel_btn = QPushButton(self.tr("Cancel"))
-        row0.addWidget(self.p0_backup_btn)
-        row0.addStretch(1)
-        row0.addWidget(self.p0_cancel_btn)
-        p0.addLayout(row0)
-
-        w0 = QDialog(self)
-        w0.setLayout(p0)
-        w0.setWindowFlags(Qt.Widget)
-        self.stack.addWidget(w0)
-
-        # ----------------------------
-        # Page 1: fallback (backup code [+ recovery key for WRAP])
-        # ----------------------------
-        p1 = QVBoxLayout()
-
-        if self.mode == "yk_hmac_gate":
-            label = QLabel(self.tr("Enter a login backup code:"))
-        else:
-            label = QLabel(self.tr("Enter a login backup code and your Recovery Key:"))
-
-        p1.addWidget(label)
-
-        # Backup code field (always present)
-        self.backup_edit = QLineEdit()
-        self.backup_edit.setPlaceholderText(self.tr("Login backup code (single-use)"))
-        p1.addWidget(self.backup_edit)
-
-        # Recovery Key field (only for WRAP)
-        if self.mode == "yk_hmac_wrap":
-            self.recovery_edit = QLineEdit()
-            self.recovery_edit.setPlaceholderText(self.tr("Recovery Key"))
-            p1.addWidget(self.recovery_edit)
-        else:
-            self.recovery_edit = None  # easier to check later
-
-        row1 = QHBoxLayout()
-        self.p1_submit = QPushButton(self.tr("Submit"))
-        self.p1_back = QPushButton(self.tr("Back"))
-        row1.addWidget(self.p1_submit)
-        row1.addStretch(1)
-        row1.addWidget(self.p1_back)
-        p1.addLayout(row1)
-
-        w1 = QDialog(self)
-        w1.setLayout(p1)
-        w1.setWindowFlags(Qt.Widget)
-        self.stack.addWidget(w1)
-
-        # ----------------------------
-        # Overall layout
-        # ----------------------------
-        v = QVBoxLayout(self)
-        v.addLayout(self.stack)
-        self.setLayout(v)
-
-        # Wire buttons (page 0 + page 1)
-        try:
-            self.p0_backup_btn.clicked.connect(self._enter_backup_mode)
-        except Exception:
-            pass
-        try:
-            self.p0_cancel_btn.clicked.connect(self.reject)
-        except Exception:
-            pass
-        try:
-            self.p1_submit.clicked.connect(self._try_backup)
-        except Exception:
-            pass
-        try:
-            self.p1_back.clicked.connect(self._back_to_insert)
-        except Exception:
-            pass
-
-        # Wire buttons
-        self.stack.setCurrentIndex(0)
-
-        # Timers
-        self._poll = QTimer(self)
-        self._poll.setInterval(self.insert_poll_ms)
-        self._poll.timeout.connect(self._tick_insert)
-        self._poll.start()
-
-        self._touch_to = QTimer(self)
-        self._touch_to.setSingleShot(True)
-        self._touch_to.setInterval(self.touch_timeout_s * 1000)
-        self._touch_to.timeout.connect(self._fallback_auto)
-
-        try:
-            set_probe_enabled(False)
-        except:
-            pass
-
-
-    def _tick_insert(self):
-        if self._closed or self._presence_inflight or self._touch_inflight:
-            return
-        if self.stack.currentIndex() == 1: 
-            return
-        self._presence_inflight = True
-        worker = _YKPresenceWorker(self.ykman_path, self.serial)
-        worker.found.connect(self._on_presence_result)
-        self._presence_worker = worker
-        worker.start()
-
-    def _enter_backup_mode(self):
-        # Stop the periodic presence polling immediately
-        try:
-            if getattr(self, "_poll", None) and self._poll.isActive():
-                self._poll.stop()
-        except Exception:
-            pass
-
-        try:
-            if getattr(self, "_touch_to", None):
-                self._touch_to.stop()
-        except Exception:
-            pass
-        # Also stop a presence worker that may be mid-flight
-        pw = getattr(self, "_presence_worker", None)
-        if pw is not None:
-            try:
-                if hasattr(pw, "found"):
-                    pw.found.disconnect(self._on_presence_result)
-            except Exception:
-                pass
-            self._stop_thread(pw)
-             # 🚨 emergency fallback
-            try:
-                if isinstance(pw, QThread) and pw.isRunning():
-                    pw.terminate()
-                    pw.wait(500)
-            except Exception:
-                pass
-            self._presence_worker = None
-            self._presence_inflight = False
-
-        # Show the fallback page
-        self.stack.setCurrentIndex(1)
-
-    def _back_to_insert(self):
-        """Return from fallback page to insert/touch page."""
-        if self._closed:
-            return
-        try:
-            self.stack.setCurrentIndex(0)
-        except Exception:
-            pass
-        # restart polling/timers
-        try:
-            self._t0 = _t.monotonic()
-        except Exception:
-            pass
-        try:
-            if getattr(self, "_poll", None):
-                self._poll.start()
-        except Exception:
-            pass
-        try:
-            self.p0_status.setText(self.tr("Insert your YubiKey…"))
-        except Exception:
-            pass
-
-
-    def _on_presence_result(self, present: bool, serials: list):
-        if self._closed:
-            return
-        self._presence_inflight = False
-        self._presence_worker = None   # <- allow GC
-        if not present:
-            waited = int(_t.monotonic() - self._t0)
-            try:
-                self.p0_status.setText(self.tr("Insert your YubiKey… (waiting {waited}s)").format(waited=waited))
-            except Exception:
-                self.p0_status.setText(self.tr("Insert your YubiKey…"))
-            return
-        if self._poll.isActive():
-            self._poll.stop()
-        if self.mode == "yk_hmac_wrap":
-            self._start_wrap_unwrap()
-        else:
-            self._start_touch()
-
-    def _shutdown_worker(self):
-        """Stop any background polling (QThread or threading.Thread) and wait briefly."""
-        try:
-            if hasattr(self, "_poller") and self._poller:
-                try:
-                    if hasattr(self._poller, "stop"):
-                        self._poller.stop()
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-        try:
-            if getattr(self, "_thread", None):
-                # ask Qt thread to quit and wait
-                try:
-                    self._thread.quit()
-                except Exception:
-                    pass
-                try:
-                    self._thread.wait(2000)
-                except Exception:
-                    pass
-                self._thread = None
-        except Exception:
-            pass
-
-        # --- threading.Thread path ---
-        try:
-            if getattr(self, "_stop_evt", None):
-                try:
-                    self._stop_evt.set()
-                except Exception:
-                    pass
-            if getattr(self, "_worker_thread", None):
-                try:
-                    if self._worker_thread.is_alive():
-                        self._worker_thread.join(timeout=2.0)
-                except Exception:
-                    pass
-                self._worker_thread = None
-        except Exception:
-            pass
-
-    def _start_touch(self):
-        if self._closed or self._touch_inflight:
-            return
-        self._touch_inflight = True
-        self.p0_status.setText(self.tr("YubiKey detected. Touch the YubiKey to continue…"))
-        self._touch_to.start()
-        self._worker = _YKTouchWorker(
-            slot=self.slot, serial=self.serial, ykman_path=self.ykman_path,
-            challenge_hex=self.challenge_hex, timeout_s=self.touch_timeout_s
-        )
-        self._worker.ok.connect(self._touch_ok)
-        self._worker.err.connect(self._touch_err)
-        self._worker.start()
-
-    def _start_wrap_unwrap(self):
-        """WRAP: perform unwrap in background (single touch) and return MK."""
-        if self._closed or self._touch_inflight:
-            return
-        if not (isinstance(self.password_key, (bytes, bytearray)) and len(self.password_key) >= 16):
-            QMessageBox.critical(self, self.tr("Vault locked"), self.tr("Missing password context required for YubiKey WRAP."))
-            self.reject()
-            return
-        self._touch_inflight = True
-        self.p0_status.setText(self.tr("YubiKey detected. Touch the YubiKey to continue…"))
-        try:
-            self._touch_to.start()
-        except Exception:
-            pass
-        self._worker = _YKWrapWorker(password_key=bytes(self.password_key), cfg=self.cfg, timeout_s=self.touch_timeout_s)
-        self._worker.ok.connect(self._wrap_ok)
-        self._worker.err.connect(self._wrap_err)
-        self._worker.start()
-
-    def _wrap_ok(self, mk: bytes):
-        if self._closed:
-            return
-        self._touch_inflight = False
-        try:
-            self._touch_to.stop()
-        except Exception:
-            pass
-        # Success: return MK to caller
-        self.result_mk = bytes(mk)
-        self.result_mode = "wrap-hw"
-        self._cleanup()
-        self.accept()
-
-    def _wrap_err(self, msg: str):
-        if self._closed:
-            return
-        self._touch_inflight = False
-        try:
-            self._touch_to.stop()
-        except Exception:
-            pass
-        low = (msg or "").lower()
-        if "no yubikey" in low or "not detected" in low:
-            QMessageBox.information(self, self.tr("YubiKey required"), self.tr("No YubiKey was detected.\n\nInsert your YubiKey and try again."))
-        elif "timed out" in low or "touch" in low:
-            QMessageBox.information(self, self.tr("YubiKey required"), self.tr("Timed out waiting for YubiKey touch."))
-        else:
-            QMessageBox.critical(self, self.tr("YubiKey error"), msg or self.tr("YubiKey operation failed."))
-        # Stay on page 0 for retry (poll can restart)
-        try:
-            self._poll.start()
-        except Exception:
-            pass
-
-
-    def _touch_ok(self):
-        if self._closed:
-            return
-        self._touch_inflight = False
-        try: self._touch_to.stop()
-        except Exception: pass
-        # stop workers/timers before closing dialog to avoid late signals
-        self._cleanup()
-        self.accept()
-
-    def _touch_err(self, msg: str):
-        if self._closed:
-            return
-        self._touch_inflight = False
-        self._worker = None
-        self.p0_status.setText(
-            self.tr("YubiKey error: {msg}\nYou can retry, or use a backup code + recovery key.").format(msg)
-        )
-        # Only restart polling if we're on the hardware page
-        if self.stack.currentIndex() == 0 and getattr(self, "_poll", None) and not self._poll.isActive():
-            self._poll.start()
-
-    def _fallback_auto(self):
-        self.stack.setCurrentIndex(1)
-
-    # inside YubiKeyLoginGateDialog
-    from auth.pw.utils_recovery import recovery_key_to_mk
-
-    # yubi key recovery 
-    def _try_backup(self):
-        """Backup fallback.
-        - GATE: consume login backup code (identity password required), then accept.
-        - WRAP: require Recovery Key + login backup code, derive MK, then accept.
-        """
-        if getattr(self, "_closed", False):
-            return
-
-        code = (getattr(self, "backup_edit", None).text() if getattr(self, "backup_edit", None) else "").strip()
-        rk = (getattr(self, "recovery_edit", None).text() if getattr(self, "recovery_edit", None) else "").strip()
-
-        # Detect mode best-effort
-        mode = (getattr(self, "mode", "") or "").strip().lower()
-
-        def _norm_rk(s: str) -> str:
-            return "".join(ch for ch in (s or "") if ch.isalnum()).upper()
-
-        # --- Gate path
-        if mode == "yk_hmac_gate":
-            if not code:
-                QMessageBox.critical(self, self.tr("Backup Code"), self.tr("Please enter your login backup code."))
-                return
-            if not _verify_and_consume_login_backup_with_pw(self.username, self.password, code):
-                QMessageBox.critical(self, self.tr("Backup Code"), self.tr("That backup code is invalid or already used."))
-                return
-
-            self.result_mk = None
-            self.result_mode = "gate-backup"
-            if hasattr(self, "_cleanup"):
-                self._cleanup()
-            self.accept()
-            return
-
-        # --- Wrap path
-        if not code or not rk:
-            QMessageBox.critical(
-                self,
-                self.tr("Missing details"),
-                self.tr("Enter both a Recovery Key and a login backup code."),
-            )
-            return
-
-        rk_norm = _norm_rk(rk)
-
-        if not _verify_recovery_key(self.username, rk_norm):
-            QMessageBox.critical(self, self.tr("Recovery Key"), self.tr("That Recovery Key is not valid for this account."))
-            return
-
-        if not _verify_and_consume_login_backup_with_pw(self.username, self.password, code):
-            QMessageBox.critical(self, self.tr("Backup Code"), self.tr("That backup code is invalid or already used."))
-            return
-
-        try:
-            from auth.pw.utils_recovery import recovery_key_to_mk
-            mk = recovery_key_to_mk(rk_norm)
-        except Exception:
-            QMessageBox.critical(self, self.tr("Recovery Key"), self.tr("Could not apply Recovery Key."))
-            return
-
-        self.result_mk = bytes(mk)
-        self.result_mode = "recovery+backup"
-        if hasattr(self, "_cleanup"):
-            self._cleanup()
-        self.accept()
-
-    def accept(self):
-        self._cleanup()
-        super().accept()
-
-    # stop timers
-    def _stop_thread(self, worker_obj):
-        """
-        Stop a QThread *subclass* (_YKTouchWorker/_YKPresenceWorker) or a QObject-in-QThread,
-        or a python threading.Thread. Never blocks on the GUI thread.
-        """
-        if not worker_obj:
-            return
-
-        # Case A: worker_obj *is* a QThread
-        if isinstance(worker_obj, QThread):
-            gui_th = QCoreApplication.instance().thread() if QCoreApplication.instance() else None
-            if worker_obj is gui_th or worker_obj is QThread.currentThread():
-                return
-            try: worker_obj.requestInterruption()
-            except Exception: pass
-            try: worker_obj.quit()
-            except Exception: pass
-            try: worker_obj.wait(2000)
-            except Exception: pass
-            return
-
-        # Case B: QObject moved to a QThread
-        th = None
-        try:
-            th = worker_obj.thread() if hasattr(worker_obj, "thread") else None
-        except Exception:
-            th = None
-
-        if isinstance(th, QThread):
-            gui_th = QCoreApplication.instance().thread() if QCoreApplication.instance() else None
-            if th is gui_th or th is QThread.currentThread():
-                return
-            try:
-                # ask the QObject loop to stop
-                if hasattr(worker_obj, "stop"):
-                    worker_obj.stop()
-            except Exception: pass
-            try: th.requestInterruption()
-            except Exception: pass
-            try: th.quit()
-            except Exception: pass
-            try: th.wait(2000)
-            except Exception: pass
-            return
-
-        # Case C: python threading.Thread
-        try:
-            if hasattr(worker_obj, "stop"):
-                worker_obj.stop()
-        except Exception:
-            pass
-        try:
-            if hasattr(worker_obj, "is_alive") and worker_obj.is_alive():
-                worker_obj.join(timeout=2.0)
-        except Exception:
-            pass
-
-    def _cleanup(self):
-        """Stop timers, detach signals, stop workers."""
-        if getattr(self, "_closed", False):
-            return
-        self._closed = True
-
-        # Timers
-        for tname in ("_poll", "_touch_to"):
-            t = getattr(self, tname, None)
-            if t:
-                try:
-                    t.stop()
-                except Exception:
-                    pass
-                try:
-                    t.timeout.disconnect()
-                except Exception:
-                    pass
-                setattr(self, tname, None)
-
-        # Presence worker
-        pw = getattr(self, "_presence_worker", None)
-        if pw is not None:
-            try:
-                if hasattr(pw, "found"):
-                    pw.found.disconnect(self._on_presence_result)
-                if hasattr(pw, "finished"):
-                    pw.finished.disconnect()
-            except Exception:
-                pass
-            self._stop_thread(pw)
-           # 🚨 emergency fallback
-            try:
-                if isinstance(pw, QThread) and pw.isRunning():
-                    pw.terminate()
-                    pw.wait(500)
-            except Exception:
-                pass
-
-        self._presence_worker = None
-        self._presence_inflight = False
-
-        try:
-            set_probe_enabled(False)
-        except:
-            pass
-
-        # Touch worker
-        tw = getattr(self, "_worker", None)
-        if tw is not None:
-            try:
-                if hasattr(tw, "ok"):
-                    tw.ok.disconnect(self._touch_ok)
-                if hasattr(tw, "err"):
-                    tw.err.disconnect(self._touch_err)
-                if hasattr(tw, "finished"):
-                    tw.finished.disconnect()
-            except Exception:
-                pass
-            self._stop_thread(tw)
-            # 🚨 emergency fallback
-            try:
-                if isinstance(tw, QThread) and tw.isRunning():
-                    tw.terminate()
-                    tw.wait(500)
-                pass
-            except Exception:
-                pass
-        self._worker = None
-        self._touch_inflight = False
-   
-    # ------------------------
-    # Robust cleanup helpers (override-safe)
-    # ------------------------
-    def _stop_thread(self, worker_obj):
-        """Best-effort stop for QThread/worker objects and python threads."""
-        try:
-            if worker_obj is None:
-                return
-            # QThread (or subclass)
-            if hasattr(worker_obj, "quit") and callable(getattr(worker_obj, "quit")):
-                try:
-                    worker_obj.quit()
-                except Exception:
-                    pass
-            if hasattr(worker_obj, "requestInterruption") and callable(getattr(worker_obj, "requestInterruption")):
-                try:
-                    worker_obj.requestInterruption()
-                except Exception:
-                    pass
-            if hasattr(worker_obj, "wait") and callable(getattr(worker_obj, "wait")):
-                try:
-                    worker_obj.wait(1500)
-                except Exception:
-                    pass
-            # QObject worker with stop() / abort()
-            for meth in ("stop", "abort", "cancel"):
-                if hasattr(worker_obj, meth) and callable(getattr(worker_obj, meth)):
-                    try:
-                        getattr(worker_obj, meth)()
-                    except Exception:
-                        pass
-            # python threading.Thread
-            if hasattr(worker_obj, "join") and callable(getattr(worker_obj, "join")):
-                try:
-                    worker_obj.join(timeout=1.5)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-    def _cleanup(self):
-        """Stop timers, detach signals, and stop workers (safe to call multiple times)."""
-        if getattr(self, "_closed", False):
-            return
-        self._closed = True
-
-        # timers
-        for tname in ("_insert_timer", "_touch_timer", "_fallback_timer"):
-            try:
-                t = getattr(self, tname, None)
-                if t:
-                    t.stop()
-            except Exception:
-                pass
-
-        # stop thread workers if present
-        for wname in ("_presence_thread", "_touch_thread", "_wrap_thread", "_thread_worker"):
-            try:
-                w = getattr(self, wname, None)
-                if w:
-                    self._stop_thread(w)
-            except Exception:
-                pass
-
-    def reject(self):
-        set_probe_enabled(False)
-        self._cleanup()
-        self._shutdown_worker()
-        super().reject()
-
-    def closeEvent(self, e):
-        set_probe_enabled(False)
-        self._cleanup()
-        super().closeEvent(e)
-
-class _YKPresenceWorker(QThread):
-    found = Signal(bool, list)   # (present, serials)
-    def __init__(self, ykman_path: str | None, want_serial: str | None):
-        super().__init__()
-        self.ykman_path = (ykman_path or "").strip() or None
-        self.want_serial = (want_serial or "").strip() or None
-    
-    def run(self):
-        from PySide6.QtCore import QThread
-        try:
-            while not self.isInterruptionRequested():
-                try:
-                    yk = YKBackend(self.ykman_path)
-                    serials = list(yk.list_serials() or [])
-                    present = bool(serials) if not self.want_serial else (self.want_serial in serials or "(present)" in serials)
-                    self.found.emit(present, serials)
-                except Exception:
-                    self.found.emit(False, [])
-                QThread.msleep(600)  # allows interruption to work quickly
-        finally:
-            pass
 
 # ==============================
 # --- Touch Finder --- (Tuchscreen)
@@ -1282,27 +523,6 @@ def _win_has_touch() -> bool:
     except Exception:
         return False
     
-# ==============================
-# --- prefligh safe ---
-# ==============================
-def safe_preflight() -> tuple[bool, str]:
-    """
-    Call run_preflight_checks() safely.
-    Works whether it returns a bool or (ok, reason).
-    Returns: (ok, reason)
-    """
-    try:
-        # try the simple style (bool or (ok, reason))
-        result = run_preflight_checks()
-        if isinstance(result, tuple) and len(result) >= 1:
-            ok = bool(result[0])
-            reason = str(result[1]) if len(result) >= 2 else ""
-            return ok, reason
-        return bool(result), ""
-    except Exception as e:
-        tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))
-        log.error(str(f"{kql.i('err')} [ERROR] 🛑 Preflight checks crashed:\n{tb}"))
-        return False, f"Preflight crashed: {e}"
 
 # ==============================
 # --- Manifest Mismatch ---
@@ -1339,6 +559,7 @@ from app.paths import audit_tamper, config_dir
 from security.baseline_signer import verify_baseline, ensure_baseline
 from security.secure_audit import log_event_encrypted
 
+
 def update_baseline(username: str, *, verify_after: bool = True, who: str = "Unknow") -> bool:
     username = (username or "").strip()
     if not username:
@@ -1367,7 +588,7 @@ def update_baseline(username: str, *, verify_after: bool = True, who: str = "Unk
         log_event_encrypted(username, "📜 [Baseline Update]", msg)
         log.info(f"📜 [Baseline Update] {msg},->Verify on Update->{verify_after} ")
         
-        if verify_recovery_key:
+        if verify_after:
             # post-verify
             changed, missing, new, mac_ok = verify_baseline(username, salt, files)
             log.info(
@@ -1387,15 +608,36 @@ def update_baseline(username: str, *, verify_after: bool = True, who: str = "Unk
         return False
 
 def _load_vault_salt_for(user: str) -> bytes:
-    
-    # legacy helper used for baseline writes; keep behavior
+    """Load the master salt for baseline/integrity.
+
+    Preferred: identity store header (user .kq_id).
+    Fallback: legacy .slt file.
+
+    NOTE: We only *read* here. Any migration/cleanup should happen after a
+    successful login, not inside baseline code.
+    """
+    u = (user or "").strip()
+    if not u:
+        return b""
+
+    # Unified reader (identity-store first, fallback to legacy .slt)
     try:
-        log.debug(f"[USB] salt_file fn id={id(salt_file)} "
-            f"mode={is_portable_mode()} users_root={users_root()}")
-        sp = salt_file(user, ensure_parent=False)
+        from auth.salt_file import read_master_salt_readonly
+        salt = read_master_salt_readonly(u) or b""
+        if salt:
+            return salt
+    except Exception as e:
+        log.debug(f"[baseline] salt read failed for {u}: {e}")
+
+    # Legacy: read salt file directly
+    try:
+        log.debug(
+            f"[USB] salt_file fn id={id(salt_file)} mode={is_portable_mode()} users_root={users_root()}"
+        )
+        sp = salt_file(u, ensure_parent=False)
         return sp.read_bytes()
     except Exception:
-        return _read_user_salt(user) or b""
+        return _read_user_salt(u) or b""
 
 def _baseline_tracked_files(username: str) -> list[str]:
     from app.paths import security_prefs_file, profile_image_file
@@ -1425,9 +667,7 @@ def _baseline_tracked_files(username: str) -> list[str]:
     # --- OPTIONAL FILES (only if present) ---
     optional_paths: list[Path] = [
         security_prefs_file(username, ensure_parent=False, name_only=False),
-        category_schema_file(username, ensure_parent=False),
         catalog_file(username, ensure_parent=False),         
-        catalog_seal_file(username, ensure_parent=False),
         shared_key_file(username, ensure_parent=False),
         profile_image_file(username, ensure_parent=False),
         breach_cache(username, ensure_parent=False),
@@ -1498,6 +738,7 @@ def _maybe_install_binding_for(username: str):
     if user_dir.exists():
         install_binding_overrides(username, user_dir)
         log.info(f"[USB] On-demand binding activated for {username} @ {user_dir}")
+
 
 def _compat_get_user_usb_binding(username: str):
     """
@@ -1657,6 +898,32 @@ class USBMigrator(QObject):
         except Exception as e:
             self.error.emit(f"❌ Migration failed:\n{str(e)}")
 
+
+
+class PortableBuildWorker(QObject):
+    finished = pyqtSignal(bool, str)
+
+    def __init__(self, drive: str):
+        super().__init__()
+        self.drive = drive
+
+    def run(self):
+        from pathlib import Path
+        try:
+            from features.portable.portable_manager import build_portable_app
+            ok = bool(build_portable_app(None, Path(self.drive), show_ui=False))
+            if ok:
+                msg = f"Portable app updated successfully.\n\nLocation:\n{self.drive}"
+            else:
+                msg = "Portable rebuild failed. Please check the log for details."
+            self.finished.emit(ok, msg)
+        except Exception as e:
+            try:
+                log.error(f"[PORTABLE] build_portable_app worker failed: {e}")
+            except Exception:
+                pass
+            self.finished.emit(False, str(e))
+
 # ==============================
 # --- Resource Paths ---
 # ==============================
@@ -1676,12 +943,10 @@ sys.excepthook = _global_excepthook
 # --- Clipboard Safty Check History Is On ---
 # ==============================
 def _win_clipboard_risk_state() -> dict:
-    """Returns dict with booleans for history/cloud and optional GPO flags (Windows only)."""
     from features.clipboard.secure_clipboard import _win_clipboard_risk_state as __win_clipboard_risk_state
     return __win_clipboard_risk_state()
     
 def maybe_warn_windows_clipboard(username: str, copy=True) -> None:
-    """Show a one-time warning if Windows Clipboard history / sync are ON."""
     from ui.ui_flags import maybe_warn_windows_clipboard as _maybe_warn_windows_clipboard
     return _maybe_warn_windows_clipboard(copy)
 
@@ -1689,245 +954,6 @@ def secure_copy(text: str, ttl_ms: int = None, username:str = None):
     from features.clipboard.secure_clipboard import secure_copy as _secure_copy
     return _secure_copy(text, ttl_ms, username)
 
-# ==============================
-# --- CSV Import ---
-# ==============================
-class DedupeResolverDialog(QDialog):
-    """
-    Shows all duplicate collisions in one table.
-    Each row: Category, Title/Name, Username, URL, Existing (summary), Incoming (summary), Action.
-    Actions: Skip / Update existing / Keep both.
-    """
-    def __init__(self, parent, collisions: list[tuple[tuple, dict, dict]]):
-        super().__init__(parent)
-        self.setWindowTitle(self.tr("Resolve Duplicate Entries"))
-        self.resize(980, 520)
-        self._collisions = collisions
-        self.result_actions: list[str] = []  # "skip" | "update" | "keep"
-        self._build()
-
-    def _build(self):
-        layout = QVBoxLayout(self)
-
-        help_lbl = QLabel(self.tr("Duplicates were found. Choose how to resolve each row:"))
-        help_lbl.setWordWrap(True)
-        layout.addWidget(help_lbl)
-
-        self.table = QTableWidget(self)
-        self.table.setColumnCount(7)
-        self.table.setHorizontalHeaderLabels([
-            "Category", "Title/Name", "Username", "URL",
-            "Existing (summary)", "Incoming (summary)", "Action"
-        ])
-        self.table.setRowCount(len(self._collisions))
-        self.table.verticalHeader().setVisible(False)
-        self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-
-        def get(o: dict, *keys):
-            for k in keys:
-                v = o.get(k)
-                if v:
-                    return v
-            return ""
-
-        def summarize(d: dict) -> str:
-            keys = ["Title","Name","Username","URL","Email","Notes","Date","created_at"]
-            parts = []
-            for k in keys:
-                v = d.get(k)
-                if v:
-                    v = v if len(v) <= 120 else (v[:117] + "…")
-                    parts.append(f"{k}: {v}")
-            extras = [k for k in d.keys() if k not in keys and k not in ("category",)]
-            for k in sorted(extras)[:5]:
-                v = d.get(k)
-                if v:
-                    v = v if len(v) <= 120 else (v[:117] + "…")
-                    parts.append(f"{k}: {v}")
-            return "\n".join(parts) if parts else "(empty)"
-
-        for r, (key, existing, incoming) in enumerate(self._collisions):
-            cat = (existing.get("category") or incoming.get("category") or "")
-            title = get(existing, "Title", "Name", "label") or get(incoming, "Title", "Name", "label")
-            user  = get(existing, "Username", "User") or get(incoming, "Username", "User")
-            url   = get(existing, "URL", "Site") or get(incoming, "URL", "Site")
-
-            self.table.setItem(r, 0, QTableWidgetItem(cat))
-            self.table.setItem(r, 1, QTableWidgetItem(title))
-            self.table.setItem(r, 2, QTableWidgetItem(user))
-            self.table.setItem(r, 3, QTableWidgetItem(url))
-
-            it_exist = QTableWidgetItem(summarize(existing))
-            it_exist.setFlags(it_exist.flags() ^ Qt.ItemIsEditable)
-            self.table.setItem(r, 4, it_exist)
-
-            it_in = QTableWidgetItem(summarize(incoming))
-            it_in.setFlags(it_in.flags() ^ Qt.ItemIsEditable)
-            self.table.setItem(r, 5, it_in)
-
-            combo = QComboBox(self.table)
-            combo.addItems([self.tr("Update existing"), self.tr("Keep both"), self.tr("Skip")])
-            combo.setCurrentIndex(0)
-            self.table.setCellWidget(r, 6, combo)
-
-        self.table.resizeColumnsToContents()
-        self.table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.table)
-
-        # Bulk action buttons
-        btn_row = QHBoxLayout()
-        btn_set_update = QPushButton(self.tr("All → Update"))
-        btn_set_keep   = QPushButton(self.tr("All → Keep both"))
-        btn_set_skip   = QPushButton(self.tr("All → Skip"))
-        btn_row.addWidget(btn_set_update)
-        btn_row.addWidget(btn_set_keep)
-        btn_row.addWidget(btn_set_skip)
-        btn_row.addStretch(1)
-        layout.addLayout(btn_row)
-
-        def set_all(idx: int):
-            for r in range(self.table.rowCount()):
-                w = self.table.cellWidget(r, 6)
-                if isinstance(w, QComboBox):
-                    w.setCurrentIndex(idx)
-
-        btn_set_update.clicked.connect(lambda: set_all(0))
-        btn_set_keep.clicked.connect(lambda: set_all(1))
-        btn_set_skip.clicked.connect(lambda: set_all(2))
-
-        # OK/Cancel
-        bottom = QHBoxLayout()
-        bottom.addStretch(1)
-        btn_ok = QPushButton(self.tr("Apply"))
-        btn_cancel = QPushButton(self.tr("Cancel"))
-        bottom.addWidget(btn_ok)
-        bottom.addWidget(btn_cancel)
-        layout.addLayout(bottom)
-
-        btn_ok.clicked.connect(self._accept)
-        btn_cancel.clicked.connect(self.reject)
-
-    def _accept(self):
-        mapping = {0: "update", 1: "keep", 2: "skip"}
-        self.result_actions = []
-        for r in range(self.table.rowCount()):
-            w = self.table.cellWidget(r, 6)
-            idx = w.currentIndex() if isinstance(w, QComboBox) else 0
-            self.result_actions.append(mapping.get(idx, "update"))
-        self.accept()
-
-# ==============================
-# --- Camera QR Scanner Dialog --- (Auth ADD)
-# ==============================
-class _QRCameraScannerDialog(QDialog):
-    """Minimal webcam QR scanner that returns an otpauth:// URI if found."""
-    found_uri = None
-
-    def __init__(self, parent=None, device_index=0):
-        super().__init__(parent)
-        self.setWindowTitle(self.tr("Scan TOTP QR"))
-        self.setModal(True)
-        self.setMinimumSize(640, 480)
-
-        self._video = QLabel(self)
-        self._video.setAlignment(Qt.AlignCenter)
-        self._hint = QLabel(self.tr("Point your camera at the TOTP QR code…"))
-        self._hint.setStyleSheet("color: gray;")
-
-        self._cancel = QPushButton(self.tr("Cancel"))
-        self._cancel.clicked.connect(self.reject)
-
-        btn_row = QHBoxLayout()
-        btn_row.addStretch(1)
-        btn_row.addWidget(self._cancel)
-
-        lay = QVBoxLayout(self)
-        lay.addWidget(self._video)
-        lay.addWidget(self._hint)
-        lay.addLayout(btn_row)
-
-        # OpenCV capture
-        try:
-            if not cv2 == None:
-                self._cv2 = cv2
-        except Exception:
-            self._cv2 = None
-            self._hint.setText(self.tr("OpenCV not available. Install with: pip install opencv-python"))
-            return
-
-        self._cap = self._cv2.VideoCapture(device_index, self._cv2.CAP_DSHOW)
-        if not self._cap or not self._cap.isOpened():
-            self._hint.setText(self.tr("Could not open camera."))
-            return
-
-        self._det = self._cv2.QRCodeDetector()
-
-        self._timer = QTimer(self)
-        self._timer.setInterval(33)  # ~33 fps
-        self._timer.timeout.connect(self._on_tick)
-        self._timer.start()
-
-    def _on_tick(self):
-        if not self._cv2 or not self._cap:
-            return
-        ok, frame = self._cap.read()
-        if not ok or frame is None:
-            return
-
-        # Detect/decode (multi) QR
-        try:
-            # Newer OpenCV: detectAndDecodeMulti
-            retval, decoded_infos, points, _ = self._det.detectAndDecodeMulti(frame)
-            payloads = decoded_infos if (retval and decoded_infos) else []
-        except Exception:
-            # Fallback: single
-            payload, pts = self._det.detectAndDecode(frame)
-            payloads = [payload] if payload else []
-            points = [pts] if pts is not None else None
-
-        # If saw an otpauth URI, accept and close
-        for s in payloads:
-            if isinstance(s, str) and s.startswith("otpauth://"):
-                self.found_uri = s.strip()
-                self.accept()
-                return
-
-        # Draw boxes
-        if points is not None and len(points) > 0:
-            try:
-                # points: list of arrays Nx1x2 or Nx2
-                for p in points:
-                    pts = p.reshape(-1, 2).astype(int)
-                    for i in range(len(pts)):
-                        a = tuple(pts[i]); b = tuple(pts[(i+1) % len(pts)])
-                        self._cv2.line(frame, a, b, (0, 255, 0), 2)
-            except Exception:
-                pass
-
-        rgb = self._cv2.cvtColor(frame, self._cv2.COLOR_BGR2RGB)
-        h, w, ch = rgb.shape
-        qimg = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
-        self._video.setPixmap(QPixmap.fromImage(qimg))
-
-    def reject(self):
-        self._cleanup()
-        super().reject()
-
-    def accept(self):
-        self._cleanup()
-        super().accept()
-
-    def _cleanup(self):
-        try:
-            if hasattr(self, "_timer") and self._timer: self._timer.stop()
-        except Exception:
-            pass
-        try:
-            if hasattr(self, "_cap") and self._cap and self._cap.isOpened():
-                self._cap.release()
-        except Exception:
-            pass
 
 # ==============================
 # --- URL ---
@@ -1972,34 +998,7 @@ def center_on_screen(w):
 # ==============================
 # --- Main Values ---
 # ==============================
-from features.url.main_url import SITE_HELP, PRIVACY_POLICY, APP_ID
-
-# ==============================
-# --- Browser  Extensions  ---
-# ==============================
-# --- URL Bridge Values  ---
-COLUMN_URL      = 0     # - "Website" Match Table
-COLUMN_USERNAME = 1     # - "Email" Match Table
-COLUMN_PASSWORD = None  # - None if no visible password column
-# --- Bridge/table roles (module-level) ---
-ENTRY_ID_ROLE = int(Qt.ItemDataRole.UserRole) + 101
-HAS_TOTP_ROLE = int(Qt.ItemDataRole.UserRole) + 102
-SECRET_ROLE   = int(Qt.ItemDataRole.UserRole)          # real secret for sensitive cells
-URL_ROLE      = int(Qt.ItemDataRole.UserRole) + 104    # optional canonical URL (if you ever set it)
-# --- Local Server Set
-appref = None  # set start_bridge_server
-server_version = "KQBridge/1.0"
-protocol_version = "HTTP/1.0"   # simpler; no keep-alive
-# --- Allow Only
-_ALLOW_METHODS = "GET, POST, OPTIONS"
-_ALLOW_HEADERS = "Content-Type, Authorization, X-Auth-Token, X-KQ-Token"
-# --- http/https (NOTE: make option in setting to allow/block http sites)
-if is_dev:
-    ALLOW_LOCAL_HTTP  = True  # True in dev HTTP Mode 
-else:
-    ALLOW_LOCAL_HTTP = False
-    
-from bridge.bridge_helpers import WEBFILL_COL
+from features.url.main_url import SITE_HELP, PRIVACY_POLICY
 
 # ----------------------------------------
 # --- Touch CSS (one place) ---
@@ -2018,8 +1017,6 @@ QMenu { padding: 6px; }
 QMenu::item { padding: 8px 16px; }
 """ + _TOUCH_MARKER
 
-# --- Trash Delete
-TRASH_KEEP_DAYS_DEFAULT = 30  # can be overridden by env KQ_TRASH_KEEP_DAYS # NOTE: Might add a setting
 
 QWIDGETSIZE_MAX = 16777215  # Qt's max widget size
 
@@ -2027,86 +1024,7 @@ QWIDGETSIZE_MAX = 16777215  # Qt's max widget size
 LOGIN_SIZE = QSize(400, 620)  # - w, h
 VAULT_SIZE = QSize(1000, 400) # - w, h
 
-# ==============================
-# --- Bridge / Allowed Origins (unified paths) ---
-# ==============================
 
-# Default allowed origins (browser extensions)
-_DEFAULT_ORIGINS = {
-    # Store ID
-    "chrome-extension://jcblpckopkkhokdjdojlblknikfahbgb",
-    # Dev ID (found by loading dev extension locally)
-    "chrome-extension://lciebglepcghjjlaldlejfiehibemgef",
-}
-
-# Use unified config_dir() instead of CONFIG_DIR
-ORIGINS_PATH = Path(config_dir()) / "allowed_origins.json"
-
-_origin_cache = {"set": set(_DEFAULT_ORIGINS), "mtime": 0.0}
-_origin_lock = threading.Lock()
-
-def _read_file() -> tuple[set[str], float]:
-    """Read the JSON file and return (set, mtime). Returns (empty, 0.0) on error/missing."""
-    if not ORIGINS_PATH.exists():
-        return set(), 0.0
-    try:
-        mtime = ORIGINS_PATH.stat().st_mtime
-        data = json.loads(ORIGINS_PATH.read_text(encoding="utf-8"))
-        if isinstance(data, list):
-            cleaned = {str(x).strip() for x in data if str(x).strip()}
-            return cleaned, mtime
-    except Exception:
-        pass
-    return set(), 0.0
-
-def refresh_allowed_origins(force: bool = False) -> set[str]:
-    """Refresh cache from disk (merged with defaults)."""
-    with _origin_lock:
-        file_set, mtime = _read_file()
-        if force or mtime != _origin_cache["mtime"] or not _origin_cache["set"]:
-            merged = set(_DEFAULT_ORIGINS) | file_set
-            _origin_cache["set"] = merged
-            _origin_cache["mtime"] = mtime
-        return set(_origin_cache["set"])
-
-def load_allowed_origins() -> set[str]:
-    """Public loader: just refresh and return."""
-    return refresh_allowed_origins(force=False)
-
-def save_allowed_origins(new_set: set[str]) -> None:
-    """Persist a set to disk (without losing defaults), update cache, keep dirs safe."""
-    normalized = {str(x).strip() for x in new_set if str(x).strip()}
-    # Always preserve defaults when saving
-    out = sorted(set(_DEFAULT_ORIGINS) | normalized)
-    ORIGINS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ORIGINS_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8")
-    # Update cache immediately
-    with _origin_lock:
-        _origin_cache["set"] = set(out)
-        try:
-            _origin_cache["mtime"] = ORIGINS_PATH.stat().st_mtime
-        except Exception:
-            pass
-
-def is_origin_allowed(origin: str) -> bool:
-    """Check if a given origin string is allowed."""
-    return str(origin).strip() in load_allowed_origins()
-
-def add_allowed_origin(origin: str) -> set[str]:
-    """Add a single origin and persist."""
-    cur = load_allowed_origins()
-    cur.add(str(origin).strip())
-    save_allowed_origins(cur)
-    return load_allowed_origins()
-
-def remove_allowed_origin(origin: str) -> set[str]:
-    """Remove a single origin and persist (defaults are retained automatically)."""
-    cur = load_allowed_origins()
-    cur.discard(str(origin).strip())
-    save_allowed_origins(cur)
-    return load_allowed_origins()
-
-ALLOWED_ORIGINS = refresh_allowed_origins(force=True)
 
 # ==============================
 # --- Software/Install --------------------------------
@@ -2161,16 +1079,17 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     # --- __init__ Main App ----------------
     # ==============================
 
-    def init_catalogs_for_user(self, user_root: str):
-        # If have the session key, use the proper encrypted + merged loader
-        if isinstance(getattr(self, "userKey", None), (bytes, bytearray)):
-            self.CLIENTS, self.ALIASES, self.PLATFORM_GUIDE, _ = self._load_catalog_effective(user_root)
+    def init_catalogs_for_user(self, username: str):
+        h = getattr(self, "core_session_handle", None)
+
+        if isinstance(h, int) and h:
+            from catalog_category.catalog_category_ops import _load_catalog_effective
+            self.CLIENTS, self.ALIASES, self.PLATFORM_GUIDE, _, _ = _load_catalog_effective(self, username)
             return
 
-        # Fallback (should rarely happen): no key yet, load minimal built-ins
-        ensure_user_catalog_created(user_root, CLIENTS, ALIASES, PLATFORM_GUIDE)
+        ensure_user_catalog_created(username, CLIENTS, ALIASES, PLATFORM_GUIDE)
         self.CLIENTS, self.ALIASES, self.PLATFORM_GUIDE, _ = load_effective_catalogs_from_user(
-            user_root, CLIENTS, ALIASES, PLATFORM_GUIDE
+            username, CLIENTS, ALIASES, PLATFORM_GUIDE
         )
 
     def __init__(self):
@@ -2179,8 +1098,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         # ==============================
         # Session key state (must always exist; DPAPI/Yubi flows may set later)
         # ==============================
-        self.userKey = None        # master key / vault KEK in-memory after unlock
-        self.current_mk = None     # alias used by some flows
         self.vault_unlocked = False
         self._login_requires_yubi_wrap = False
      
@@ -2209,6 +1126,21 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception as e:
             log.error(f"{kql.i('err')} Failed to load UI: {e}")
             raise
+
+        # ==============================
+        # bridge
+        # ==============================
+        ensure_origins_file()
+
+        # ==============================
+        # Security Center: Vault Security Update button (added in UI)
+        # ==============================
+        try:
+            btn = getattr(self, "vault_security_update", None)
+            if btn is not None and hasattr(btn, "clicked"):
+                btn.clicked.connect(self.on_vault_security_update_clicked)
+        except Exception:
+            pass
         
         # ==============================
         # frameless/window chrome
@@ -2293,9 +1225,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         # Remember-this-device checkbox availability/state (Windows DPAPI)
         try:
             from auth.windows_hello.windows_hello_dpapi import dpapi_available
-
             self.rememberDeviceCheckbox.setEnabled(bool(dpapi_available()))
-
             # wire refresh
             try:
                 self.usernameField.textChanged.disconnect(self._refresh_remember_device_checkbox)
@@ -2307,7 +1237,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         except Exception as e:
             log.error(f"[ERROR] rememberDeviceCheckbox {e}")
-
 
         # ==============================
         # Position avatar relative to username field
@@ -2393,7 +1322,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         # ==============================
         self.mainTabs: QTabWidget = self.findChild(QTabWidget, "mainTabs")
         self.mainTabs.setCurrentIndex(0)
-        self._connect_ui_scale_controls()
+        ## NoteRemove self._connect_ui_scale_controls()
 
 
         # ==============================
@@ -2410,8 +1339,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         # Init tabs/features
         # ==============================
         self._init_auto_sync()
-        # self._init_passkeys_table() # NOTE: passkey not full working yet
-
+      
         self.software_root = self._init_software_root()
         
         # ==============================
@@ -2473,6 +1401,11 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def on_security_open_integrity_clicked(self) -> None:
         from features.security_center.security_center_ui import on_security_open_integrity_clicked as _on_security_open_integrity_clicked
         return _on_security_open_integrity_clicked(self)
+
+    def on_vault_security_update_clicked(self) -> None:
+        """Run the vault KDF security upgrade (v1 -> v2) from Security Center."""
+        from features.security_center.vault_security_update_ops import run_vault_security_update
+        return run_vault_security_update(self)
             
     def _update_security_score(
         self,
@@ -2536,7 +1469,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     # ==============================
 
     def _require_unlocked(self) -> bool:
-        if not self.vault_unlocked or not self.current_mk or not self.current_username:
+        if not getattr(self, 'vault_unlocked', False) or not getattr(self, 'core_session_handle', None) or not getattr(self, 'current_username', None):
             self.safe_messagebox_warning(
                 self,
                 "Vault Locked",
@@ -2597,86 +1530,17 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     # --- Backup Advisor
     # ==============================
 
-    def __init__backup_avisor(self, *args, **kwargs):
-        from app.misc_ops import __init__backup_avisor as _impl
-        return _impl(self, *args, **kwargs)
-
-    def _resolve_backup_callable(self):
-        from features.backup_advisor.ui_backup_bind import resolve_backup_callable as __resolve_backup_callable
-        return __resolve_backup_callable(self)
-
-        """
-        Try likely method names on self; return a callable or a stub that warns and returns False.
-        """
-        candidates = [
-            "export_evault_with_password", 
-            "export_vault_with_password",
-            "export_vault_secure",
-            "export_vault",                
-            "backup_now",                   
-        ]
-        for name in candidates:
-            fn = getattr(self, name, None)
-            if callable(fn):
-                return fn
-
-        # final fallback: a stub that informs the user
-        def _no_backup_stub():
-            QMessageBox.warning(
-                self,
-                "Backup",
-                "No backup function is available in this build. "
-                "Please add/enable an export/backup function."
-            )
-            return False
-        return _no_backup_stub
-   
     def _cleanup_on_logout(self):
         from features.backup_advisor.ui_backup_bind import cleanup_on_logout as __cleanup_on_logout
         return __cleanup_on_logout(self)
 
-        self.set_status_txt(self.tr("cleaning up on logout"))
-        # 1) Last-chance prompt (only if mode includes logout)
-        try:
-            if getattr(self, "_backup_remind_mode", "both") in ("logout", "both"):
-                adv = getattr(self, "backupAdvisor", None)
-                self.set_status_txt(self.tr("Last Changes backup"))
-                if adv:
-                    # On logout prompt if either:
-                    #  - mode includes logout AND changes >= threshold (same rule as in-session), OR
-                    #  - you prefer: always prompt on logout when mode includes logout (uncomment next line)
-                    # changes = max(changes, threshold)  # <- forces prompt once on logout
-                    changes   = int(adv.pending_changes())
-                    threshold = max(1, int(getattr(adv, "threshold", 5) or 5))
-                    if changes >= threshold:
-                        adv.prompt_to_backup_now(force=True)
-        except Exception:
-            pass
-
-        # 2) Stop timer (if you add scheduler later)
-        try:
-            self.set_status_txt(self.tr("Stoping Timers"))
-            if getattr(self, "backupScheduler", None) and hasattr(self.backupScheduler, "timer"):
-                self.backupScheduler.timer.stop()
-        except Exception:
-            pass
-
-        # 3) Clear refs
-        self.set_status_txt(self.tr("Backup Clean"))
-        self.backupAdvisor = None
-        self.backupScheduler = None
-
     # ==============================
     # Default state reset
     # ==============================
-    def __init__default_values(self, *args, **kwargs):
-        from app.misc_ops import __init__default_values as _impl
-        return _impl(self, *args, **kwargs)
 
     def _on_any_entry_changed(self):
-        if getattr(self, "_backup_remind_mode", "both") in ("changes", "both"):
-            if hasattr(self, "backupAdvisor") and self.backupAdvisor:
-                self.backupAdvisor.note_change()
+        from auth.logout.logout_flow import _on_any_entry_changed as __on_any_entry_changed
+        return __on_any_entry_changed(self)
 
     # ==============================
     # --- software
@@ -2731,8 +1595,8 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
     # --- new = show app whats new
     def _maybe_show_release_notes(self, *args, **kwargs):
-        from app.misc_ops import _maybe_show_release_notes as _impl
-        return _impl(self, *args, **kwargs)
+        from ui.ui_flags import _maybe_show_release_notes as __maybe_show_release_notes
+        return __maybe_show_release_notes(self)
 
     def _get_selected_entry(self, *args, **kwargs):
         from vault_store.vault_ui_ops import _get_selected_entry as _impl
@@ -2789,7 +1653,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         KeyquorumApp.set_status_txt(self, "Launch App before Autofill Toggled")
         """User toggled: Launch target app before autofill."""
         try:
-            u = (self.currentUsername.text() or "").strip()
+            u = self._active_username()
             set_user_setting(u, "autofill_launch_first", bool(checked))
             update_baseline(username=u, verify_after=False, who=self.tr("AutoFill Setting Changed"))
 
@@ -2990,7 +1854,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         tbl.horizontalHeader().setStretchLastSection(True)
 
     def _current_username_normalized(self) -> str | None:
-        raw = (self.currentUsername.text() or "").strip() if hasattr(self, "currentUsername") else ""
+        raw = self._active_username() if hasattr(self, "currentUsername") else ""
         if not raw:
             return None
         try:
@@ -3091,7 +1955,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             QMessageBox.critical(self, "Passkeys", f"Cannot import passkeys_store:\n{e}")
             return
 
-        if not getattr(self, "userKey", None):
+        if not getattr(self, 'core_session_handle', None):
             QMessageBox.warning(self, "Passkeys", "Vault is locked – log in first.")
             return
 
@@ -3125,7 +1989,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         Wire the passkeys_store module to our vault I/O + crypto,
         then refresh the Passkeys table in Settings.
 
-        This runs after login, once self.userKey is available.
+        This runs after login, once the native session is available.
         """
         try:
             import features.passkeys.passkeys_store as pkstore
@@ -3136,7 +2000,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                 pass
             return
 
-        # 2) wire the vault I/O + crypto hooks (we have self.userKey now)
+        # 2) wire the vault I/O + crypto hooks (native session)
         def _read_blob(name: str) -> bytes | None:
             return self.vault_read_encrypted_blob(name)
 
@@ -3144,10 +2008,31 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             self.vault_write_encrypted_blob(name, data)
 
         def _encrypt(plaintext: bytes) -> bytes:
-            return self.vault_encrypt_with_master(self.userKey, plaintext)
+            from native.native_core import get_core
+            core = get_core()
+            iv = os.urandom(12)
+            ct_ba, tag_ba = core.session_encrypt(self.core_session_handle, iv, plaintext)
+            return b"KQ1" + iv + bytes(tag_ba) + bytes(ct_ba)
 
-        def _decrypt(ciphertext: bytes) -> bytes:
-            return self.vault_decrypt_with_master(self.userKey, ciphertext)
+        def _decrypt(blob: bytes) -> bytes:
+            from native.native_core import get_core
+            core = get_core()
+            if not blob or len(blob) < (3 + 12 + 16):
+                return b""
+            if blob[:3] != b"KQ1":
+                # Unknown format
+                return b""
+            iv = blob[3:15]
+            tag = blob[15:31]
+            ct = blob[31:]
+            pt_ba = core.session_decrypt(self.core_session_handle, iv, ct, tag)
+            try:
+                return bytes(pt_ba)
+            finally:
+                try:
+                    core.secure_wipe(pt_ba)
+                except Exception:
+                    pass
 
         pkstore.set_io(_read_blob, _write_blob, _encrypt, _decrypt)
 
@@ -3185,7 +2070,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             return
 
         # No user logged in? Just clear.
-        uname = (self.currentUsername.text() or "").strip() if hasattr(self, "currentUsername") else ""
+        uname = self._active_username() if hasattr(self, "currentUsername") else ""
         if not uname:
             tbl.setRowCount(0)
             return
@@ -3444,31 +2329,8 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         wiz.exec()
     
-    # ==============================
-    # --- Touch Screen ---------------- (V1)
-    # ==============================
-    def _enable_touch_mode(self, *args, **kwargs):
-        from app.misc_ops import _enable_touch_mode as _impl
-        return _impl(self, *args, **kwargs)
 
-    def on_touch_mode_toggled_set(self, checked: bool):
-        # apply immediately (enable when True, restore when False)
-        self._touch_init_done = True
-        self._enable_touch_mode(force=bool(checked))
-
-    def save_to_user_on_touch(self, checked: bool):
-        self.set_status_txt(self.tr("Saving Touch mode {state}").format(state=checked))
-        log.info(f"{kql.i('ui')} [UI] on touch mode toggled: {checked}")
-        """User flipped the Touch Mode checkbox."""
-        try:
-            u = (self.currentUsername.text() or "").strip()
-            if u:
-                set_user_setting(u, "touch_mode", bool(checked))
-                update_baseline(username=u, verify_after=False, who=self.tr("TouchMode Settings Changed"))                
-        except Exception:
-            pass
-        self.on_touch_mode_toggled_set(checked)
-        self.set_status_txt(self.tr("Done"))
+      
 
     # ==============================
     # --- first run tour ----------------
@@ -3532,7 +2394,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             pass
 
     def maybe_show_quick_tour(self, *args, **kwargs):
-        from app.misc_ops import maybe_show_quick_tour as _impl
+        from new_users.start_app_ops import maybe_show_quick_tour as _impl
         return _impl(self, *args, **kwargs)
 
     def _clear_fixed_size(self):
@@ -3566,603 +2428,22 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             self.showMaximized()
         self._center_on_screen()
 
-    # ==============================
-    # --- Cloud Sync----------------
-    # ==============================
-
-    def on_select_cloud_vault(self, *args, **kwargs):
-        from vault_store.vault_ui_ops import on_select_cloud_vault as _impl
-        return _impl(self, *args, **kwargs)
-
-    def _show_cloud_risk_modal(self, *args, **kwargs):
-        from app.misc_ops import _show_cloud_risk_modal as _impl
-        return _impl(self, *args, **kwargs)
-
-    def on_button_sync_cloud(self):
-        try:
-            self.set_status_txt(self.tr("Cloud: syncing…"))
-
-            if not getattr(self, "cloud_enabled", False):
-                QMessageBox.information(self, self.tr("Cloud sync"), self.tr("Cloud Sync is not enabled."))
-                return
-
-            username = self._active_username()
-            if not username:
-                QMessageBox.information(self, self.tr("Cloud sync"), self.tr("Please log in first."))
-                return
-
-            # Always (re)build the engine so its closures bind to THIS username
-            self._configure_sync_engine(username)
-
-            if (self.sync_engine is None) or (not self.sync_engine.configured()):
-                QMessageBox.information(
-                    self, self.tr("Cloud sync"),
-                    self.tr("Sync engine is not configured. Choose a cloud vault file first."))
-                return
-
-            key = getattr(self, "userKey", None)
-            if not key:
-                QMessageBox.information(self, self.tr("Cloud sync"), self.tr("Please log in first."))
-                return
-
-            res = str(self.sync_engine.sync_now(key, interactive=True) or "")
-            self.set_status_txt(self.tr("Cloud: done"))
-
-            # If the result indicates a pull/merge, refresh integrity baseline
-            _r = res.lower()
-            if _r.startswith("pulled") or ("conflict" in _r) or ("download" in _r):
-                try:
-                    update_baseline(username=username, verify_after=False, who=self.tr("OnCloud Sync Settings Changed")) 
-                except Exception:
-                    pass  # keep UX smooth even if baseline refresh throws
-            msg = self.tr("Result: ") + f"{res}"
-            QMessageBox.information(self, self.tr("Cloud sync"), msg)
-
-        except Exception as e:
-            try:
-                import logging
-                logging.getLogger(__name__).exception("Cloud sync failed")
-            except Exception:
-                pass
-            self.set_status_txt(self.tr("Cloud: failed"))
-            QMessageBox.warning(self, self.tr("Cloud sync"), f"Error: {e}")
-
-    def _toggle_cloud_wrap(self, *args, **kwargs):
-        from app.misc_ops import _toggle_cloud_wrap as _impl
-        return _impl(self, *args, **kwargs)
-
-    def _post_login_cloud_ready(self):
-        """Call right after successful unlock (userKey present)."""
-        username = self._active_username()
-        if not username:
-            return
-        # Bind engine to active user + current profile (including wrap flag)
-        self._configure_sync_engine(username)
-
-        # One controlled sync to reconcile remote/local with the present wrap state
-        res = str(self.sync_engine.sync_now(self.userKey, interactive=False) or "")
-        self._refresh_baseline_if_pulled(res, username)
-
-        # Now it’s safe to start the watcher + auto-sync
-        self._watch_local_vault()
-        self._schedule_auto_sync()
-
-    def _vault_enc_path(self) -> str | None:
-        """
-        Return absolute path to the *local* encrypted vault (.kqvault)
-        based on the current username, using paths.vault_file(...).
-        """
-        try:
-            username = self.currentUsername.text().strip()
-        except Exception:
-            username = ""
-        if not username:
-            # not logged in or no username typed yet
-            QMessageBox.warning(self, self.tr("Vault path"), self.tr("Enter/select a username first."))
-            return None
-        # paths.vault_file will create the parent dir if ensure_parent=True
-        return str(vault_file(username, ensure_parent=True))
-
-    def _sha256_file(self, path: str) -> str:
-        """
-        Compute SHA256 of a file for integrity verification.
-
-        SECURITY NOTE:
-        Used strictly for file integrity checks (not password hashing).
-        """
-        hasher = hashlib.sha256()
-        with open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(1024 * 1024), b""):
-                hasher.update(chunk)
-        return hasher.hexdigest()
-
-    def _set_cloud_cfg(self, *args, **kwargs):
-        from app.misc_ops import _set_cloud_cfg as _impl
-        return _impl(self, *args, **kwargs)
-
-    def on_copy_vault_to_cloud(self, *args, **kwargs):
-        from vault_store.vault_ui_ops import on_copy_vault_to_cloud as _impl
-        return _impl(self, *args, **kwargs)
-
-    def _yubi_wrap_status(self, username: str) -> dict:
-        """
-        Return {'enabled': bool, 'mode': 'WRAP'|'GATE'|'' , 'available': bool|None}
-
-        - 'mode' is derived from the current twofactor record (new) or legacy flags (old).
-        - 'enabled' is True if mode is WRAP or GATE.
-        - 'available' is True if YubiKey tooling is available on this machine,
-          False if we can tell it isn't, or None if we can't determine.
-        """
-        mode = ""
-        enabled = False
-        available_flag = None
-
-        # --- Read settings (prefer new, fall back to legacy) ---
-        try:
-            tf = get_user_setting(username, "twofactor") or {}
-            m = (tf.get("mode") or "").lower()
-            if m == "yk_hmac_wrap":
-                mode = "WRAP"
-            elif m == "yk_hmac_gate":
-                mode = "GATE"
-            else:
-                # Legacy compatibility
-                legacy = (get_user_setting(username, "yubi_2of2_mode") or "").upper()
-                if legacy in ("WRAP", "GATE"):
-                    mode = legacy
-                elif get_user_setting(username, "yubi_wrap_enabled"):
-                    mode = "WRAP"
-            enabled = mode in ("WRAP", "GATE")
-        except Exception:
-            pass
-
-        # --- Check YubiKey tooling availability (no console popups) ---
-        YKBackend = None
-        try:
-            from auth.yubi.yk_backend import YKBackend  # packaged layout
-        except Exception:
-            try:
-                from auth.yubi.yk_backend import YKBackend  # flat layout
-            except Exception:
-                YKBackend = None
-
-        if YKBackend is None:
-            available_flag = None  # unknown
-        else:
-            try:
-                # If ykman (python or exe) is present/working, this succeeds.
-                YKBackend().yk_version()
-                available_flag = True
-            except Exception:
-                available_flag = False
-
-        return {"enabled": bool(enabled), "mode": mode, "available": available_flag}
-
-    def _show_cloud_risk_modal(self, current_wrap: bool) -> tuple[bool, bool, bool]:
-        """
-        One-time consent explaining cloud risks.
-        Returns (accepted: bool, dont_ask_again: bool, enable_wrap: bool).
-        """
-
-        help_url = getattr(self, "SITE_HELP", SITE_HELP)
-        privacy_url = PRIVACY_POLICY
-
-        # Figure out YubiKey state for the active user (best-effort)
-        uname = None
-        try:
-            uname = self._active_username()
-        except Exception:
-            try:
-                uname = (self.currentUsername.text() or "").strip()
-            except Exception:
-                uname = None
-
-        yk = {"enabled": False, "mode": "", "available": None}
-        if uname:
-            try:
-                yk = self._yubi_wrap_status(uname)
-            except Exception:
-                pass
-
-        # Build a YubiKey hint line based on state
-        if yk["enabled"]:
-            yubi_hint = (
-                "• <b>YubiKey key-wrap: ON</b> — decrypting a leaked file would also require your physical YubiKey.<br>"
-            )
-        elif yk["available"] is True:
-            yubi_hint = (
-                "• <b>YubiKey key-wrap (optional):</b> enable this in Settings to require your YubiKey to decrypt a leaked file.<br>"
-            )
-        else:
-            # Unknown / not available — skip or keep a generic note
-            yubi_hint = ""
-
-        msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Warning)
-        msg.setWindowTitle(self.tr("Cloud storage — security warning"))
-        msg.setTextFormat(Qt.RichText)
-        msg.setText(
-            self.tr(
-                "<b>Cloud storage increases security risk</b><br>"
-                "This app is designed for local security. Storing your vault in a cloud-synced folder increases exposure. "
-                "If an attacker obtains the file from your cloud, they can attempt unlimited offline password-guessing against it.<br><br>"
-                "<b>Recommendations:</b><br>"
-                "• <b>Secure your cloud account</b> (Microsoft/Google/Dropbox): use a strong, unique password and <b>enable 2FA</b> with your cloud provider.<br>"
-                "• <b>Use a strong master password</b> for the vault. In-app 2FA protects app access, but it <i>does not</i> protect a leaked file from offline guessing.<br>"
-                "{yubi_hint}"
-                "• Consider enabling <b>extra cloud wrapping</b> for an additional encryption layer.<br><br>"
-                "<a href='{help_url}'>Learn more</a> · <a href='{privacy_url}'>Privacy Policy</a>"
-            ).format(
-                yubi_hint=yubi_hint,
-                help_url=help_url,
-                privacy_url=privacy_url,
-            )
-        )
-
-        # Remember flag
-        dont_ask_box = QCheckBox(self.tr("Don't ask me again"))
-        msg.setCheckBox(dont_ask_box)
-
-        # Buttons
-        proceed_btn = msg.addButton("Proceed", QMessageBox.AcceptRole)
-        cancel_btn = msg.addButton(self.tr("Cancel"), QMessageBox.RejectRole)
-
-        res = msg.exec_() if hasattr(msg, "exec_") else msg.exec()
-        accepted = (msg.clickedButton() is proceed_btn)
-        if not accepted:
-            return False, False, False
-
-        # If extra cloud wrapping already ON
-        if current_wrap:
-            return True, bool(dont_ask_box.isChecked()), False
-
-        # Ask to enable extra cloud wrapping now
-        wrap_q = QMessageBox(self)
-        wrap_q.setIcon(QMessageBox.Question)
-        wrap_q.setWindowTitle(self.tr("Enable extra cloud wrapping?"))
-        wrap_q.setText(
-            "Enable extra encryption wrapping for cloud storage?\n\n"
-            "This adds an additional encryption layer specifically for cloud sync targets."
-        )
-        wrap_yes = wrap_q.addButton("Enable wrapping", QMessageBox.AcceptRole)
-        wrap_no = wrap_q.addButton("Not now", QMessageBox.RejectRole)
-        wrap_q.exec_() if hasattr(wrap_q, "exec_") else wrap_q.exec()
-        enable_wrap = (wrap_q.clickedButton() is wrap_yes)
-
-        return True, bool(dont_ask_box.isChecked()), bool(enable_wrap)
-
-    def on_stop_cloud_sync_keep_local(self, *args, **kwargs):
-        from app.misc_ops import on_stop_cloud_sync_keep_local as _impl
-        return _impl(self, *args, **kwargs)
-
-    def on_toggle_extra_cloud_wrap(self, *args, **kwargs):
-        from app.misc_ops import on_toggle_extra_cloud_wrap as _impl
-        return _impl(self, *args, **kwargs)
-
-    def one_time_mobile_transfer(self, *args, **kwargs):
-        from app.misc_ops import one_time_mobile_transfer as _impl
-        return _impl(self, *args, **kwargs)
-
-    def cleanup_transfer_packages(self):
-        """
-        Offers to delete *.zip.enc transfer packages from a chosen folder.
-        Handy after the Android import is done.
-        """
-        from qtpy.QtWidgets import QFileDialog, QMessageBox
-        from pathlib import Path
-
-        folder = QFileDialog.getExistingDirectory(self, "Select folder to clean (cloud)")
-        if not folder:
-            return
-        p = Path(folder)
-        candidates = sorted([x for x in p.glob("*.zip.enc") if x.is_file()])
-
-        if not candidates:
-            QMessageBox.information(self, self.tr("Cleanup"), self.tr("No .zip.enc packages found here."))
-            return
-
-        names = "\n".join(str(x.name) for x in candidates[:20])
-        more = "" if len(candidates) <= 20 else self.tr("\n… and ") + f" {len(candidates)-20} " + self.tr("more")
-        msg =  self.tr("Found ") + f"{len(candidates)}" + self.tr(" package(s):") + f"\n{names}{more}\n\n" + self.tr(" Delete them now?"),
-        resp = QMessageBox.question(
-            self, self.tr("Delete transfer packages?"), msg,
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
-        )
-        if resp != QMessageBox.Yes:
-            return
-
-        errors = 0
-        for x in candidates:
-            try:
-                x.unlink()
-            except Exception:
-                errors += 1
-        if errors:
-            msg = self.tr("Deleted with ") + f"{errors}" + self.tr(" error(s).")
-            QMessageBox.warning(self, self.tr("Cleanup"), msg)
-        else:
-            msg = "✅ " + self.tr("All packages deleted.")
-            QMessageBox.information(self, self.tr("Cleanup"), msg)
-
-    def _cloud_sync_safe(self, *args, **kwargs):
-        from app.misc_ops import _cloud_sync_safe as _impl
-        return _impl(self, *args, **kwargs)
-
-    def ensure_cloud_ready_before_login(self, *args, **kwargs):
-        from auth.login.auth_flow_ops import ensure_cloud_ready_before_login as _impl
-        return _impl(self, *args, **kwargs)
-
-    def _logged_in_username(self) -> str | None:
-        """
-        Return the canonical username for the current session.
-        In per-user mode this is simply the text in currentUsername,
-        optionally normalized via _canonical_username_ci() for case-insensitive matches.
-        """
-        try:
-            u = (self.currentUsername.text() or "").strip()
-            if not u:
-                return None
-
-            try:
-                canon = _canonical_username_ci(u)
-                if canon:
-                    return canon
-            except Exception:
-                pass
-
-            return u
-        except Exception:
-            return None
-
-    def cloud_vault_file(self, username: str) -> Path | None:
-        """
-        Return the FILE path configured for cloud sync for this user,
-        or None if not configured. (Engine is file-based.)
-        """
-        try:
-    
-            prof = get_user_cloud(username) or {}
-            rp = (prof.get("remote_path") or "").strip()
-            return Path(rp) if rp else None
-        except Exception:
-            return None
-
-    def _configure_sync_engine(self, username: str):
-        from sync.engine import SyncEngine
-
-        def load_cfg():
-            prof = get_user_cloud(username) or {}
-            return {"sync": prof}
-
-        def save_cfg(cfg: dict):
-            sc = (cfg or {}).get("sync") or {}
-            set_user_cloud(
-                username,
-                enable=bool(sc.get("enabled")),
-                provider=(sc.get("provider") or "localpath"),
-                path=(sc.get("remote_path") or ""),
-                wrap=bool(sc.get("cloud_wrap")),
-            )
-
-        def get_local_vault_path() -> str:
-            return str(vault_file(username, ensure_parent=True))
-
-        # (re)create if user changed
-        if getattr(self, "_sync_user", None) != username:
-            self.sync_engine = SyncEngine(load_cfg, save_cfg, get_local_vault_path)
-            self._sync_user = username
-
-        # If remote path already chosen, bind it
-        rp = self.cloud_vault_file(username)
-        if rp:
-            self.sync_engine.set_localpath(str(rp))
-
-    # ==============================
-    # --- cloud encrtped wrap ---
-    # ==============================
-    def _read_bytes(self, path: str) -> bytes:
-        with open(path, "rb") as f:
-            return f.read()
-
-    def _write_bytes(self, path: str, data: bytes) -> None:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as f:
-            f.write(data)
-
-    def _cloud_wrap_encrypt(self, data: bytes, username: str) -> bytes:
-        try:
-            from sync.engine import wrap_encrypt
-            return wrap_encrypt(self.userKey, data)
-        except Exception:
-            return data
-
-    def _cloud_wrap_decrypt(self, data: bytes, username: str) -> bytes:
-        try:
-            from sync.engine import wrap_decrypt
-            return wrap_decrypt(self.userKey, data)
-        except Exception:
-            return data
-
-    def _seed_remote_from_local(self, username: str, remote_file: str):
-        """
-        First-time create/update the CLOUD file from LOCAL working copy.
-        Applies wrap if enabled.
-        """
-        prof = get_user_cloud(username) or {}
-        local_file = str(vault_file(username, ensure_parent=True))
-        data = self._read_bytes(local_file)
-        if bool(prof.get("cloud_wrap")):
-            data = self._cloud_wrap_encrypt(data, username)
-        os.makedirs(os.path.dirname(remote_file), exist_ok=True)
-        self._write_bytes(remote_file, data)
-        update_baseline(username=username, verify_after=False, who=self.tr("OnCloud Sync Settings Changed")) 
-
-    def _restore_local_from_remote(self, username: str, remote_file: str):
-        """
-        Restore LOCAL working copy from CLOUD file.
-        Removes wrap if enabled.
-        """
-        prof = get_user_cloud(username) or {}
-        local_file = str(vault_file(username, ensure_parent=True))
-        data = self._read_bytes(remote_file)
-        if bool(prof.get("cloud_wrap")):
-            data = self._cloud_wrap_decrypt(data, username)
-        os.makedirs(os.path.dirname(local_file), exist_ok=True)
-        self._write_bytes(local_file, data)
-    
+   
     # ==============================
     # --- cloud autoSynic -------
     # ==============================
-    """ Call _init_auto_sync() once during UI setup (e.g., in your constructor or _init_cloud_sysnic). """
-    """ add self._schedule_auto_sync() to save meather to save exp:"""
-    """ self._schedule_auto_sync() after save"""
-    """ """
-    def _init_auto_sync(self):
-        self._auto_sync_timer = QTimer(self)
-        self._auto_sync_timer.setSingleShot(True)
-        self._auto_sync_timer.setInterval(2500)  # 2.5s debounce
-        self._auto_sync_timer.timeout.connect(self._run_auto_sync)
 
-        # Guards/state
-        self._is_syncing_cloud = False
-        self._vault_watcher = None
-
-    def _schedule_auto_sync(self):
-        # ensure timer exists
-        if getattr(self, "_auto_sync_timer", None) is None:
-            self._init_auto_sync()
-
-        # must be logged in + have key
-        username = self._active_username()
-        if not username or not getattr(self, "userKey", None):
-            return
-
-        # user/profile switches
-        prof = (get_user_cloud(username) or {})
-        if not prof.get("enabled"):
-            return
-        if not bool(get_user_setting(username, "auto_sync", True)):
-            return
-
-        # (re)bind engine to THIS user each time
-        self._configure_sync_engine(username)
-
-        # only if engine has a remote file configured
-        if not (hasattr(self, "sync_engine") and self.sync_engine and self.sync_engine.configured()):
-            return
-
-        # if a sync is currently running, skip scheduling
-        if getattr(self, "_is_syncing_cloud", False):
-            return
-
-        # debounce
-        self._auto_sync_timer.start()
-
-    def _run_auto_sync(self):
-        username = self._active_username()
-        if not username or not getattr(self, "userKey", None):
-            return
-        if not (hasattr(self, "sync_engine") and self.sync_engine and self.sync_engine.configured()):
-            return
-
-        # prevent re-entrant loops when our own pull/write triggers fileChanged
-        if self._is_syncing_cloud:
-            return
-
-        try:
-            self._is_syncing_cloud = True
-            res = str(self.sync_engine.sync_now(self.userKey, interactive=False) or "")
-            log.debug(
-                self.tr("[AUTO-SYNC] {result}").format(result=res)
-            )
-
-            _r = res.lower()
-            if _r.startswith("pulled") or ("conflict" in _r) or ("download" in _r):
-                try:
-                    update_baseline(username=username, verify_after=False, who=self.tr("Auto-Sync -> File Change")) 
-                except Exception:
-                    pass
-
-        except Exception as e:
-            log.warning(
-                self.tr("[AUTO-SYNC] failed: {err}").format(err=e)
-            )
-        finally:
-            self._is_syncing_cloud = False
-
-    def _watch_local_vault(self, *args, **kwargs):
-        from vault_store.vault_ui_ops import _watch_local_vault as _impl
+    def _init_auto_sync(self, *args, **kwargs):
+        from features.sync.sync_ops import _init_auto_sync as _impl
         return _impl(self, *args, **kwargs)
 
-    def _unwatch_local_vault(self):
-        try:
-            w = getattr(self, "_vault_watcher", None)
-            if not w:
-                return
-            # detach paths
-            try:
-                for p in list(w.files()):
-                    try: w.removePath(p)
-                    except Exception: pass
-                for d in list(w.directories()):
-                    try: w.removePath(d)
-                    except Exception: pass
-            except Exception:
-                pass
-            try:
-                w.deleteLater()
-            except Exception:
-                pass
-            self._vault_watcher = None
-        except Exception:
-            pass
+    def _schedule_auto_sync(self, *args, **kwargs):
+        from features.sync.sync_ops import _schedule_auto_sync as _impl
+        return _impl(self, *args, **kwargs)
 
     # ==============================
-    # UI Scale: Text / Button / Table size (0 = default)
+    # --- Size Change UI ---
     # ==============================
-    
-    def _connect_ui_scale_controls(self) -> None:
-        """
-        Hook the Settings spinboxes:
-          - text_size        -> app font point size (0 = default)
-          - button_size      -> min button height px (0 = default)
-          - button_size_2    -> table row height px (0 = default)
-        """
-        # Guard: only run once
-        if getattr(self, "_ui_scale_controls_connected", False):
-            return
-        self._ui_scale_controls_connected = True
-
-        # Defaults captured once (so "0" can restore)
-        try:
-            from qtpy.QtWidgets import QApplication
-            self._default_app_font = QApplication.font()
-        except Exception:
-            self._default_app_font = None
-
-        self._default_table_row_heights = {}
-
-        # Load saved prefs + apply immediately
-        self._load_ui_scale_prefs_apply()
-
-        # Connect signals (best-effort, don’t crash if widget missing)
-        try:
-            if hasattr(self, "text_size") and self.text_size is not None:
-                self.text_size.valueChanged.connect(self.on_text_size_changed)
-        except Exception:
-            pass
-
-        try:
-            if hasattr(self, "button_size") and self.button_size is not None:
-                self.button_size.valueChanged.connect(self.on_button_size_changed)
-        except Exception:
-            pass
-
-        try:
-            if hasattr(self, "button_size_2") and self.button_size_2 is not None:
-                self.button_size_2.valueChanged.connect(self.on_table_size_changed)
-        except Exception:
-            pass
 
     def _apply_text_size_force_widgets(self, pt: int) -> None:
         """Force font point size across widgets (helps when Designer set per-widget fonts)."""
@@ -4372,531 +2653,21 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         QTimer.singleShot(200, lambda: os._exit(0))
 
     # ==============================
-    # --- Authenticator Store/ Tab Wiring ---------------
-    # ==============================
-
-    def _auth_after_login(self):
-        """Enable the Authenticator tab and populate it after a successful login."""
-        try:
-
-            log.debug(f"[AUTH] after login active_user={self._active_username()!r}")
-            self._auth_set_enabled(True)
-            self._auth_reload_table()
-        except Exception as e:
-            log.debug(f"{kql.i('err')} AUTH after_login {e}")
-            pass
-
-    def _auth_show_qr_selected(self):
-        """Show a QR for the selected authenticator so the user can add it to another app."""
-        if not self._auth_require_login():
-            QMessageBox.warning(self, self.tr("Authenticator"), self.tr("Please log in first."))
-            return
-
-        row = self._auth_selected_row()
-        it = self._auth_row_entry(row)
-        if not it:
-            QMessageBox.information(self, self.tr("Show QR"), self.tr("Please select an authenticator entry first."))
-            return
-
-        # Safety confirmation
-        msg =  self.tr("This will display the QR code for the authenticator secret.\n\nOnly do this on a trusted device.\n\nContinue?")
-        res = QMessageBox.question(
-            self,
-            self.tr("Reveal 2FA QR"), msg,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        if res != QMessageBox.Yes:
-            return
-
-        try:
-            # Generate QR PNG bytes and URI
-            png_bytes = export_otpauth_qr_bytes(self.userKey, it)
-            uri = build_otpauth_uri(self.userKey, it)
-            dlg = QDialog(self)
-            dlg.setWindowTitle(self.tr("Authenticator QR"))
-            layout = QVBoxLayout(dlg)
-
-            img = QLabel()
-            pix = QPixmap()
-            pix.loadFromData(png_bytes, "PNG")
-            img.setPixmap(pix)
-            img.setAlignment(Qt.AlignCenter)
-            layout.addWidget(img)
-
-            btn_copy = QPushButton(self.tr("Copy otpauth:// URI"))
-            btn_copy.clicked.connect(lambda: secure_copy(uri, ttl_ms=self.clipboard_timeout, username=self._active_username()))
-            if hasattr(self, "_toast"): self._toast("Code copied")
-            layout.addWidget(btn_copy)
-
-            dlg.exec()
-
-        except Exception as e:
-            QMessageBox.warning(
-                self,
-                self.tr("QR Error"),
-                self.tr("Could not generate QR:\n\n{err}").format(err=e),
-            )
-
-    def _auth_set_enabled(self, enabled: bool):
-        t = getattr(self, "_auth_timer", None)
-        if enabled:
-            if t is None:
-                self._auth_timer = t = QTimer(self)
-                t.setInterval(1000)               # 1s tick
-                t.timeout.connect(self._auth_tick)
-            if not t.isActive():
-                t.start()
-        else:
-            if t and t.isActive():
-                t.stop()
-
-    def _auth_tick(self):
-        if not self._auth_entries:
-            return
-        table = getattr(self, "authTable", None)
-        if not table:
-            return
-
-        for r, e in enumerate(self._auth_entries):
-            try:
-                code, rem = get_current_code(self.userKey, e)
-            except Exception:
-                code, rem = "—", 0
-
-            if table.item(r, 1) is None:
-                table.setItem(r, 1, QTableWidgetItem(str(code)))
-            else:
-                table.item(r, 1).setText(str(code))
-
-            # Remaining column = 2
-            if table.item(r, 2) is None:
-                table.setItem(r, 2, QTableWidgetItem(str(int(rem))))
-            else:
-                table.item(r, 2).setText(str(int(rem)))
-
-    def _auth_require_login(self) -> bool:
-        return bool(getattr(self, "userKey", None) and self._active_username())
-
-    def _auth_rows(self):
-        uname = (self._active_username() or "").strip()
-        if not uname:
-            return []
-        return list_authenticators(uname, self.userKey)
-
-    def _auth_reload_table(self):
-        if not self._auth_require_login():
-            return
-
-        rows = self._auth_rows() or []
-        self._auth_entries = rows 
-
-        self.authTable.setRowCount(len(rows))
-        for i, it in enumerate(rows):
-            vals = [
-                it.get("label",""),          # 0 Label
-                "—",                         # 1 Code
-                "—",                         # 2 Remaining
-                it.get("account",""),        # 3 Account
-                it.get("issuer",""),         # 4 Issuer
-                it.get("algorithm","SHA1"),  # 5 Algorithm
-                str(it.get("digits",6)),     # 6 Digits
-                str(it.get("period",30)),    # 7 Period
-            ]
-            for c, v in enumerate(vals):
-                self.authTable.setItem(i, c, QTableWidgetItem(v))
-
-            self.authTable.item(i, 0).setData(Qt.ItemDataRole.UserRole, it.get("id"))
-
-        self._auth_refresh_codes()
-
-    def _auth_selected_row(self) -> int:
-        sel = self.authTable.selectionModel().selectedRows() if self.authTable.selectionModel() else []
-        return sel[0].row() if sel else -1
-
-    def _auth_row_entry(self, row: int) -> dict | None:
-        rows = self._auth_entries or []
-        return rows[row] if 0 <= row < len(rows) else None
-
-    def _auth_refresh_codes(self):
-        if not self._auth_require_login(): return
-        rows = self._auth_rows()
-        self._auth_entries = rows
-        for i, it in enumerate(rows):
-            try:
-                code, rem = get_current_code(self.userKey, it)
-            except Exception:
-                code, rem = ("—", 0)
-            if i < self.authTable.rowCount():
-                self.authTable.item(i, 1).setText(code)
-                self.authTable.item(i, 2).setText(str(rem))
-
-    def _auth_add_manual(self):
-        if not self._auth_require_login(): 
-            QMessageBox.warning(self, self.tr("Authenticator"), self.tr("Please log in first."))
-            return
-
-        label, ok = QInputDialog.getText(self, self.tr("Add Authenticator"), self.tr("Label:"))
-        if not ok or not label.strip(): return
-
-        account, ok = QInputDialog.getText(self, self.tr("Add Authenticator"), self.tr("Account:"))
-        if not ok: return
-
-        issuer, ok = QInputDialog.getText(self, self.tr("Add Authenticator"), self.tr("Issuer:"))
-        if not ok: return
-
-        secret, ok = QInputDialog.getText(self, self.tr("Add Authenticator"), self.tr("Secret (BASE32):"))
-        if not ok or not secret.strip(): return
-
-        digits, ok = QInputDialog.getInt(self, self.tr("Add"), self.tr("Digits:"), 6, 6, 8, 1)
-        if not ok: return
-
-        period, ok = QInputDialog.getInt(self, self.tr("Add"), self.tr("Period (s):"), 30, 15, 90, 1)
-        if not ok: return
-
-        algo, ok = QInputDialog.getItem(self, self.tr("Add"), self.tr("Algorithm:"),
-                                        ["SHA1","SHA256","SHA512"], 0, False)
-        if not ok: return
-
-        add_authenticator(self._active_username(), self.userKey,
-                          label=label, account=account, issuer=issuer,
-                          secret_base32=secret, digits=digits,
-                          period=period, algorithm=algo)
-        update_baseline(username=self._active_username(), verify_after=False, who=self.tr("Auth Store Added (Manually)"))
-        self._auth_reload_table()
-
-    def _auth_add_from_camera(self):
-        if not self._auth_require_login():
-            QMessageBox.warning(self, self.tr("Authenticator"), self.tr("Please log in first."))
-            return
-        try:
-            dlg = self._QRCameraScannerDialog(self) if hasattr(self, "_QRCameraScannerDialog") else _QRCameraScannerDialog(self)
-        except NameError:
-            dlg = _QRCameraScannerDialog(self)
-        if dlg.exec():
-            uri = dlg.found_uri
-            if uri and uri.startswith("otpauth://"):
-                try:
-                    uname = self._active_username()
-                    add_from_otpauth_uri(uname, self.userKey, uri)
-                    update_baseline(username=uname, verify_after=False, who=self.tr("Auth Store Added (On Screen QR)"))
-                    self._auth_reload_table()
-                    if hasattr(self, "_toast"): self._toast("Authenticator added")
-                except Exception as e:
-                    QMessageBox.critical(
-                        self,
-                        self.tr("Add from Camera"),
-                        # Translate failure message with a template
-                        self.tr("Failed: {err}").format(err=e),
-                    )
-            else:
-                QMessageBox.information(self, self.tr("Add from Camera"), self.tr("No otpauth:// QR detected."))
-
-    def _auth_add_from_qr(self):
-        if not self._auth_require_login(): 
-            QMessageBox.warning(self, self.tr("Authenticator"), self.tr("Please log in first.")); return
-        fn, _ = QFileDialog.getOpenFileName(self, self.tr("Select QR Image"), "", "Images (*.png *.jpg *.jpeg *.bmp)")
-        if not fn: return
-        uri = import_otpauth_from_qr_image(fn)
-        if not uri:
-            QMessageBox.warning(self, self.tr("Add from QR"), self.tr("Could not read an otpauth:// QR from that image.")); return
-        add_from_otpauth_uri(self._active_username(), self.userKey, uri)
-        update_baseline(username=self._active_username(), verify_after=False, who=self.tr("Auth Store Added (QR Image)")) 
-        self._auth_reload_table()
-
-    def _auth_edit_selected(self):
-        if not self._auth_require_login(): return
-        row = self._auth_selected_row(); it = self._auth_row_entry(row)
-        if not it: QMessageBox.information(self, self.tr("Edit"), self.tr("Select an entry first.")); return
-        label, ok = QInputDialog.getText(self, self.tr("Edit"), self.tr("Label:"), text=it.get("label",""));           
-        if not ok: return
-        account, ok = QInputDialog.getText(self, self.tr("Edit"), self.tr("Account:"), text=it.get("account",""));     
-        if not ok: return
-        issuer, ok = QInputDialog.getText(self, self.tr("Edit"), self.tr("Issuer:"), text=it.get("issuer",""));        
-        if not ok: return
-        algo, ok = QInputDialog.getItem(self, self.tr("Edit"), self.tr("Algorithm:"), ["SHA1","SHA256","SHA512"],
-                                        ["SHA1","SHA256","SHA512"].index(it.get("algorithm","SHA1")), False); 
-        if not ok: return
-        digits, ok = QInputDialog.getInt(self, self.tr("Edit"), self.tr("Digits:"), int(it.get("digits",6)), 6, 8, 1); 
-        if not ok: return
-        period, ok = QInputDialog.getInt(self, self.tr("Edit"), self.tr("Period:"), int(it.get("period",30)), 15, 90, 1); 
-        if not ok: return
-        if update_authenticator(
-            self._active_username(),
-            self.userKey,
-            it["id"],
-            label=label,
-            account=account,
-            issuer=issuer,
-            algorithm=algo,
-            digits=digits,
-            period=period,
-        ):
-            update_baseline(username=self._active_username(), verify_after=False, who=self.tr("Auth Store Edited")) 
-            self._auth_reload_table()
-
-    def _auth_delete_selected(self):
-        if not self._auth_require_login(): return
-        row = self._auth_selected_row(); it = self._auth_row_entry(row)
-        if not it: QMessageBox.information(self, self.tr("Delete"), self.tr("Select an entry first.")); return
-        # Ask confirmation using a template to allow translation
-        if (
-            QMessageBox.question(
-                self,
-                self.tr("Delete"),
-                self.tr("Remove '{label}'?").format(label=it.get("label", "Authenticator")),
-            )
-            != QMessageBox.StandardButton.Yes
-        ):
-            return
-        if delete_authenticator(self._active_username(), self.userKey, it["id"]):
-            self._auth_reload_table()
-        update_baseline(self._active_username(), verify_after=False, who=self.tr("Auth Store Deleted Entry"))
-   
-    def _auth_copy_code(self):
-        if not self._auth_require_login(): return
-        row = self._auth_selected_row(); it = self._auth_row_entry(row)
-        if not it: QMessageBox.information(self, self.tr("Copy"), self.tr("Select an entry first.")); return
-        code, _ = get_current_code(self.userKey, it)
-        try:
-            uname = self._active_username()
-            secure_copy(code, self.clipboard_timeout, uname)
-            log_event_encrypted(uname, "Auth Store", "Code Copied")
-            if hasattr(self, "_toast"): self._toast(self.tr("Code copied"))
-        except Exception:
-            QGuiApplication.clipboard().setText(code)
-            if hasattr(self, "_toast"): self._toast(self.tr("Code copied"))
-    
-    # --- auth screen scan ---
-    def _qimage_to_numpy(self, img: QImage) -> np.ndarray:
-        """Convert QImage to an OpenCV BGR ndarray (PySide6-safe)."""
-        # Normalize to a known 4-channel format
-        img = img.convertToFormat(QImage.Format.Format_RGBA8888)
-        w, h = img.width(), img.height()
-
-        # PySide6 returns a memoryview; convert to bytes then to ndarray
-        mv = img.constBits()  # or img.bits()
-        data = mv.tobytes()   # length == img.sizeInBytes()
-        arr = np.frombuffer(data, dtype=np.uint8).reshape((h, w, 4))
-
-        # RGBA -> BGR (OpenCV default)
-        bgr = arr[:, :, 2::-1].copy()
-        return bgr
-
-    def _confirm_auth_scan(self) -> bool:
-        """
-        Ask the user to make sure the QR code is visible before scanning.
-        Includes a 'Don't show again' checkbox persisted in settings.
-        Returns True if the user wants to proceed.
-        """
-        try:
-            # Respect saved preference
-            suppress = bool(get_user_setting("__global__", "suppress_auth_scan_prompt"))
-        except Exception:
-            suppress = False
-
-        if suppress:
-            return True
-        msg = QMessageBox(self)
-        msg.setWindowTitle(self.tr("QR Scan"))
-        msg.setIcon(QMessageBox.Information)
-        msg.setText(self.tr(
-            "Make sure the TOTP QR code is visible on your screen.\n\n"
-            "When you click OK, Keyquorum will briefly minimize, scan all screens, "
-            "and auto-add any authenticator QR it finds.")
-        )
-        msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
-        msg.setDefaultButton(QMessageBox.Ok)
-
-        chk = QCheckBox(self.tr("Don’t show this again"))
-        msg.setCheckBox(chk)
-
-        res = msg.exec()
-        if res == QMessageBox.Ok:
-            # Persist the preference if they checked the box
-            try:
-                set_user_setting("__global__", "suppress_auth_scan_prompt", bool(chk.isChecked()))
-            except Exception:
-                pass
-            return True
-        return False
-
-    def _auth_add_from_screen(self, *args, **kwargs):
-        from auth.login.auth_flow_ops import _auth_add_from_screen as _impl
-        return _impl(self, *args, **kwargs)
-
-    @contextmanager
-    def _hide_for_screen_scan(self, delay_ms: int = 250):
-        """Temporarily hide/minimize the window so it doesn't appear in the screenshot."""
-        # NOTE: screenshot is only for scaning for qr on screen only
-        was_visible = self.isVisible()
-        prev_opacity = self.windowOpacity()
-        try:
-            # Hide quickly & flush events so the window is gone before grab the screen
-            self.setWindowOpacity(0.0)
-            self.hide()
-            QApplication.processEvents()
-            _t.sleep(max(0, delay_ms) / 1000.0)
-            yield
-        finally:
-            if was_visible:
-                self.show()
-                self.raise_()
-                self.activateWindow()
-            self.setWindowOpacity(prev_opacity)
-            QApplication.processEvents()
-
-    # ==============================
     # --- YubiKey 2-of-2 ----------------
     # ==============================
 
-    def on_yk_setup_clicked(self):
-        self.set_status_txt(self.tr("YubiKey Setup"))
-        uname = (self.currentUsername.text() or "").strip()
-        if not uname:
-            QMessageBox.warning(self, self.tr("YubiKey"), self.tr("Please select or log into a user first."))
-            return
-
-        # get password
-        identity_pwd = self.verify_sensitive_action(
-            uname,
-            title=self.tr("Two-Factor Authentication"),
-            return_pw=True,
-            require_password=True,
-            twofa_check=(True),  # disable -> True, enable -> False
-            yubi_check=True,
-        )
-        if identity_pwd == False: return
-
-        dlg = YubiKeySetupDialog(self, uname, getattr(self, "userKey", None), identity_password=identity_pwd)
-        dlg.finished_setup.connect(self._on_enable_finished)
-        self._track_window(dlg)
-        dlg.exec()
-        identity_pwd = ""
-
-    def _on_enable_finished(self, res: dict):
-        """
-        Handle YubiKey enable completion (wrap or gate).
-        Called when YubiKeySetupDialog emits done().
-        """
-        if not (res and res.get("ok")):
-            return
-        mode = res.get("mode", "").lower()
-        rk = res.get("recovery_key")
-        yubi_codes = res.get("backup_codes") or []
-        if mode == "wrap":
-            username=self.currentUsername.text()
-            set_recovery_mode(username, False)
-            if rk:
-                try:
-                    # update emergency kit / show to user
-      
-                    self.emg_ask(
-                        username=username,
-                        one_time_recovery_key=rk,
-                        recovery_backup_codes=yubi_codes,
-                    )
-                except Exception:
-                    # Fallback: copy + simple popup
-                    try:
-                        QApplication.clipboard().setText(rk)
-                    except Exception:
-                        pass
-                    msg = self.tr("Save this Recovery Key in a safe offline place.\n\n") + rk,
-                    QMessageBox.information(
-                        self,
-                        self.tr("Recovery Key (Shown Once)"), msg)
-            log_event_encrypted(username, "user", "🗝️ YubiKey WRAP enabled")
-            self.set_status_txt("✅ " + self.tr("YubiKey WRAP enabled"))
-
-            # 🔐 For safety, force a fresh login so the session matches the new WRAP config
-            QMessageBox.information(
-                self,
-                self.tr("YubiKey WRAP Enabled"),
-                self.tr("YubiKey WRAP has been enabled for this account.\n\n"
-                "For your security, you will now be logged out.\n"
-                "Please log in again using your password and YubiKey.")
-            )
-            try:
-                update_baseline(username=username, verify_after=False, who="Yubi Key Wrap")
-                self.logout_user()
-            except Exception:
-                pass
-            return 
-
-        elif mode == "gate":
-            self.set_status_txt("✅ " + self.tr("YubiKey GATE enabled"))
-            log_event_encrypted(username, "user", "🗝️ YubiKey GATE enabled")
-            update_baseline(username=username, verify_after=False, who="Yubi Key GATE")
-
-        # Refresh recovery/2FA controls after any YubiKey enable (non-WRAP path)
-        try:
-            self.refresh_recovery_controls()
-        except Exception:
-            pass
-
     def refresh_recovery_controls(self) -> None:
-        username = (self.currentUsername.text() or "").strip()
-        is_rm = bool(get_recovery_mode(username))        # authoritative
-        has_rk = has_recovery_wrap(username)             # wrapped key present
-        has_mk = bool(getattr(self, "userKey", None))    # unlocked
-
-        try:
-            self.recovery_mode_.blockSignals(True)
-            self.recovery_mode_.setChecked(is_rm)
-        finally:
-            self.recovery_mode_.blockSignals(False)
-
-        self.regen_key_.setEnabled(is_rm and has_mk)
-        self.regen_key_.setText(self.tr("Regenerate Recovery Key") if has_rk else self.tr("Add Recovery Key"))
-
-        if not is_rm:
-            self.regen_key_.setToolTip(self.tr("Enable Recovery Mode to add a Recovery Key."))
-        elif not has_mk:
-            self.regen_key_.setToolTip(self.tr("Unlock the vault first to bind a Recovery Key."))
-        else:
-            self.regen_key_.setToolTip(self.tr("Generate a Recovery Key (shown once). Store it offline."))
-
-        if hasattr(self, "lblRecoveryStatus"):
-            if not is_rm:
-                self.lblRecoveryStatus.setText(self.tr("Maximum Security: Password + YubiKey only (no recovery)."))
-            elif has_rk:
-                self.lblRecoveryStatus.setText(self.tr("Recovery Mode: Password + (YubiKey OR Recovery Key)."))
-            else:
-                self.lblRecoveryStatus.setText(self.tr("Recovery Mode: Add a Recovery Key for fallback."))
-
-    def on_generate_recovery_key_clicked(self, *args, **kwargs):
-        from app.misc_ops import on_generate_recovery_key_clicked as _impl
-        return _impl(self, *args, **kwargs)
+        from auth.login.auth_flow_ops import refresh_recovery_controls as _impl
+        return _impl(self)
 
     def _show_login_rescue_both(self, *args, **kwargs):
         from auth.login.auth_flow_ops import _show_login_rescue_both as _impl
         return _impl(self, *args, **kwargs)
 
-    def _rescue_caps(self, username: str):
-        """
-        Returns (mode, allow_backup, allow_recovery)
-          mode: "yk_hmac_gate" | "yk_hmac_wrap" | None
-          allow_backup: True if login backup codes exist
-          allow_recovery: True if recovery wrap is configured
-        """
-        mode, _rec = yk_twofactor_enabled(username)
-        allow_backup   = get_login_backup_count_quick(username) > 0
-        allow_recovery = bool(has_recovery_wrap(username))
-        return mode, allow_backup, allow_recovery
-        
-    def _load_user_record(self, username: str) -> dict:
-        """
-        Load and return the per-user record dictionary for the given username.
-        Returns an empty dict if no record exists or file is invalid.
-        """
-        try:
-            rec = get_user_record(username)
-            return rec if isinstance(rec, dict) else {}
-        except Exception:
-            return {}
+    def _load_user_record(self,  *args, **kwargs) -> dict:
+        from auth.login.auth_flow_ops import _load_user_record as _impl
+        return _impl(self, *args, **kwargs)
     
-    # --- the dialog (buttons enable on typing; capability checked on click)
     def _show_login_rescue(self, *args, **kwargs):
         from auth.login.auth_flow_ops import _show_login_rescue as _impl
         return _impl(self, *args, **kwargs)
@@ -4904,6 +2675,8 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def _finish_login(self, *args, **kwargs):
         from auth.login.auth_flow_ops import _finish_login as _impl
         return _impl(self, *args, **kwargs)
+
+
 
     def _is_risky_category(self, category_name: str) -> bool:
         """
@@ -4954,87 +2727,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
             return default
 
-    def _show_make_share_tip(self):
-        if not self._get_hint_flag("show_make_share_tip", True):
-            return
-        dlg = QDialog(self)
-        dlg.setWindowTitle(self.tr("How to Share (Zero-Knowledge)"))
-        dlg.setModal(True)
-        layout = QVBoxLayout(dlg)
-        txt = (
-            "<b>What this does</b><br>"
-            "• Encrypts the selected entry with a one-time key.<br>"
-            "• Wraps that key to the recipient’s public key from their Share ID.<br>"
-            "• Produces a <code>.kqshare</code> file (and optional QR) that only they can open.<br><br>"
-            "<b>How to use</b><br>"
-            "1) Ask the recipient to send their <i>Share ID</i> (<code>.kqshareid</code>) first.<br>"
-            "2) Click <i>Make Share Packet…</i>, pick their Share ID, then save or show QR.<br>"
-            "3) The recipient opens your <code>.kqshare</code> via <i>Import Share Packet…</i> after logging in.<br><br>"
-            "<b>Notes</b><br>"
-            "• No server can decrypt; only the recipient’s private key works.<br>"
-            "• Import will add the entry into their vault (you keep your copy)."
-        )
-        lbl = QLabel(txt, dlg); lbl.setTextFormat(Qt.TextFormat.RichText); lbl.setWordWrap(True)
-        layout.addWidget(lbl)
-        chk = QCheckBox(self.tr("Don’t show this tip again"), dlg)
-        layout.addWidget(chk)
-        btns = QHBoxLayout()
-        ok = QPushButton(self.tr("OK"), dlg)
-        ok.setDefault(True)
-        btns.addStretch(1); btns.addWidget(ok); layout.addLayout(btns)
-        ok.clicked.connect(dlg.accept); dlg.exec()
-        if chk.isChecked(): self._set_hint_flag("show_make_share_tip", False)
 
-    # --- Export my Share ID ---
-    def export_my_share_id(self):
-        try:
-            username = (self.currentUsername.text() if hasattr(self, "currentUsername") else "").strip()
-            if not getattr(self, "userKey", None) or not username:
-                QMessageBox.warning(self, self.tr("Export Share ID"), self.tr("Please log in first."))
-                return
-            # Use the unified per-user shared_key_file path
-            key_path = shared_key_file(username, ensure_dir=True, name_only=False)
-            share_id = export_share_id_json(username, self.userKey)
-
-            try:
-                show_qr_for_object(
-                    "My Share ID (scan to add me)",
-                    {"type": "kqshareid", **share_id},
-                    self,
-                    mode="shareid",
-                )
-            except Exception:
-                pass
-
-            suggested = Path(config_dir()) / f"{username}.kqshareid"
-            out_path, _ = QFileDialog.getSaveFileName(
-                self,
-                self.tr("Save My Share ID"),
-                str(suggested),
-                "Share ID (*.kqshareid)",
-            )
-            if not out_path:
-                return
-
-            Path(out_path).write_text(json.dumps(share_id, indent=2), encoding="utf-8")
-            QMessageBox.information(
-                self,
-                self.tr("Export Share ID"),
-                self.tr(
-                    "Your Share ID was saved.\nShare it with people who want to send you entries."
-                ),
-            )
-
-        except Exception as e:
-            try:
-                log.error("%s [SHARE] export id failed: %s", kql.i("err"), e)
-            except Exception:
-                pass
-            QMessageBox.critical(
-                self,
-                self.tr("Export Share ID"),
-                self.tr("Failed to export Share ID:\n{err}").format(err=e),
-            )
 
     # --- Utilities used by import flow ---
     def _active_username(self) -> str | None:
@@ -5045,12 +2738,11 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         # 2) Try the login username widget (may be blank after login)
         try:
-            raw = (self.currentUsername.text() or "").strip()
+            raw = self._active_username()
         except Exception:
             raw = ""
 
         if not raw:
-            log.error("[AUTH] active username missing (current_username empty and currentUsername widget blank)")
             return None
 
         # 3) Canonicalise (case-insensitive match to existing user folder)
@@ -5061,6 +2753,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         self.current_username = canon
         return canon
+
 
     def _norm(self, v):
         if v is None: return ""
@@ -5211,7 +2904,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         return None
 
     def _validate_share_packet(self, *args, **kwargs):
-        from app.misc_ops import _validate_share_packet as _impl
+        from features.share.share_ops import _validate_share_packet as _impl
         return _impl(self, *args, **kwargs)
 
     def _sanitize_share_entry(self, entry: dict) -> dict:
@@ -5259,31 +2952,13 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         return clean
 
     def _minimal_share_entry(self, *args, **kwargs):
-        from vault_store.vault_ui_ops import _minimal_share_entry as _impl
-        return _impl(self, *args, **kwargs)
-
-    def quick_share_qr(self, *args, **kwargs):
-        from app.misc_ops import quick_share_qr as _impl
+        from features.share.share_ops import _minimal_share_entry as _impl
         return _impl(self, *args, **kwargs)
 
     def _preview_full_entry(self, *args, **kwargs):
-        from vault_store.vault_ui_ops import _preview_full_entry as _impl
+        from  features.share.share_ops import _preview_full_entry as _impl
         return _impl(self, *args, **kwargs)
 
-    def _ensure_share_keys_compat(self, key_dir, username, user_key=None):
-        kd = str(key_dir) if key_dir is not None else ""
-        try:
-            return ensure_share_keys(kd, username)            # new signature
-        except TypeError:
-            return ensure_share_keys(kd, username, user_key)  # old signature
-
-    def import_share_packet(self, *args, **kwargs):
-        from app.misc_ops import import_share_packet as _impl
-        return _impl(self, *args, **kwargs)
-
-    def quick_import_from_qr(self, *args, **kwargs):
-        from app.misc_ops import quick_import_from_qr as _impl
-        return _impl(self, *args, **kwargs)
 
     def _selected_entries_dicts(self, username: str) -> list[dict]:
         """Return minimalized dict(s) for selected row(s). Falls back to currentRow if single selection."""
@@ -5293,7 +2968,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
         try:
             try:
-                all_entries = load_vault(username, getattr(self, 'core_session_handle', None) or self.userKey) or []
+                all_entries = load_vault(username, self.core_session_handle) or []
             except TypeError:
                 all_entries = load_vault(username) or []
         except Exception:
@@ -5320,16 +2995,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                 pass
         return result
 
-    def make_share_packet(self, *args, **kwargs):
-        from . import misc_ops as _impl
-        return _impl.make_share_packet(self, *args, **kwargs)
-
-    def quick_export_scan_only(self, *args, **kwargs):
-        from app.misc_ops import quick_export_scan_only as _impl
-        return _impl(self, *args, **kwargs)
 
     def _bulk_preview_entries(self, *args, **kwargs):
-        from app.misc_ops import _bulk_preview_entries as _impl
+        from features.share.share_ops import _bulk_preview_entries as _impl
         return _impl(self, *args, **kwargs)
 
     def vault_read_encrypted_blob(self, name: str) -> bytes | None:
@@ -5366,6 +3034,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         sk = self._hkdf_subkey(user_key, b"passkeys-store:aesgcm-32")
         return AESGCM(sk).decrypt(nonce, ct, None)
 
+
     # --- subkey derivation (HKDF-SHA256) ---------------------------------
     def _hkdf_subkey(self, user_key: bytes, info: bytes) -> bytes:
         # tiny HKDF-SHA256 for a 32B subkey
@@ -5377,15 +3046,12 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def _vault_dir_for_user(self, username: str) -> str:
         return vault_dir(username, ensure_parent=True)
 
-    def _trash_path(self, username: str, ensure_parent=False) -> str:
-        return trash_path(username, ensure_parent=ensure_parent)
-
-    # --- json encrypt/decrypt using vault helpers -------------------
+    # --- json encrypt/decrypt using vault helpers Synic -------------------
 
     def _enc_json_write(self, path: str | os.PathLike, key: bytes, data: dict | list) -> None:
         p = str(path)
         try:
-            from sync.engine import encrypt_json_file
+            from features.sync.engine import encrypt_json_file
             encrypt_json_file(p, key, data)
         except Exception:
             with open(p, "w", encoding="utf-8") as f:
@@ -5396,503 +3062,11 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         if not os.path.exists(p):
             return {}
         try:
-            from sync.engine import decrypt_json_file
+            from features.sync.engine import decrypt_json_file
             return decrypt_json_file(p, key) or {}
         except Exception:
             with open(p, "r", encoding="utf-8") as f:
                 return json.load(f)
-
-    def _pwcache_path(self, username: str, ensure_parent=False) -> str:
-        # Ensure parent exists and always return a string path
-        return str(pw_cache_file(username, ensure_parent=ensure_parent))
-
-    def _pwlast_load(self, username: str, user_key: bytes) -> dict:
-        # HKDF 'info' MUST be bytes, not a Path
-        info = f"pwcache:{username}".encode("utf-8")
-        key  = self._hkdf_subkey(user_key, info)
-        return self._enc_json_read(self._pwcache_path(username), key) or {}
-
-    def _pwlast_save(self, username: str, user_key: bytes, obj: dict) -> None:
-        info = f"pwcache:{username}".encode("utf-8")
-        key  = self._hkdf_subkey(user_key, info)
-        self._enc_json_write(self._pwcache_path(username, True), key, obj)
-
-    def _pwlast_put(self, username: str, user_key: bytes, entry_id: str, old_pw: str):
-        """
-        Store exactly ONE previous password for this entry.
-
-        SECURITY NOTE:
-        The previous password is stored only inside the encrypted pw-cache file
-        (written via _enc_json_write using a derived subkey). This supports a
-        single-step restore/undo if a password change breaks something.
-
-        We also store a keyed HMAC tag (instead of raw SHA256(password)) for
-        safe comparisons/reuse checks without relying on weak "hash a secret" patterns.
-        """
-        if not (entry_id and old_pw and user_key):
-            return
-
-        d = self._pwlast_load(username, user_key)
-
-        tag = hmac.new(user_key, old_pw.encode("utf-8"), hashlib.sha256).hexdigest()
-
-        d[str(entry_id)] = {
-            "ts": dt.datetime.now().isoformat(timespec="seconds"),
-            "tag": tag,     # for compare/reuse checks
-            "pw": old_pw,   # for restore (encrypted at rest in pw-cache)
-        }
-
-        self._pwlast_save(username, user_key, d)
-
-    def _pwlast_get(self, username: str, user_key: bytes, entry_id: str, *, max_age_days: int = 90) -> str | None:
-        d = self._pwlast_load(username, user_key)
-        rec = d.get(str(entry_id))
-        if not rec:
-            return None
-        try:
-            t = dt.datetime.fromisoformat(rec.get("ts", "").replace("Z", ""))
-            if t < dt.datetime.now() - dt.timedelta(days=max_age_days):
-                return None
-        except Exception:
-            pass
-        return rec.get("pw") or None
-
-    # ==============================
-    # --- Trash storage (encrypted) ----------------
-    # ==============================
-
-    def _trash_load(self, username: str, user_key: bytes) -> list:   # - load trash
-        """
-        Load encrypted trash for this user.
-        Returns a list of trashed entries (dicts), or [] if none.
-        """
-        try:
-            key = self._hkdf_subkey(user_key, b"trash")
-            return self._enc_json_read(self._trash_path(username), key) or []
-        except Exception as e:
-            log.error(f"[TRASH] load failed for {username}: {e}")
-            return []
-
-    def _trash_save(self, username: str, user_key: bytes, rows: list):       # - save to trash
-        """
-        Save encrypted trash for this user.
-        Overwrites the trash file with the given list of entries.
-        """
-        try:
-            key = self._hkdf_subkey(user_key, b"trash")
-            self._enc_json_write(self._trash_path(username, True), key, rows or [])
-        except Exception as e:
-            log.error(f"[TRASH] save failed for {username}: {e}")
-            raise
-
-
-    # ==============================
-    # --- Key-change migrations (reuse across password change / WRAP toggle) ------
-    # ==============================
-    def _run_key_change_migrations(
-        self,
-        username: str,
-        old_key: bytes,
-        new_key: bytes,
-        *,
-        show_popup: bool = True,
-    ) -> tuple[list[dict], bool, bool]:
-        """
-        Migrate all per-user encrypted stores from old_key -> new_key.
-
-        Returns (results, any_fail, any_changed)
-          - results: list of dicts: {"name": str, "status": "ok|skip|fail", "detail": str}
-        """
-        results: list[dict] = []
-        any_fail = False
-        any_changed = False
-
-        def _add_result(name: str, status: str, detail: str = ""):
-            nonlocal any_fail, any_changed
-            results.append({"name": name, "status": status, "detail": detail})
-            if status == "fail":
-                any_fail = True
-            if status == "ok":
-                any_changed = True
-
-        if not (old_key and new_key and old_key != new_key):
-            return results, False, False
-
-        log.info("[MIGRATE] Detected key change for user=%s (running store migrations)", username)
-
-        # 1) Authenticator Store
-        try:
-            from vault_store.authenticator_store import migrate_authenticator_store
-            ok, msg, changed, failed = migrate_authenticator_store(username, old_key, new_key)
-            if ok and changed:
-                log.info("[AUTH] %s", msg)
-                _add_result("Authenticator store", "ok", msg)
-                try:
-                    if hasattr(self, "_toast"):
-                        self._toast(self.tr("Authenticator refreshed"))
-                except Exception:
-                    pass
-            elif ok:
-                log.info("[AUTH] %s", msg)
-                _add_result("Authenticator store", "skip", msg)
-            else:
-                log.error("[AUTH] %s", msg)
-                _add_result("Authenticator store", "fail", msg)
-        except Exception as e:
-            log.exception("[AUTH] post-login migration failed: %s", e)
-            _add_result("Authenticator store", "fail", str(e))
-
-        # 2) Password history cache (pwcache)
-        try:
-            d = self._pwlast_load(username, old_key) or {}
-            if d:
-                self._pwlast_save(username, new_key, d)
-                log.info("[MIGRATE] pwcache migrated (%d records)", len(d))
-                _add_result("Password history (pwcache)", "ok", f"Migrated {len(d)} record(s)")
-            else:
-                log.info("[MIGRATE] pwcache: nothing to migrate")
-                _add_result("Password history (pwcache)", "skip", "Nothing to migrate")
-        except Exception as e:
-            log.warning("[MIGRATE] pwcache migration failed: %s", e)
-            _add_result("Password history (pwcache)", "fail", str(e))
-
-        # 3) Trash / soft delete
-        try:
-            rows = self._trash_load(username, old_key) or []
-            if rows:
-                self._trash_save(username, new_key, rows)
-                log.info("[MIGRATE] trash migrated (%d items)", len(rows))
-                _add_result("Trash", "ok", f"Migrated {len(rows)} item(s)")
-            else:
-                log.info("[MIGRATE] trash: nothing to migrate")
-                _add_result("Trash", "skip", "Nothing to migrate")
-        except Exception as e:
-            log.warning("[MIGRATE] trash migration failed: %s", e)
-            _add_result("Trash", "fail", str(e))
-
-        # 4) Encrypted user catalog overlay (+ seal)
-        try:
-            from catalog_category.catalog_user import migrate_user_catalog_overlay
-            ok, msg = migrate_user_catalog_overlay(username, old_key, new_key)
-            log.info("[MIGRATE][CATALOG] %s", msg)
-            if ok:
-                _add_result("User catalog overlay", "ok", msg)
-            else:
-                _add_result("User catalog overlay", "fail", msg)
-        except Exception as e:
-            log.warning("[MIGRATE] catalog migration failed: %s", e)
-            _add_result("User catalog overlay", "fail", str(e))
-
-        # ---- One popup summary at the end ----
-        if show_popup:
-            try:
-                if results:
-                    if any_fail:
-                        lines = []
-                        for r in results:
-                            if r.get("status") == "fail":
-                                lines.append(f"• {r['name']}: FAILED — {r.get('detail','')}")
-                        QMessageBox.warning(
-                            self,
-                            self.tr("Migration warnings"),
-                            self.tr(
-                                "Some files could not be updated after your key change.\n"
-                                "{details}\n\n"
-                                "What you can do:\n"
-                                "• Log out and log in again.\n"
-                                "• If it still fails, restore from your most recent FULL backup."
-                            ).format(details="\n".join(lines)),
-                        )
-                    else:
-                        QMessageBox.information(
-                            self,
-                            self.tr("Migration complete"),
-                            self.tr("All files have been updated successfully."),
-                        )
-            except Exception as e:
-                log.warning("[MIGRATE] summary popup failed: %s", e)
-
-        return results, any_fail, any_changed
-
-    def soft_delete_entry(self, *args, **kwargs):
-        from vault_store.vault_ui_ops import soft_delete_entry as _impl
-        return _impl(self, *args, **kwargs)
-
-    def on_move_to_trash_clicked(self):       # - move to trash button click
-        row = self.vaultTable.currentRow()
-        if row < 0:
-            QMessageBox.information(self, self.tr("Delete"), self.tr("Select an item to delete."))
-            return
-
-        # Map visible row → real vault index
-        try:
-            global_index = self.current_entries_indices[row]
-        except Exception:
-            global_index = row
-        log.debug("[TRASH] UI row=%s -> global_index=%s", row, global_index)
-
-        if QtWidgets.QMessageBox.question(
-            self, self.tr("Move to Trash"),
-            self.tr("This item will be moved to Trash and kept up to 30 days. Continue?")
-        ) != QtWidgets.QMessageBox.StandardButton.Yes:
-            return
-
-        ok, why = self.soft_delete_entry(self.currentUsername.text(), self.userKey, int(global_index))
-        log.debug("[TRASH] soft_delete result ok=%s why='%s'", ok, why)
-
-        if ok:
-            try: self._toast(self.tr("Moved to Trash (kept up to 30 days)."))
-            except Exception: pass
-            try: 
-                update_baseline(username=self.currentUsername.text(), verify_after=False, who="Trash Vault changed")
-            except Exception: pass
-            try: self.load_vault_table()
-            except Exception: pass
-            try:
-                self._watchtower_rescan(self)
-            except Exception: pass
-        else:
-            msg = self.tr("Could not delete this entry.\n\n") + f"{why}"
-            QtWidgets.QMessageBox.critical(self, self.tr("Delete"), msg)
-
-    def restore_from_trash_uid(self, username: str, key: bytes, uid: str) -> bool:       # - restore from trash using uid
-        if not self._require_unlocked():
-            return False
-        try:
-            trash = self._trash_load(username, key) or []
-            picked_i = -1
-            for i, e in enumerate(trash):
-                if str(e.get("_trash_uid") or "") == str(uid):
-                    picked_i = i
-                    break
-            if picked_i < 0:
-                return False
-
-            picked = trash.pop(picked_i)
-            self._trash_save(username, key, trash)
-
-            picked.pop("_deleted_at", None)
-            picked.pop("_trash_uid", None)
-            try:
-
-                add_vault_entry(username, key, picked)
-                self._on_any_entry_changed()
-            except Exception:
-                rows = load_vault(username, key) or []
-                rows.append(picked)
-                save_vault(username, key, rows)
-                self._on_any_entry_changed()
-            return True
-        except Exception:
-            return False
-
-    def restore_from_trash_index(self, username: str, key: bytes, index_in_trash: int) -> bool:             # - restore from trash using index  remove
-        """
-        Restore a trashed item by its index within the trash list.
-        Useful when the trashed item has no persistent id.
-        """
-        if not self._require_unlocked():
-            return False
-        try:
-            trash = self._trash_load(username, key) or []
-            if not (0 <= int(index_in_trash) < len(trash)):
-                return False
-            # remove from trash
-            picked = trash.pop(int(index_in_trash))
-            self._trash_save(username, key, trash)
-
-            # add back to vault
-            picked.pop("_deleted_at", None)
-            try:
-                add_vault_entry(username, key, picked)
-                self._on_any_entry_changed()
-            except Exception:
-                # fallback if add_vault_entry not available
-                rows = load_vault(username, key) or []
-                rows.append(picked)
-                save_vault(username, key, rows)
-                self._on_any_entry_changed()
-            return True
-        except Exception as e:
-            log.error(f"[Trash] restore_from_trash_index failed: {e}")
-            return False
-
-    def restore_from_trash(self, username: str, key: bytes, match_id: str) -> bool:    # - find item to restore id 
-        """
-        Restore a trashed item by persistent id (id/_id/row_id) or fingerprint ('fp:...').
-        """
-        if not self._require_unlocked():
-            return False
-        try:
-            trash = self._trash_load(username, key) or []
-            picked = None
-            picked_i = -1
-
-            # exact id match
-            def _rid(e):
-                return str(e.get("id") or e.get("_id") or e.get("row_id") or "")
-
-            for i, e in enumerate(trash):
-                if _rid(e) and _rid(e) == str(match_id):
-                    picked = e; picked_i = i
-                    break
-
-            # fingerprint fallback
-            if picked is None and str(match_id).startswith("fp:"):
-                def _norm(s): 
-                    return (s or "").strip().lower()
-
-                for i, e in enumerate(trash):
-                    t = _norm(e.get("title") or e.get("site") or e.get("name"))
-                    u = _norm(e.get("username") or e.get("user"))
-                    url = _norm(e.get("url") or e.get("origin"))
-                    pw = e.get("password") or e.get("Password") or ""
-
-                    # SECURITY NOTE:
-                    # Use keyed HMAC fingerprint instead of raw SHA256 hashing.
-                    # This is for deterministic restore matching, not password hashing.
-                    msg = f"{t}|{u}|{url}|{pw}".encode("utf-8")
-
-                    fp = "fp:" + hmac.new(
-                        key,
-                        msg,
-                        hashlib.sha256
-                    ).hexdigest()
-
-                    if hmac.compare_digest(fp, str(match_id)):
-                        picked = e
-                        picked_i = i
-                        break
-
-            if picked is None:
-                return False
-
-            # remove from trash
-            trash.pop(picked_i)
-            self._trash_save(username, key, trash)
-
-            # add back to vault
-            picked.pop("_deleted_at", None)
-            try:
-                
-                add_vault_entry(username, key, picked)
-                self._on_any_entry_changed()
-            except Exception:
-                rows = load_vault(username, key) or []
-                rows.append(picked)
-                save_vault(username, key, rows)
-                self._on_any_entry_changed()
-            return True
-        except Exception as e:
-            log.error(f"[Trash] restore_from_trash failed: {e}")
-            return False
-   
-    # NOTE add option to change this on updates (in settings add option to change days)
-    def _auto_purge_trash(self) -> int:  # - delete after 30 days
-        """Purge trashed items older than TRASH_KEEP_DAYS; quiet if anything is missing."""
-        try:
-            username = (self.currentUsername.text() or "").strip()
-            if not username:
-                return 0
-            self.set_status_txt(self.tr("KQ TRASH: Time to delete? "))
-            keep_days = int(os.getenv("KQ_TRASH_KEEP_DAYS", TRASH_KEEP_DAYS_DEFAULT))
-            cutoff = dt.datetime.utcnow() - dt.timedelta(days=keep_days)
-            trash = self._trash_load(username) or []      # expects list of dicts
-            keep, purge = [], []
-            for it in trash:
-                ts_str = (it.get("deleted_at") or it.get("ts") or it.get("deleted") or "")
-                try:
-                    ts = dt.datetime.fromisoformat(ts_str.replace("Z",""))
-                except Exception:
-                    # If no timestamp, treat as old → purge
-                    ts = dt.datetime(1970,1,1)
-                (purge if ts < cutoff else keep).append(it)
-            if len(purge) == 0:
-                return 0
-            # Save trimmed trash
-            self._trash_save(username, keep)
-            # log & rescan
-            try:
-                for it in purge:
-                    try:
-                        log_event_encrypted(username, self.tr("trash_purge"), {"id": it.get("id") or it.get("uuid")})
-                    except Exception:
-                        pass
-                    self._watchtower_rescan(self)
-            except Exception:
-                pass
-            # quick heads-up
-            try:
-                if getattr(self, "_toast", None):
-                    txt = self.tr("Purged ") + f"{len(purge)}" + self.tr(" old item(s) from Trash.")
-                    self._toast(txt)
-                    self.set_status_txt(txt)
-            except Exception:
-                pass
-            return len(purge)
-        except Exception:
-            return 0
-
-    def show_trash_manager(self, *args, **kwargs):
-        from vault_store.vault_ui_ops import show_trash_manager as _impl
-        return _impl(self, *args, **kwargs)
-
-    def purge_trash(self, username: str, key: bytes, max_age_days: int = 30) -> int:   # - delete after 30 days
-        """
-        Remove soft-deleted items older than max_age_days from the encrypted trash.
-        Return the number of items purged.
-        """
-        # After login/unlock
-        trash = self._trash_load(username, key)
-        if not trash:
-            return 0
-
-        cutoff = dt.datetime.now() - dt.timedelta(days=max_age_days)
-
-        def _parse_iso(ts: str):
-            """Best-effort parse for ISO-like timestamps (no dateutil)."""
-            if not ts:
-                return None
-            s = ts.strip().replace("Z", "")
-            for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
-                try:
-                    return dt.datetime.strptime(s, fmt)
-                except Exception:
-                    pass
-            try:
-                return dt.datetime.fromisoformat(s)
-            except Exception:
-                return None
-
-        def _deleted_at(entry) -> dt.datetime | None:
-            return _parse_iso(entry.get("_deleted_at") or "")
-
-        kept = [e for e in trash if (t := _deleted_at(e)) is None or t >= cutoff]
-        purged = len(trash) - len(kept)
-        if purged:
-            self._trash_save(username, key, kept)
-        return purged
-
-    def _trash_preview_for_entry(self, *args, **kwargs):
-        from vault_store.vault_ui_ops import _trash_preview_for_entry as _impl
-        return _impl(self, *args, **kwargs)
-
-    def _redact_for_preview(self, entry: dict) -> dict: # - trash preview
-        """
-        Return a shallow copy with common secret fields masked.
-        """
-        secretish = {
-            "password","Password","pwd","secret","otp","totp",
-            "api_key","api key","token","access_key","private_key","ssh_private",
-            "card_number","Card Number","cvv","cvc","pin","recovery key","recovery_key"
-        }
-        red = {}
-        for k, v in (entry or {}).items():
-            if isinstance(v, str) and k.lower() in secretish:
-                red[k] = "••••••••"
-            else:
-                red[k] = v
-        return red
 
 
     # ==============================
@@ -5974,9 +3148,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             log.error(f"[LOGIN] Identity prep failed for {typed_username}: {e}")
             return (typed_username, False)
 
-    def _continue_after_factors(self, *args, **kwargs):
-        from app.misc_ops import _continue_after_factors as _impl
-        return _impl(self, *args, **kwargs)
     
     def _refresh_remember_device_checkbox(self, *_args) -> None:
         """Auto-tick 'Remember this device' if this user already has a DPAPI device unlock blob."""
@@ -6022,29 +3193,8 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         from auth.login.auth_flow_ops import successful_login as _impl
         return _impl(self, *args, **kwargs)
 
-    def _load_catalog_effective(self, username: str):
-        # Key must exist (defensive guard)
-        if not isinstance(getattr(self, "userKey", None), (bytes, bytearray)):
-            log.info("[CATALOG] ERROR: userKey missing/invalid in _load_catalog_effective")
-            return self.CLIENTS, self.ALIASES, self.PLATFORM_GUIDE, getattr(self, "AUTOFILL_RECIPES", {}), {}
 
-        # 1) Ensure encrypted defaults exist for this user (expects username)
-        ensure_user_catalog_created(
-            username,
-            CLIENTS, ALIASES, PLATFORM_GUIDE,
-            user_key=self.userKey
-        )
 
-        # 2) Load decrypted overlay (expects username)
-        overlay = load_user_catalog_raw(username, self.userKey) or {}
-
-        # 3/4) Merge built-ins + overlay (returns 5 values)
-        return load_effective_catalogs_from_user(
-            username,
-            CLIENTS, ALIASES, PLATFORM_GUIDE,
-            user_key=self.userKey,
-            user_overlay=overlay
-        )
 
     def show_login_ui(self) -> None:
         """Hide tabs, show the login panel, and focus the username field."""
@@ -6101,9 +3251,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
                     except Exception:
                         pass
 
-    def check_backup_codes_ok(self, *args, **kwargs):
-        from app.misc_ops import check_backup_codes_ok as _impl
-        return _impl(self, *args, **kwargs)
 
     def logout_user(self, skip_backup=True):
         from auth.logout.logout_flow import logout_user as _logout_user
@@ -6118,6 +3265,13 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def reset_logout_timer(self):
         from auth.logout.logout_flow import reset_logout_timer as _reset_logout_timer
         return _reset_logout_timer(self)
+
+    # --- detect setting tab clicked
+
+    def on_tab_changed(self, index):
+        widget = self.mainTabs.widget(index)
+        if widget.objectName() == "settingsTab":
+            self.load_setting()
 
     # --- force logout (timer hit 0 or safety check)
     def force_logout(self):
@@ -6153,7 +3307,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
     # --- helper: show warning dialog with live countdown & extend
     def _show_logout_warning(self, *args, **kwargs):
-        from app.misc_ops import _show_logout_warning as _impl
+        from auth.logout.logout_flow import _show_logout_warning as _impl
         return _impl(self, *args, **kwargs)
 
     def _on_tick(self):
@@ -6243,714 +3397,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         return pwd if pwd else None
 
     def verify_sensitive_action(self, *args, **kwargs):
-        from app.misc_ops import verify_sensitive_action as _impl
-        return _impl(self, *args, **kwargs)
-
-    def _set_switch_checked(self, on: bool):
-        """Set switch state without firing toggled again."""
-        w = getattr(self, "bridgeEnableSwitch", None)
-        if not w:
-            return
-        try:
-            w.blockSignals(True)
-            w.setChecked(bool(on))
-        finally:
-            try: w.blockSignals(False)
-            except Exception: pass
-
-    def _on_bridge_toggle(self, checked: bool):
-        self.set_status_txt(self.tr("Bridge toggle Changed"))
-        """Enable/disable the local bridge explicitly."""
-        try:
-            if checked:
-                # Start
-                tok = self.ensure_bridge_token(new=False)
-                if not tok:
-                    QMessageBox.warning(self, self.tr("Enable Bridge"), self.tr("Unlock your vault first."))
-                    self._set_switch_checked(False)
-                    return
-                try:
-                    self.start_bridge_server(strict=None)
-                    self.start_bridge_monitoring()
-                    # instant refresh
-                    try: self._poll_bridge_once()
-                    except Exception: pass
-                    self._toast(self.tr("Bridge enabled (localhost only)."))
-                except Exception as e:
-                    self._set_switch_checked(False)
-                    self._toast(self.tr("Bridge failed to start: ") + f"{e}")
-            else:
-                # Stop
-                try: self.stop_bridge_monitoring()
-                except Exception: pass
-                try: self.stop_bridge_server()
-                except Exception: pass
-                try: self._set_bridge_offline()   # from earlier step
-                except Exception: pass
-                self._toast(self.tr("Bridge disabled."))
-        except Exception as e:
-            # Revert on error
-            self._set_switch_checked(False)
-            log.error(f"[BRIDGE] toggle failed: {e}")
-
-    def stop_bridge_server(self):
-        srv = getattr(self, "_bridge_httpd", None)
-        if srv:
-            try:
-                srv.shutdown()
-            except Exception:
-                pass
-            self._bridge_httpd = None
-
-        try:
-            self.stop_bridge_monitoring()
-        except Exception:
-            pass
-
-        # Force the label to show offline
-        self._set_bridge_offline()
-
-    def _set_bridge_offline(self):
-        """Force the bridge status label to show offline."""
-        try:
-            self.clear_bridge_token()
-            if hasattr(self, "vault_connected_"):
-                self.vault_connected_.setText(self.tr("Bridge: Offline — stopped"))
-                self.vault_connected_.setStyleSheet("color: #ff5555;")  # red text
-        except Exception:
-            pass
-
-    def _is_bridge_running(self) -> bool:
-        try:
-            return getattr(self, "_bridge_httpd", None) is not None
-        except Exception:
-            return False
-
-    def on_toggle_autostart_bridge(self, checked: bool):
-        self.set_status_txt(self.tr("Bridge saveing change ") + f"{checked}")
-        """Persist user preference for Bridge autostart."""
-        try:
-            u = (self.currentUsername.text() or "").strip()
-            if not u:
-                return
-            set_user_setting(u, "autostart_bridge", bool(checked))
-            update_baseline(username=u, verify_after=False, who=f"Autostart Bridge Changed={checked}")
-            if checked:
-                self._toast(self.tr("Bridge will auto-start after login."))
-            else:
-                self._toast(self.tr("Bridge auto-start disabled."))
-            self.set_status_txt(self.tr("Done"))
-        except Exception as e:
-            log.error(f"[SETTINGS] Failed to save autostart_bridge: {e}")
-
-    def _rotate_bridge_token(self):
-        self._bridge_token = secrets.token_urlsafe(32)
-        try:
-            log.debug("%s [BRIDGE] token rotated (%s…%s)",
-                      kql.i('ok'), self._bridge_token[:6], self._bridge_token[-6:])
-        except Exception:
-            pass
-
-    # 1) ---------- helpers that touch the table ----------
-    def _header_texts_lower(self):
-        out = []
-        for c in range(self.vaultTable.columnCount()):
-            hi = self.vaultTable.horizontalHeaderItem(c)
-            out.append(hi.text().strip().lower() if hi else "")
-        return out
-
-    def _find_col_by_labels(self, names: set[str]) -> int:
-        want = {s.lower() for s in names}
-        for i, t in enumerate(self._header_texts_lower()):
-            if t in want:
-                return i
-        return -1
-
-    def _get_password_from_table(self, row: int) -> str:
-        """Return the real secret stored in the table's UserRole for this row."""
-        tbl = getattr(self, "vaultTable", None)
-        if not tbl or row < 0 or row >= tbl.rowCount():
-            return ""
-
-        roles = [
-            int(Qt.ItemDataRole.UserRole),
-            int(Qt.ItemDataRole.UserRole) + 1,
-            int(Qt.ItemDataRole.UserRole) + 42,
-        ]
-
-        def _secret_from_item(it) -> str:
-            if not it:
-                return ""
-            for role in roles:
-                val = it.data(role)
-                if isinstance(val, bytes) and val:
-                    try:
-                        return val.decode("utf-8", "ignore")
-                    except Exception:
-                        continue
-                if isinstance(val, str) and val.strip():
-                    return val
-            return ""
-
-        if not hasattr(self, "_kq_pw_col"):
-            labels = {
-                "password", "pass", "passcode", "pwd", "secret",
-                "backup code", "backup", "recovery code", "2fa code", "otp", "code",
-            }
-            self._kq_pw_col = self._find_col_by_labels(labels)
-
-        if isinstance(self, object) and isinstance(self._kq_pw_col, int) and self._kq_pw_col >= 0:
-            v = _secret_from_item(tbl.item(row, self._kq_pw_col))
-            if v:
-                return v
-
-        for c in range(tbl.columnCount()):
-            v = _secret_from_item(tbl.item(row, c))
-            if v:
-                return v
-
-        cache = getattr(self, "_pw_cache_by_row", None)
-        if isinstance(cache, dict) and cache.get(row):
-            return cache[row]
-
-        return ""
-
-    def _get_text(self, row: int, col: int) -> str:
-        if col < 0:
-            return ""
-        it = self.vaultTable.item(row, col)
-        return (it.text() if it else "") or ""
-
-    def _set_pw_cell(self, row: int, col: int, password: str):
-        display = "●" * max(8, len(password or ""))
-        it = QTableWidgetItem(display)
-        it.setData(int(Qt.ItemDataRole.UserRole), password or "")
-        it.setFlags(it.flags() & ~Qt.ItemIsEditable)
-        self.vaultTable.setItem(row, col, it)
-
-    # ---------- Webfill profile (read-only; not saved to vault) ----------
-
-    def _webfill_profile_path(self) -> Path:
-        """Where your local Webfill profile (address/contact) lives."""
-        try:
-            base = Path(CONFIG_DIR)
-        except Exception:
-            base = Path.home() / ".keyquorum"
-        base.mkdir(parents=True, exist_ok=True)
-        return base / "Webfill_profile.json"   
-
-    def save_webfill_profile(self, profile: dict) -> None:
-        """
-        Optional helper if you later add a UI to edit the profile.
-        NOT called by autofill; provided for completeness.
-        """
-        try:
-            p = self._webfill_profile_path(self)
-            p.write_text(json.dumps(profile, indent=2, ensure_ascii=False), encoding="utf-8")
-        except Exception:
-            pass
-
-    def load_webfill_profile(self) -> dict:
-
-        defaults = {
-            "honorific": "",
-            "forename": "",
-            "middle":   "",
-            "surname":  "",
-            "email":    "",
-            "phone":    "",
-            "address1": "",
-            "address2": "",
-            "city":     "",
-            "region":   "",
-            "postal":   "",
-            "country":  "",
-        }
-
-        try:
-            table = getattr(self, "vaultTable", None)
-            if not table or table.rowCount() == 0:
-                return defaults
-
-            r = table.currentRow()
-            if r is None or r < 0 or r >= table.rowCount():
-                r = 0
-
-            def cell(lbl: str, *fallbacks: str) -> str:
-                # try new label first, then old ones
-                for key in (lbl, *fallbacks):
-                    try:
-                        idx = self._column_index_case_insensitive(key)
-                        if idx >= 0:
-                            v = self._get_text(r, idx) or ""
-                            if v:
-                                return v.strip()
-                    except Exception:
-                        pass
-                return ""
-
-            out = defaults.copy()
-            out["honorific"] = cell(WEBFILL_COL["HONORIFIC"], "Name title", "Name Title")
-            out["forename"]  = cell(WEBFILL_COL["FORENAME"],   "Forename", "First")
-            out["middle"]    = cell(WEBFILL_COL["MIDDLENAME"], "Middle", "Middle name")
-            out["surname"]   = cell(WEBFILL_COL["SURNAME"],    "Surname", "Last")
-            out["email"]     = cell(WEBFILL_COL["EMAIL"],      "Email address", "Email")
-            out["phone"]     = cell(WEBFILL_COL["PHONE"],      "Phone", "Phone number")
-            out["address1"]  = cell(WEBFILL_COL["ADDR1"],      "Address line 1")
-            out["address2"]  = cell(WEBFILL_COL["ADDR2"],      "Address line 2")
-            out["city"]      = cell(WEBFILL_COL["CITY"],       "City / Town")
-            out["region"]    = cell(WEBFILL_COL["REGION"],     "County / State / Region", "Region", "State", "County")
-            out["postal"]    = cell(WEBFILL_COL["POSTAL"],     "Postal code / ZIP", "Postcode", "ZIP")
-            out["country"]   = cell(WEBFILL_COL["COUNTRY"],    "Country")
-            return out
-        except Exception:
-            return defaults
-
-    def webfill_synonyms(self) -> dict[str, list[str]]:
-        return {
-            "honorific": ["honorific-prefix","title","salutation","name title","honorific","prefix"],
-            "forename":  ["first","first name","firstname","given","given name","forename","given-name"],
-            "middle":    ["middle","middle name","middlename","additional-name","additional name"],
-            "surname":   ["surname","last","last name","lastname","family","family name","family-name"],
-            "email":     ["email","email address","emailaddress","e-mail","mailaddress"],
-            "phone":     ["phone","phone number","phonenumber","tel","telephone","mobile","contact"],
-            "address1":  ["address line 1","address-line1","addressline1","address1","street","street address","addr1"],
-            "address2":  ["address line 2","address-line2","addressline2","address2","street2","apt","apartment","suite","unit","addr2"],
-            "city":      ["city","town","city/town","city or town","locality","address-level2"],
-            "region":    ["state / province / region","state/province/region","region","state","county","province","territory","address-level1","addressregion"],
-            "postal":    ["postal code / zip","postal-code","postcode","zip","zip code","zipcode","postal"],
-            "country":   ["country","country code","countryname","addresscountry"],
-        }
-
-    def card_synonyms(self) -> dict[str, list[str]]:
-        """
-        Synonym patterns the extension can use to map credit-card fields.
-        These keys correspond to canonical credit card properties used by the browser extension.
-        Each list contains lowercased substrings to match against name/id/label/placeholder attributes.
-        """
-        return {
-            # Name on card / cardholder
-            "name": ["name","cardholder","card holder","holder","cardholder name","name on card","cc-name"],
-            # Primary card number
-            "number": ["number","card number","card no","card no.","cardno","cc number","cc-number","ccnum"],
-            # Expiry date (combined MM/YY or similar)
-            # Expiry date (combined MM/YY or similar). Include explicit "expiry date"
-            "expiry": [
-                "exp",
-                "expiry",
-                "expiration",
-                "expires",
-                "exp date",
-                "expiration date",
-                "expiry date",
-                "expdate",
-                "mm/yy",
-                "mm yy",
-                "mm-yy",
-            ],
-            # Separate month of expiry
-            "month": ["month","mm","exp-month","cc-exp-month","exp month","expire month"],
-            # Separate year of expiry
-            "year": ["year","yy","yyyy","exp-year","cc-exp-year","exp year","expire year"],
-            # Card verification code
-            "cvc": ["cvc","cvv","security code","cvn","cvc2","cvv2","cid","csc","cvc/cvv"],
-        }
-
-    def get_credit_cards(self, *args, **kwargs):
-        from app.misc_ops import get_credit_cards as _impl
-        return _impl(self, *args, **kwargs)
-
-    def get_entries_for_origin(self, *args, **kwargs):
-        from app.misc_ops import get_entries_for_origin as _impl
-        return _impl(self, *args, **kwargs)
-
-    def lookup_entries_by_domain(self, domain_or_origin: str):
-        return self.get_entries_for_origin(domain_or_origin)
-
-    def is_vault_unlocked(self) -> bool:
-        uk = getattr(self, "userKey", None)
-        return isinstance(uk, (bytes, bytearray)) and any(uk or [])
-
-    # 3a) ---------- bridge token helpers ----------
-    def _bridge_token_path(self) -> Path:
-        from app.paths import bridge_token_dir
-        return bridge_token_dir(self.currentUsername.text())
-
-    def load_bridge_token(self) -> str:
-        """Load the persisted bridge token from disk, if any."""
-        try:
-            return self._bridge_token_path().read_text(encoding="utf-8").strip()
-        except Exception:
-            return ""
-
-    def save_bridge_token(self, token: str) -> None:
-        """Persist the given bridge token to disk."""
-        try:
-            self._bridge_token_path().write_text(token.strip(), encoding="utf-8")
-        except Exception:
-            pass
-
-    def ensure_bridge_token(self, *, new: bool = False) -> str:
-        """
-        Return the current bridge token.
-        If new=True, always create a fresh one (ephemeral, not loaded from disk).
-        """
-        if new:
-            tok = secrets.token_urlsafe(32)
-            self.bridge_token = tok
-            # NOTE: (V2) store in file for passkey and browser usage
-            self.save_bridge_token(tok) 
-            return tok
-
-        tok = getattr(self, "bridge_token", "") or ""
-        if tok:
-            return tok
-
-        # reuse from disk only when not rotating
-        tok = (self.load_bridge_token() or "").strip()
-        if not tok:
-            tok = secrets.token_urlsafe(32)
-            self.save_bridge_token(tok)  # persist only if you want non-ephemeral
-        self.bridge_token = tok
-        return tok
-
-    def clear_bridge_token(self):
-        """Clear token in memory (and on disk if you persisted it)."""
-        self.bridge_token = ""
-        # NOTE: Need to add new token file from last update
-        try:
-            self.save_bridge_token("") 
-        except Exception:
-            pass
-
-    # 4) ---------- save new credential (runs in UI thread) ----------
-    def _persist_now(self):
-        """Call your existing save/persist function if present."""
-        for name in ("save_vault", "persist_vault_changes", "save_vault_table", "save_all"):
-            fn = getattr(self, name, None)
-            if callable(fn):
-                try: fn()
-                except Exception: pass
-                break
-
-    def save_credential_ui(self, *args, **kwargs):
-        from app.misc_ops import save_credential_ui as _impl
-        return _impl(self, *args, **kwargs)
-
-    def _with_always_on_top(self, fn):
-        """Temporarily set the main window always-on-top while running fn()."""
-        flags = self.windowFlags()
-        try:
-            self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
-            self.show(); self.raise_(); self.activateWindow()
-            return fn()
-        finally:
-            try:
-                self.setWindowFlags(flags)
-                self.show()
-            except Exception:
-                pass
-
-    def show_password_generator_from_bridge(self) -> bool:
-        """
-        Open the in-app password generator.  Returns True if shown.  Uses
-        _with_always_on_top so the dialog appears on top of the main window.
-        """
-        try:
-            def _open():
-                try:
-                    # open with no target fields; dialog will handle copy/insert
-                    show_password_generator_dialog()
-                except Exception:
-                    pass
-            self._with_always_on_top(_open)
-            return True
-        except Exception:
-            return False
-
-    def generate_password_headless(self, opts: dict | None = None) -> str:
-        """
-        Generate a strong password without showing the UI.  Options may
-        include: length:int, use_symbols:bool, avoid_ambiguous:bool.  Falls
-        back to a simple generator if the project’s generator is unavailable.
-        """
-        length = int((opts or {}).get("length", 20))
-        use_symbols = bool((opts or {}).get("use_symbols", True))
-        avoid_ambiguous = bool((opts or {}).get("avoid_ambiguous", True))
-        try:
-            return generate_strong_password(length=length)
-        except Exception:
-            letters = string.ascii_letters + string.digits
-            symbols = "!@#$%^&*()-_=+[]{};:,./?"
-            alphabet = letters + (symbols if use_symbols else "")
-            if avoid_ambiguous:
-                for ch in "O0Il":
-                    alphabet = alphabet.replace(ch, "")
-            return "".join(secrets.choice(alphabet) for _ in range(max(12, length)))
-
-    # --- save a Webfill profile coming from the extension -------------
-
-    def save_profile_from_bridge(self, *args, **kwargs):
-        from app.misc_ops import save_profile_from_bridge as _impl
-        return _impl(self, *args, **kwargs)
-
-    def save_card_from_bridge(self, payload: dict) -> bool:
-        if not self._require_unlocked(): 
-            return False
-        try:
-            name  = payload.get("name") or payload.get("cardholder") or ""
-            number = payload.get("number") or ""
-            cvc    = payload.get("cvv") or payload.get("cvc") or ""
-            mm = (payload.get("month") or "").zfill(2)
-            yy = (payload.get("year") or "")
-            expiry = payload.get("expiry") or (f"{mm}/{yy[-2:]}" if (mm and yy) else "")
-            title = payload.get("title") or (f"Card ••••{str(number)[-4:]}" if number else "Card")
-
-            billing = " ".join(s for s in [
-                payload.get("address1"), payload.get("address2"),
-                payload.get("city"), payload.get("region"),
-                payload.get("postal"), payload.get("country")
-            ] if s)
-
-            new_entry = {
-                "category": "Credit Cards",
-                "Title": title,
-                "Card Type": payload.get("card_type") or "",
-                "Cardholder Name": name,
-                "Card Number": number,
-                "Expiry Date": expiry,
-                "CVV": cvc,
-                "Billing Address": billing,
-            }
-            add_vault_entry(self.currentUsername.text(), self.userKey, new_entry)
-            self._on_any_entry_changed()
-            # schedule UI refresh (queued)
-            _ui_async(lambda: (self.categorySelector_2.setCurrentText("Credit Cards"), self.load_vault_table()))
-            _ui_async(lambda: update_baseline(username=self.currentUsername.text(), verify_after=False, who=f"Save from bridge (Credit Cards) -> Updated"))
-            return True
-        except Exception as e:
-            log.error(f"[BRIDGE] save_card_from_bridge failed: {e}")
-            return False
-    
-    def get_webfill_profiles(self, *args, **kwargs):
-        from app.misc_ops import get_webfill_profiles as _impl
-        return _impl(self, *args, **kwargs)
-
-    def _set_bridge_indicator(self, *, online: bool, locked: bool | None = None, note: str = "") -> None:
-        """
-        Update the small status label: green when Online, red when Offline.
-        If 'locked' is True/False, show a hint. 'note' shows short extra info.
-        """
-        try:
-            lab = getattr(self, "vault_connected_", None)
-            if not lab:
-                lab = self.findChild(QLabel, "vault_connected_")
-                if not lab:
-                    return
-            if online:
-                txt = self.tr("● Bridge: Online")
-                if locked is True:
-                    txt += self.tr(" (vault locked)")
-                elif locked is False:
-                    txt += self.tr(" (vault unlocked)")
-                if note:
-                    txt += self.tr(" — {note1}").format(note1=note)
-                lab.setText(txt)
-                lab.setStyleSheet("color: #19a974; font-weight: 600;")  # green
-            else:
-                txt = self.tr("● Bridge: Offline")
-                if note:
-                    txt += self.tr(" — {note1}").format(note1=note)
-                lab.setText(txt)
-                lab.setStyleSheet("color: #e74c3c; font-weight: 600;")  # red
-            try:
-                self._set_switch_checked(bool(online))
-            except Exception:
-                pass
-
-        except Exception:
-            log.exception("%s [UI] bridge indicator update failed", kql.i('err'))
-
-    def _tcp_ready(self, host: str, port: int, timeout: float = 0.35) -> bool:
-        try:
-            with socket.create_connection((host, int(port)), timeout=timeout):
-                return True
-        except Exception:
-            return False
-
-    def _bridge_status_json(self, host: str, port: int, timeout: float = 0.7):
-        """
-        GET /v1/status. Returns (ok: bool, json: dict|None, http_status: int|None).
-        Does not require token.
-        """
-        try:
-            c = http.client.HTTPConnection(host, int(port), timeout=timeout)
-            c.request("GET", "/v1/status")
-            r = c.getresponse()
-            body = r.read() or b""
-            c.close()
-            data = None
-            try:
-                data = json.loads(body.decode("utf-8", "replace")) if body else None
-            except Exception:
-                data = None
-            return True, data, r.status
-        except Exception:
-            return False, None, None
-
-    def _poll_bridge_once(self) -> None:
-        """
-        One-shot refresh of the indicator. Safe to call anytime.
-        """
-        host = "127.0.0.1"
-        port = int(getattr(self, "_bridge_port", 8742))
-        httpd = getattr(self, "_bridge_httpd", None)
-
-        # If our server object isn't present, it's offline for our purposes.
-        if httpd is None:
-            self._set_bridge_indicator(online=False, note=self.tr("not running"))
-            return
-
-        # Fast TCP probe first (accepts + close → 'empty response' still counts as reachable)
-        if not self._tcp_ready(host, port):
-            self._set_bridge_indicator(online=False, note=self.tr("no listener on :{port1}").format(port1=port))
-            return
-
-        ok, data, code = self._bridge_status_json(host, port)
-        if not ok or code not in (200, 401, 403):
-            self._set_bridge_indicator(online=False, note=f"HTTP {code or '—'}")
-            return
-
-        # We’re online. Try to show locked state if the endpoint returns it.
-        locked = None
-        try:
-            if isinstance(data, dict) and "locked" in data:
-                locked = bool(data["locked"])
-        except Exception:
-            pass
-        self._set_bridge_indicator(online=True, locked=locked)
-
-    # --- Timer to keep it fresh (start after login, stop on logout)
-
-    def start_bridge_monitoring(self):
-        """Begin periodic status checks (idempotent)."""
-        if getattr(self, "_bridge_mon_timer", None):
-            return
-        self._bridge_mon_timer = QTimer(self)
-        self._bridge_mon_timer.setInterval(2500)  # 2.5s is snappy but light
-        self._bridge_mon_timer.timeout.connect(self._poll_bridge_once)
-        self._bridge_mon_timer.start()
-        # prime it immediately
-        self._poll_bridge_once()
-
-    def stop_bridge_monitoring(self):
-        t = getattr(self, "_bridge_mon_timer", None)
-        if t:
-            try:
-                t.stop()
-            except Exception:
-                pass
-            self._bridge_mon_timer = None
-        # reflect offline unless we know otherwise
-        self._set_bridge_indicator(online=False, note=self.tr("stopped"))
-
-    # --- button diagnose
-
-    def on_vault_diagButton_clicked(self, *args, **kwargs):
-        from vault_store.vault_ui_ops import on_vault_diagButton_clicked as _impl
-        return _impl(self, *args, **kwargs)
-
-    def start_bridge_server(self, *args, **kwargs):
-        from app.misc_ops import start_bridge_server as _impl
-        return _impl(self, *args, **kwargs)
-
-    def check_bridge_token_headless(self, presented: str) -> bool:
-        # compare with store as the current token / auth mode
-        expected = (self.bridgeToken.text() or "").strip()
-        mode = (self.authMode.currentText() or "Authorization").lower()
-        if mode in ("none", "disabled"):
-            return True
-        return bool(presented) and presented == expected
-
-    def stop_bridge_server(self):
-        srv = getattr(self, "_bridge_httpd", None)
-        if srv:
-            try: srv.shutdown()
-            except Exception: pass
-            self._bridge_httpd = None
-
-    # --- install exitsion_ 
-    def on_install_ext_(self):
-        """
-        Show security info, then open the store page so users can install the extension.
-        """
-        # --- Show info popup ---
-        msg = QMessageBox(self)
-        msg.setWindowTitle(self.tr("Browser Extension Security Info"))
-        msg.setTextFormat(Qt.TextFormat.RichText)
-        msg.setIcon(QMessageBox.Icon.Information)
-        msg.setWindowFlags(msg.windowFlags() | Qt.WindowStaysOnTopHint)
-        msg.setText(self.tr(
-            "<b>Before installing the extension, please read:</b><br><br>"
-            "• Everything happens locally on your PC – nothing is sent to the cloud.<br>"
-            "• The bridge only listens on <code>localhost</code> (never leaves your computer).<br>"
-            "• Your vault stays encrypted and locked until you unlock it.<br>"
-            "• A random token protects the bridge – keep it secret.<br>"
-            "• Auto-fill works only on matching, HTTPS-protected sites.<br><br>"
-            "<i>Keep your system updated and malware-free – security depends on your device.</i>")
-        )
-        msg.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
-        msg.setDefaultButton(QMessageBox.StandardButton.Ok)
-
-        ret = msg.exec()
-        if ret != QMessageBox.StandardButton.Ok:
-            return
-        open_url(url="STORE_URL_CHROME", default_=True)
- 
-    def on_pair_browser_(self):
-        """Start/verify the local bridge and show the pairing token + URL."""
-        log.info("%s [PAIR] button clicked", kql.i('ok'))
-        try:
-            # 1) Ensure a token (don't rotate unless explicitly requested or logout ) 
-            token = self.ensure_bridge_token(new=False)
-            if not token:
-                log.error("%s [BRIDGE] no token (user not logged in?)", kql.i('err'))
-                QMessageBox.warning(self, self.tr("Pairing"), self.tr("No token available. Please unlock your vault first."))
-                return
-
-            # 2) Start (or verify) the local HTTP bridge (idempotent)
-            try:
-                self.start_bridge_server(strict=None)
-                self.start_bridge_monitoring()
-            except Exception:
-                log.exception("%s [BRIDGE] start threw", kql.i('err'))
-
-            httpd = getattr(self, "_bridge_httpd", None)
-            if httpd is None:
-                log.error("%s [BRIDGE] not running", kql.i('err'))
-                QMessageBox.warning(
-                    self, self.tr("Pairing"),
-                    self.tr("The local bridge isn't running. Check antivirus/firewall and try again.")
-                )
-                return
-
-            # 3) Use the actual bound port
-            port = int(getattr(self, "_bridge_port", 8742))
-
-            # Safer token mask
-            def _mask(t: str) -> str:
-                return t if len(t) < 12 else f"{t[:6]}…{t[-6:]}"
-            log.info("✅ [PAIR] bridge ready on 127.0.0.1:%s • token=%s", port, _mask(token))
-
-            # 4) Show dialog (with live URL)
-            self._show_pairing_dialog(token, port)
-
-        except Exception:
-            log.exception("%s [PAIR] failed", kql.i('err'))
-            QMessageBox.critical(self, self.tr("Pairing error"), self.tr("Could not start or show pairing. See log for details."))
-
-    def _show_pairing_dialog(self, *args, **kwargs):
-        from auth.login.auth_flow_ops import _show_pairing_dialog as _impl
+        from auth.login.auth_flow_ops import verify_sensitive_action as _impl
         return _impl(self, *args, **kwargs)
 
     def open_forgot_password_dialog(self, *args, **kwargs):
@@ -6978,53 +3425,28 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     # --- open change password window
     def open_change_password_dialog(self):
         self.reset_logout_timer()
-
-        username = (self.currentUsername.text() or "").strip()
+        who =  self.tr("Change Password")
+        username = self._active_username()
         if not username:
-            QMessageBox.warning(
-                self,
-                self.tr("Change Password"),
-                self.tr("Please log in to your account before changing the password."),
-            )
+            show_message_user_login(self, who)
             return
+        try:
+            if show_message_vault_change(self):
+                try:
+                    self.export_vault()
+                except Exception as e:
+                    message_backup_error(self, e)
 
-        # Recommend a full backup before any password / key changes
-        reply = QMessageBox.question(
-            self,
-            self.tr("Safety Backup Recommended"),
-            (
-                self.tr("For safety, Keyquorum can create a FULL encrypted backup of your "
-                "account before changing the password.\n\n"
-                "This backup contains only encrypted data (no plain passwords) and "
-                "can help you recover if something goes wrong during the change.\n\n"
-                "Do you want to create a full backup now?")
-            ),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.Yes,
-        )
-
-        if reply == QMessageBox.Yes:
-            try:
-                self.export_vault()
-            except Exception as e:
-                QMessageBox.warning(
-                    self,
-                    self.tr("Backup Error"),
-                    (
-                        self.tr("Keyquorum tried to create a full backup but an error occurred:\n\n"
-                        "{e}\n\n"
-                        "You can still continue with the password change, but it is "
-                        "strongly recommended to resolve this backup issue first.").format(e)
-                    ),
-                )
+        except Exception as e:
+            log.error(f"[PW CHANGE] Change password  error {e}")
 
         self.set_status_txt(self.tr("Opening Change Password dialog"))
         log.debug("%s [UI OPEN] open change password dialog", kql.i("ui"))
 
-        dialog = ChangePasswordDialog(username, self.userKey, self)
+        dialog = ChangePasswordDialog(username, self.core_session_handle, self)
         self._track_window(dialog)
         dialog.exec()
-    
+
     # --- open reminders window ---
     def open_reminders_dialog(self):
         """Open the Reminders panel (in-app list of due/overdue reminders)."""
@@ -7036,28 +3458,16 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         username = (self._active_username() or "").strip()
         if not username:
             try:
-                username = (self.currentUsername.text() or "").strip()
+                username = self._active_username()
             except Exception:
                 username = ""
         if not username:
-            QMessageBox.information(
-                self,
-                self.tr("Reminders"),
-                self.tr("Please log in first."),
-            )
+            who =  self.tr("Reminders")
+            show_message_user_login(self, who)
             return
 
-        try:
-            from features.reminders.reminders_dialog import RemindersDialog
-        except Exception as e:
-            QMessageBox.warning(
-                self,
-                self.tr("Reminders"),
-                self.tr("Reminders feature isn't available in this build:{e}").format(e=e),
-            )
-            return
-
-        dlg = RemindersDialog(parent=self, username=username, user_key=getattr(self, "userKey", None))
+        from features.reminders.reminders_dialog import RemindersDialog
+        dlg = RemindersDialog(parent=self, username=username, user_key=getattr(self, 'core_session_handle', None))
         try:
             self._track_window(dlg)
         except Exception:
@@ -7072,15 +3482,11 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         """Open security prefs. If username is None, use active user."""
         self.set_status_txt(self.tr("Opening security prefs"))
         self.reset_logout_timer()
-
         username = (username or self._active_username() or "").strip()
         if not username:
-            QMessageBox.information(
-                self,
-                self.tr("Security Preferences"),
-                self.tr("Please enter or select a user first."),
-            )
-            return
+            who = self.tr("Security Preferences")
+            show_message_user_login(self, who)
+            #return
 
         try:
             dlg = SecurityPrefsDialog(username=username, parent=self)
@@ -7132,9 +3538,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         from vault_store.vault_ui_ops import load_vault_table as _impl
         return _impl(self, *args, **kwargs)
 
-    def delete_selected_vault_entry(self, *args, **kwargs):
-        from vault_store.vault_ui_ops import delete_selected_vault_entry as _impl
-        return _impl(self, *args, **kwargs)
+
 
     def update_table(self, category):
         log.debug(str(f"{kql.i('vault')} [UPDATE TABLE] Update table called with category: {category}"))
@@ -7541,7 +3945,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         try:
             entries = self.vault_store.get_all_entries()
         except Exception:
-            entries = load_vault(self.currentUsername.text(), getattr(self, "userKey", None)) or []
+            entries = load_vault(self.currentUsername.text(), getattr(self, 'core_session_handle', None)) or []
 
         if not entries or global_index < 0 or global_index >= len(entries):
             return
@@ -7755,241 +4159,54 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     # ==============================
     # --- sets and load all settings (called after successful_login)
     # ==============================
-    # - all lables, check boxs, timers, apply theme, ect
-    # - then loads table
     
     def load_setting(self, *args, **kwargs):
         from ui.settings_ops import load_setting as _impl
         return _impl(self, *args, **kwargs)
 
     def _wire_spin(self, spin, handler, cast=float):
-        """Wire a QSpinBox/QDoubleSpinBox with debounced live updates + flush on commit."""
-        if not spin or not handler:
-            return
-
-        # Don't emit on every keystroke
-        try: spin.setKeyboardTracking(False)
-        except Exception: pass
-
-        cb_val  = getattr(spin, "_kwire_value_cb", None)
-        cb_edit = getattr(spin, "_kwire_edit_cb", None)
-        if cb_val:
-            try: spin.valueChanged.disconnect(cb_val)
-            except Exception: pass
-        if cb_edit:
-            try: spin.editingFinished.disconnect(cb_edit)
-            except Exception: pass
-
-        # New callbacks (named so it can disconnect next time)
-        def _on_val(v):
-            try:
-                handler(cast(v), flush=False)
-            except TypeError:
-                handler(cast(v))  # fallback if handler has no 'flush' kw
-
-        def _on_edit():
-            try:
-                handler(cast(spin.value()), flush=True)
-            except TypeError:
-                handler(cast(spin.value()))
-        spin.valueChanged.connect(_on_val)
-        spin.editingFinished.connect(_on_edit)
-        # Stash refs on the widget so we can disconnect later
-        spin._kwire_value_cb = _on_val
-        spin._kwire_edit_cb  = _on_edit
-
+        from app.on_setting_change_ops import _wire_spin as _impl
+        return _impl(self, spin, handler, cast)
+        
     # ============================== 
     # --- catalog
     # ============================== 
 
     def export_user_catalog_encrypted(self, *args, **kwargs):
-        from app.misc_ops import export_user_catalog_encrypted as _impl
+        from features.backup_advisor.ui_backup_bind import export_user_catalog_encrypted as _impl
         return _impl(self, *args, **kwargs)
 
     def import_user_catalog_encrypted(self, *args, **kwargs):
-        from app.misc_ops import import_user_catalog_encrypted as _impl
+        from features.backup_advisor.ui_backup_bind import import_user_catalog_encrypted as _impl
         return _impl(self, *args, **kwargs)
 
     def on_user_logged_in(self, canonical_user: str, _users_base_ignored: str = ""):
-        username = (canonical_user or "").strip()
-        if not username:
-            return
-
-        user_cfg = Path(config_dir(username))              # .../Users/<user>/Config
-        self._catalog_user_root = str(user_cfg)            # keep for editor & reloads
-
-        cat_path  = Path(catalog_file(username, ensure_dir=True, name_only=False))      # .../Config/<user>.enc
-        seal_path = Path(catalog_seal_file(username, ensure_dir=True, name_only=False)) # .../Config/<user>.hmac
-
-        # Ensure catalog exists (encrypted). Some installs expect a dir; others a file path.
-        try:
-            ensure_user_catalog_created(cat_path, CLIENTS, ALIASES, PLATFORM_GUIDE, user_key=self.userKey)
-        except TypeError:
-            ensure_user_catalog_created(user_cfg, CLIENTS, ALIASES, PLATFORM_GUIDE, user_key=self.userKey)
-
-        # Load decrypted overlay (user edits)
-        try:
-            overlay = load_user_catalog_raw(cat_path, self.userKey)
-        except TypeError:
-            overlay = load_user_catalog_raw(user_cfg, self.userKey)
-
-        # Verify/repair HMAC seal
-        ok = False
-        try:
-            ok = verify_hmac_seal(cat_path, overlay, self.userKey, seal_path=seal_path)
-        except TypeError:
-            # older signature without seal_path kwarg
-            ok = verify_hmac_seal(cat_path, overlay, self.userKey)
-
-        if not ok:
-            try:
-                ensure_user_catalog_created(cat_path, CLIENTS, ALIASES, PLATFORM_GUIDE, user_key=self.userKey)
-            except TypeError:
-                ensure_user_catalog_created(user_cfg, CLIENTS, ALIASES, PLATFORM_GUIDE, user_key=self.userKey)
-
-            try:
-                overlay = load_user_catalog_raw(cat_path, self.userKey)
-            except TypeError:
-                overlay = load_user_catalog_raw(user_cfg, self.userKey)
-
-            try:
-                write_hmac_seal(cat_path, overlay, self.userKey, seal_path=seal_path)
-            except TypeError:
-                write_hmac_seal(cat_path, overlay, self.userKey)
-
-        # Effective view (built-ins + user overlay)
-        self.CLIENTS, self.ALIASES, self.PLATFORM_GUIDE, _ = load_effective_catalogs_from_user(
-            user_cfg, CLIENTS, ALIASES, PLATFORM_GUIDE, user_key=self.userKey, user_overlay=overlay
-        )
-
+        from catalog_category.catalog_category_ops import on_user_logged_in as _impl
+        return _impl(self, canonical_user, _users_base_ignored)
+        
     def open_catalog_editor(self):
-        try:
-            from catalog_category.my_catalog_builtin import (
-                CLIENTS,
-                ALIASES,
-                PLATFORM_GUIDE,
-                AUTOFILL_RECIPES,
-            )
-            
-            uname = (self.currentUsername.text() or "").strip()
-            if not uname:
-                QMessageBox.warning(self, self.tr("Catalog"), self.tr("Please log in first."))
-                return
-
-            user_cfg = str(config_dir(uname))   # editor works with a root dir
-            self.set_status_txt(self.tr("Opening Catalog"))
-
-            dlg = CatalogEditorUserDialog(
-                user_cfg,
-                CLIENTS,
-                ALIASES,
-                PLATFORM_GUIDE,
-                AUTOFILL_RECIPES,
-                parent=self,
-                user_key=self.userKey,
-                username=uname,
-            )
-
-            dlg.saved.connect(lambda: self._on_catalog_saved(user_cfg))
-
-            if dlg.exec():
-                self._on_catalog_saved(user_cfg)
-        except Exception as e:
-            log.error(f"CatalogEditorUserDialog: {e}")
-
+        from catalog_category.catalog_category_ops import open_catalog_editor as _impl
+        return _impl(self)
+        
     def _on_catalog_saved(self, user_root: str):
-        try:
-            uname = (self.currentUsername.text() or "").strip()
-            cat_path  = Path(catalog_file(uname, ensure_dir=True, name_only=False))
-            seal_path = Path(catalog_seal_file(uname, ensure_dir=True, name_only=False))
-
-            try:
-                overlay = load_user_catalog_raw(cat_path, self.userKey)
-            except TypeError:
-                overlay = load_user_catalog_raw(Path(user_root), self.userKey)
-
-            try:
-                write_hmac_seal(cat_path, overlay, self.userKey, seal_path=seal_path)
-            except TypeError:
-                write_hmac_seal(cat_path, overlay, self.userKey)
-
-            self.CLIENTS, self.ALIASES, self.PLATFORM_GUIDE, _ = load_effective_catalogs_from_user(
-                Path(user_root), CLIENTS, ALIASES, PLATFORM_GUIDE, user_key=self.userKey, user_overlay=overlay
-            )
-        except Exception:
-            pass
-
-        for attr in ("_client_domains_cache", "_client_exec_cache", "_client_protocol_cache"):
-            if hasattr(self, attr):
-                setattr(self, attr, None)
-        try: self._refresh_platform_help_badge()
-        except Exception: pass
-        try: self._toast("Catalog updated")
-        except Exception: pass
-
+        from catalog_category.catalog_category_ops import _on_catalog_saved as _impl
+        return _impl(self, user_root)
+      
     def _is_probably_user_added(self, url: str, built_value: str | None) -> bool:
         """If built-ins had a value and this one differs, treat as user-added/overridden; or new key entirely."""
         return not built_value or (built_value.strip() != (url or "").strip())
 
+    # ==============================
+    # --- flag
+    # ==============================
     def _maybe_warn_first_time(self, pref_key: str, title: str, message: str) -> bool:
-        """
-        Show a one-time warning with 'Don't show again'. Returns True to continue.
-        Store the user's choice in user settings prefs.
-        """
-        try:
-            prefs = getattr(self, "userPrefs", {}) or {}
-            if prefs.get(pref_key) is True:
-                return True
-        except Exception:
-            prefs = {}
-
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Warning)
-        box.setWindowTitle(title)
-        box.setText(message)
-        box.setStandardButtons(QMessageBox.Cancel | QMessageBox.Ok)
-        box.button(QMessageBox.Ok).setText(self.tr("I understand"))
-        chk = QCheckBox(self.tr("Don't show again"))
-        box.setCheckBox(chk)
-        ret = box.exec()
-        if ret == QMessageBox.Ok and chk.isChecked():
-            prefs[pref_key] = True
-            try:
-                self.userPrefs = prefs
-            except Exception:
-                pass
-        return ret == QMessageBox.Ok
-
+        from ui.ui_flags import _maybe_warn_first_time as _impl
+        return _impl(self, pref_key, title, message)
+        
     def open_vendor_url(self, url: str, builtins_url: str | None = None) -> None:
-        """Open a URL safely. If it looks user-added, show one-time warning."""
-        u = (url or "").strip()
-        if not u:
-            QMessageBox.warning(self, self.tr("URL missing"), self.tr("There is no URL configured for this item."))
-            return
-        try:
-            p = urlparse(u)
-            if p.scheme not in ("https", "http"):
-                QMessageBox.warning(self, self.tr("Blocked URL"), self.tr("Only http/https links are allowed."))
-                return
-        except Exception:
-            QMessageBox.warning(self, self.tr("Invalid URL"), self.tr("The link appears malformed."))
-            return
+        from ui.ui_flags import open_vendor_url as _impl
+        return _impl(self, url, builtins_url)
 
-        # One-time warning for user-added/overridden URLs
-        if self._is_probably_user_added(u, builtins_url):
-            cont = self._maybe_warn_first_time(
-                pref_key="suppress_user_url_warning",
-                title="Custom URL — be careful",
-                message=(
-                    "This link was added or changed by a user.\n\n"
-                    "Only open official vendor sites or trusted direct download links.\n"
-                    "Malicious links can harm your device."
-                )
-            )
-            if not cont:
-                return
-
-        QDesktopServices.openUrl(QUrl(u))
 
     # ==============================
     # --- update current theme
@@ -8160,66 +4377,23 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         return __install_translator_for_code(self, ui_lang)
       
     # ==============================
-    # --- ontop/toast  ---
+    # --- ontop ---
     # ==============================
     def set_topmost_no_flash(self, on: bool) -> None:
-        """Toggle always-on-top without setWindowFlags() (no white flash)."""
-        try:
-            if sys.platform != "win32":
-                # Fallback: avoid recreating unless absolutely needed
-                return
-            HWND_TOPMOST     = -1
-            HWND_NOTOPMOST   = -2
-            SWP_NOMOVE       = 0x0002
-            SWP_NOSIZE       = 0x0001
-            SWP_NOACTIVATE   = 0x0010
-            SWP_SHOWWINDOW   = 0x0040
-            hwnd = int(self.winId())
-            ctypes.windll.user32.SetWindowPos(
-                wintypes.HWND(hwnd),
-                wintypes.HWND(HWND_TOPMOST if on else HWND_NOTOPMOST),
-                0, 0, 0, 0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
-            )
-        except Exception as e:
-            log.error(f"{kql.i('err')} error seting new on top no recreate windows {e}. Using Recreate Windows")
-            self.set_always_on_top(False)
+        from app.on_setting_change_ops import set_topmost_no_flash as _impl
+        return _impl(self, on)
 
     def on_enable_ontop_toggled(self, checked: bool) -> None:
-        self.set_status_txt(self.tr("Saving ontop") + f" {checked}")
-        log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('info')} ontop toggled: {checked}")
-        try:
-            self.reset_logout_timer()
-        except Exception:
-            pass
+        from app.on_setting_change_ops import on_enable_ontop_toggled as _impl
+        return _impl(self, checked)
 
-        username = (self.currentUsername.text() or "").strip()
-        if not username:
-            log.debug(f"{kql.i('tool')} [ERROR] {kql.i('err')}  Cannot update ontop — user not found")
-            return
-
-        try:
-            set_user_setting(username, "ontop", bool(checked))
-            self.set_status_txt(self.tr("Saving Done, Applying"))
-            self.set_always_on_top(bool(checked))
-            self.set_status_txt(self.tr("Done"))
-            try:
-                update_baseline(username=username, verify_after=False, who=self.tr("OnTop Settings Changed"))
-                self.set_status_txt(self.tr("Baseline Done"))
-                log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('ok')} ontop toggled/baseline Updated")
-            except Exception:
-                pass
-        except Exception as e:
-            log.error(f"{kql.i('tool')} [ERROR] {kql.i('err')} Failed to set ontop: {e}")
-    
+    # ==============================
+    # --- toast ---
+    # ==============================
     def _toast(self, message: str, msec: int = 2500):
-        # NOTE: Temp toast, will be moving to windows 11 Notifications on windows
-        try: 
-            pos = self.mapToGlobal(QPoint(20, 20))
-            QToolTip.showText(pos, message, self, self.rect(), msec)
-        except Exception:
-            pass        
-    
+        from features.systemtray.systemtry_ops import _toast as _impl
+        return _impl(self, message, msec)
+           
     # ==============================
     # --- portable app ---
     # ==============================
@@ -8248,63 +4422,81 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         return _impl(self, *args, **kwargs)
 
     def on_rebuild_portable_clicked(self):
-        # Prefer the non-blocking implementation if available
+        """
+        Rebuild / create the portable app on a selected USB drive
+        without blocking the UI thread.
+        """
+        self.set_status_txt(self.tr("Updating App to USB"), timeout_ms=3000)
+
+        from pathlib import Path
+        from features.portable.portable_manager import pick_usb_drive
+
         try:
-            if hasattr(self, 'on_rebuild_portable_clicked2'):
-                return self.on_rebuild_portable_clicked2()
+            if getattr(self, "_portable_build_thread", None) and self._portable_build_thread.isRunning():
+                QMessageBox.information(
+                    self,
+                    self.tr("Portable Rebuild"),
+                    self.tr("A portable rebuild is already running."),
+                )
+                return
         except Exception:
             pass
 
-        """
-        Rebuild / create the portable app on a selected USB drive.
-        Runs synchronously on the UI thread to avoid Qt crashes from
-        showing QMessageBox in a worker thread.
-        """
-        self.set_status_txt(self.tr("Updating App to USB"))
-
-        from pathlib import Path
-        from features.portable.portable_manager import pick_usb_drive, build_portable_app
-
-        # pick drive
         drive = pick_usb_drive(self)
         if not drive:
             self.set_status_txt(self.tr("Portable rebuild cancelled"))
             return
 
-        # simple busy dialog (no threads, just pumps events)
-        dlg = QProgressDialog(self)
-        dlg.setWindowTitle(self.tr("Rebuilding Portable"))
-        dlg.setLabelText("Preparing portable app…")
-        dlg.setRange(0, 0)  # busy indicator
-        dlg.setWindowModality(Qt.WindowModal)
-        dlg.setCancelButton(None)
-        dlg.show()
+        self._portable_progress_dlg = QProgressDialog(self)
+        self._portable_progress_dlg.setWindowTitle(self.tr("Rebuilding Portable"))
+        self._portable_progress_dlg.setLabelText(self.tr("Preparing portable app…"))
+        self._portable_progress_dlg.setRange(0, 0)
+        self._portable_progress_dlg.setWindowModality(Qt.WindowModal)
+        self._portable_progress_dlg.setCancelButton(None)
+        self._portable_progress_dlg.setMinimumDuration(0)
+        self._portable_progress_dlg.show()
         QApplication.processEvents()
 
+        self._portable_build_thread = QThread(self)
+        self._portable_build_worker = PortableBuildWorker(str(Path(drive)))
+        self._portable_build_worker.moveToThread(self._portable_build_thread)
+
+        self._portable_build_thread.started.connect(self._portable_build_worker.run)
+        self._portable_build_worker.finished.connect(self._on_portable_build_finished)
+        self._portable_build_worker.finished.connect(self._portable_build_thread.quit)
+        self._portable_build_worker.finished.connect(self._portable_build_worker.deleteLater)
+        self._portable_build_thread.finished.connect(self._portable_build_thread.deleteLater)
+        self._portable_build_thread.finished.connect(self._cleanup_portable_build_refs)
+
+        self._portable_build_thread.start()
+
+    def _on_portable_build_finished(self, ok: bool, msg: str):
         try:
-            ok = build_portable_app(self, Path(drive))
-        except Exception as e:
-            ok = False
-            log = kql  
-            log.error(f"[PORTABLE] build_portable_app failed: {e}")
-        finally:
-            try:
+            dlg = getattr(self, "_portable_progress_dlg", None)
+            if dlg is not None:
                 dlg.close()
-            except Exception:
-                pass
+                dlg.deleteLater()
+        except Exception:
+            pass
+        finally:
+            self._portable_progress_dlg = None
 
         if ok:
             QMessageBox.information(
-                self, self.tr("Portable Rebuild"),
-                self.tr("Portable app updated successfully.")
+                self, self.tr("Portable Rebuild"), self.tr(msg)
             )
-            self.set_status_txt(self.tr("Portable app updated."))
+            self.set_status_txt(self.tr("Portable app updated."), timeout_ms=4000)
         else:
             QMessageBox.critical(
-                self, self.tr("Portable Rebuild Failed"),
-                self.tr("Portable rebuild failed. Please check the log for details.")
+                self,
+                self.tr("Portable Rebuild Failed"),
+                self.tr("Portable rebuild failed. Please check the log for details.\n\n{msg}").format(msg=msg),
             )
-            self.set_status_txt(self.tr("Portable rebuild failed"))
+            self.set_status_txt(self.tr("Portable rebuild failed"), timeout_ms=4000)
+
+    def _cleanup_portable_build_refs(self):
+        self._portable_build_thread = None
+        self._portable_build_worker = None
 
     def on_wipe_portable_clicked(self):
         from features.portable.portable_manager import wipe_portable
@@ -8353,531 +4545,65 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
             pass
 
+
     # ============================== 
-    # helper to stop crease on rapid change
+    # rapid change control
     # ==============================
-
     def _ensure_debounce_store(self):
-        if not hasattr(self, "_debounce_timers"):
-            self._debounce_timers: dict[str, "QTimer"] = {}
-            self._debounce_values: dict[str, object] = {}
-            self._debounce_last_saved: dict[str, object] = {}
-
+        from app.on_setting_change_ops import _ensure_debounce_store as _impl
+        _impl(self)
+        
     def _debounce_setting(self, *args, **kwargs):
-        from ui.settings_ops import _debounce_setting as _impl
+        from app.on_setting_change_ops import _debounce_setting as _impl
         return _impl(self, *args, **kwargs)
 
     def _queue_setting_save(self, key: str, value: float, commit_fn, *, delay_ms: int = 700, flush: bool = False):
-        """
-        Debounce saves per 'key'. If flush=True, commit immediately.
-        commit_fn(value) should raise on failure (we swallow & log).
-        """
-        self._pending_values[key] = value
+        from app.on_setting_change_ops import _queue_setting_save as _impl
+        return _impl(self, key, value, commit_fn, delay_ms, flush)
 
-        # immediate commit requested (editingFinished / Enter)
-        if flush:
-            # cancel any pending timer
-            t = self._debouncers.get(key)
-            if t:
-                try: t.stop()
-                except Exception: pass
-            # don't re-save the same value
-            if self._last_saved.get(key) == value:
-                return
-            try:
-                commit_fn(value)
-                self._last_saved[key] = value
-            except Exception as e:
-                log.error("save(%s) failed: %s", key, e)
-            return
-
-        # lazy: schedule (coalesces rapid changes)
-        t = self._debouncers.get(key)
-        if not t:
-            t = QTimer(self)
-            t.setSingleShot(True)
-            self._debouncers[key] = t
-
-            def _fire():
-                v = self._pending_values.get(key)
-                if v is None:  # nothing pending
-                    return
-                if self._last_saved.get(key) == v:  # unchanged
-                    return
-                try:
-                    commit_fn(v)
-                    self._last_saved[key] = v
-                except Exception as e:
-                    log.error("debounced save(%s) failed: %s", key, e)
-
-            t.timeout.connect(_fire)
-
-        try:
-            t.stop()
-        except Exception:
-            pass
-        t.start(delay_ms)
-
-    # ==============================
-    # --- preflight/AV enable/disable
-    # ==============================
     def on_enable_preflight_toggled(self, checked: bool):
-        self.set_status_txt(self.tr("Saving Preflight change") + f" {checked}")
-        self.reset_logout_timer()
-        log.debug("%s [TOOLS] %s preflight toggled -> %s", kql.i('tool'), kql.i('ok'), checked)
-
-        # support two independent toggles in the UI:
-        # - enablePreflightCheckbox   : per-user (runs after username is entered, before unlocking)
-        # - enablePreflightCheckbox_2 : global (runs on app startup)
-        try:
-            sender = self.sender()
-            sender_name = sender.objectName() if sender else ""
-        except Exception:
-            sender_name = ""
-        is_startup_toggle = str(sender_name).endswith("_2")
-
-        username = self._active_username()
-        if not username and not is_startup_toggle:
-            QMessageBox.information(self, self.tr("Preflight"), self.tr("Please enter or select a user first."))
-            return
-
-        try:
-            target = None if is_startup_toggle else username
-            prefs = load_security_prefs(target) or {}
-            if is_startup_toggle:
-                prefs["enable_preflight_startup"] = bool(checked)
-            else:
-                prefs["enable_preflight_login"] = bool(checked)
-            prefs["enable_preflight"] = bool(checked)
-            prefs["preflight_prompted"] = True
-            save_security_prefs(prefs, target)
-            log.debug("%s [TOOLS] %s Updated preflight toggled for %s", kql.i('tool'), kql.i('ok'), username)
-            try:
-                update_baseline(username=username, verify_after=False, who=self.tr("Preflight Settings Changed"))
-            except Exception:
-                pass
-        except Exception as e:
-            log.error("%s [ERROR] %s Could not update setting: %s", kql.i('tool'), kql.i('err'), e)
-            QMessageBox.warning(self, self.tr("Preflight"), self.tr("Could not update setting:\n{err}").format(err=e))
+        from app.on_setting_change_ops import on_enable_preflight_toggled as _impl
+        return _impl(self, checked)
 
     def on_enable_WinDefCheckbox_toggled(self, checked: bool) -> None:
-        self.set_status_txt(self.tr("Saving Windows def") + " {checked}")
-        log.debug("%s [TOOLS] %s WinDef Scan toggled %s", kql.i('tool'), kql.i('ok'), checked)
-
-        # Two independent toggles:
-        # - enableWinDefCheckbox_  : per-user (login)
-        # - enableWinDefCheckbox_2 : global (startup)
-        try:
-            sender = self.sender()
-            sender_name = sender.objectName() if sender else ""
-        except Exception:
-            sender_name = ""
-        is_startup_toggle = str(sender_name).endswith("_2")
-
-        try:
-            sender = self.sender()
-        except Exception:
-            sender = None
-        try:
-            self.enforce_pro_feature(sender, "Windows Defender Scan")
-        except Exception:
-            pass
-
-        try:
-            self.reset_logout_timer()
-        except Exception:
-            pass
-
-        username = self._active_username()
-        if not username and not is_startup_toggle:
-            log.debug("%s [WARN] %s Cannot update AV setting — user not found",
-                      kql.i('tool'), kql.i('warn'))
-            return
-
-        try:
-            # Persist in security prefs so it can be honored pre-login.
-            target = None if is_startup_toggle else username
-            prefs = load_security_prefs(target) or {}
-            if is_startup_toggle:
-                prefs["check_av_startup"] = bool(checked)
-            else:
-                prefs["check_av_login"] = bool(checked)
-            prefs["check_av"] = bool(checked)  # back-compat
-            save_security_prefs(prefs, target)
-
-            # Back-compat: keep user_db flags (older builds may read these)
-            if not is_startup_toggle and username:
-                set_user_setting(username, "WinDefCheckbox", bool(checked))
-                set_user_setting(username, "av_prompt_on_login", bool(checked))
-            try:
-                update_baseline(username=username, verify_after=False, who=self.tr("Win_Def Settings Changed"))
-                log.debug("%s [TOOLS] %s WinDef Scan Set:%s / baseline updated",
-                          kql.i('tool'), kql.i('ok'), checked)
-            except Exception:
-                pass
-        except Exception as e:
-            log.error("%s [ERROR] %s Failed to set WinDefCheckbox: %s",
-                      kql.i('tool'), kql.i('err'), e)
+        from app.on_setting_change_ops import on_enable_WinDefCheckbox_toggled as _impl
+        return _impl(self, checked)
 
     def on_enable_DefenderQuickScan_toggled(self, checked: bool) -> None:
-        self.set_status_txt(self.tr("Saving Defender Change"))
-        log.debug("%s [TOOLS] %s DefenderQuickScan toggled: %s",
-                  kql.i('tool'), kql.i('ok'), checked)
-
-        # Two independent toggles:
-        # - DefenderQuickScan_  : per-user (login)
-        # - DefenderQuickScan_2 : global (startup)
-        try:
-            sender = self.sender()
-            sender_name = sender.objectName() if sender else ""
-        except Exception:
-            sender_name = ""
-        is_startup_toggle = str(sender_name).endswith("_2")
-
-        try:
-            self.reset_logout_timer()
-        except Exception:
-            pass
-
-        username = self._active_username()
-        if not username and not is_startup_toggle:
-            log.debug("%s [WARN] %s Cannot update DefenderQuickScan — user not found",
-                      kql.i('tool'), kql.i('warn'))
-            return
-
-        try:
-            target = None if is_startup_toggle else username
-            prefs = load_security_prefs(target) or {}
-            if is_startup_toggle:
-                prefs["defender_quick_scan_startup"] = bool(checked)
-            else:
-                prefs["defender_quick_scan_login"] = bool(checked)
-            prefs["defender_quick_scan"] = bool(checked)  # back-compat
-            save_security_prefs(prefs, target)
-
-            # Back-compat for older builds
-            if not is_startup_toggle and username:
-                set_user_setting(username, "DefenderQuickScan", bool(checked))
-            try:
-                update_baseline(username=username, verify_after=False, who=self.tr("Quick Scan Settings Changed"))
-                log.debug("%s [TOOLS] %s DefenderQuickScan / baseline updated",
-                          kql.i('tool'), kql.i('ok'))
-            except Exception:
-                pass
-        except Exception as e:
-            log.error("%s [ERROR] %s Failed to set DefenderQuickScan: %s",
-                      kql.i('tool'), kql.i('err'), e)
+        from app.on_setting_change_ops import on_enable_DefenderQuickScan_toggled as _impl
+        return _impl(self, checked)
 
     def on_run_preflight_now_clicked(self, *args, **kwargs):
-        from app.misc_ops import on_run_preflight_now_clicked as _impl
+        from security.security_ops import on_run_preflight_now_clicked as _impl
         return _impl(self, *args, **kwargs)
 
-    def on_autosync_clicked(self, checked: bool) -> None:
-        self.set_status_txt(self.tr("Auto Sync to users Cloud"))
-        username = self._active_username()
-        if not username or not getattr(self, "userKey", None):
-            return
-
-        prof = get_user_cloud(username) or {}
-
-        # Store user preference (recommended)
-        try:
-            set_user_setting(username, "auto_sync", bool(checked))
-        except Exception:
-            pass
-
-        # Mirror to cloud profile
-        set_user_cloud(
-            username=username,
-            enable=bool(prof.get("enabled")), 
-            provider=(prof.get("provider") or "localpath"),
-            path=(prof.get("remote_path") or ""),
-            wrap=bool(prof.get("cloud_wrap")),
-            sync_enable=bool(checked),
-        )
-
-        # Keep checkbox in sync without re-triggering
-        try:
-            self.autosync_.blockSignals(True)
-            self.autosync_.setChecked(bool(checked))
-            self.autosync_.blockSignals(False)
-        except Exception:
-            pass
-
-        # Ensure engine exists & configured, then optionally kick a silent sync
-        try:
-            if not hasattr(self, "sync_engine") or self.sync_engine is None:
-                self._configure_sync_engine(username)
-            if self.sync_engine and self.sync_engine.configured() and checked:
-                self.sync_engine.sync_now(self.userKey, interactive=False)
-                self._watch_local_vault()
-
-            elif not checked and hasattr(self, "_vault_watcher") and self._vault_watcher:
-                self._vault_watcher.deleteLater()
-                self._vault_watcher = None
-            update_baseline(username=username, verify_after=False, who=self.tr("Cloud Sync Settings Changed"))
-
-        except Exception as e:
-            if "Sync not configured" in str(e):
-                QMessageBox.information(
-                        self, self.tr("Sync"),
-                        self.tr("Cloud Sync not enabled goto Backup/Restore -> Move To Cloud to Enable"))
-                self.autosync_.setChecked(False)
-            else:
-                log.debug(f"[AUTO-SYNC] setup failed: {e}")
-        self.set_status_txt(self.tr("Done"))
-
-    # ==============================
-    # --- Password expiry days (int)
-    # ==============================
     def on_password_expiry_days_change(self, value: int | float, *, flush: bool = False) -> None:
-        self.set_status_txt(self.tr("Saving Password Expiry Change"))
-        v = int(round(value))
-        log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('ok')} on_password_expiry_days_change -> {v}")
-        self.reset_logout_timer()
+        from app.on_setting_change_ops import on_password_expiry_days_change as _impl
+        return _impl(self, value, flush)
 
-        username = (self.currentUsername.text() or "").strip()
-        if not username:
-            log.debug(f"{kql.i('tool')} [WARN] {kql.i('warn')} no user for expiry update")
-            return
-
-        self.expiry_days = v  # live apply
-
-        def _persist(val: int):
-            try:
-                set_user_setting(username, "password_expiry_days", int(val))
-                try: 
-                    update_baseline(username=username, verify_after=False, who=self.tr("Password Expiry Settings Changed"))
-                except Exception: pass
-                log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('ok')} expiry saved {val}")
-            except Exception as e:
-                log.error(f"{kql.i('tool')} [ERROR] {kql.i('err')} expiry save failed: {e}")
-
-        self._debounce_setting("password_expiry_days", v, 2000, _persist, flush=flush)
-        self.set_status_txt(self.tr("Done"))
-
-    # ==============================
-    # Lockout threshold (int)
-    # ==============================
     def on_lockout_threshold_changed(self, value: int | float, *, flush: bool = False) -> None:
-        v = int(round(value))
-        if v < 0: v = 0
-        log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('ok')} lockout threshold -> {v}")
-        self.reset_logout_timer()
-        
-        username = (self.currentUsername.text() or "").strip()
-        if not username:
-            log.debug(f"{kql.i('tool')} {kql.i('warn')} no user for lockout update")
-            return
+        from app.on_setting_change_ops import on_lockout_threshold_changed as _impl
+        return _impl(self, value, flush)
 
-        def _persist(val: int):
-            try:
-                set_user_setting(username, "lockout_threshold", int(val))
-                try: 
-                    update_baseline(username=username, verify_after=False, who=self.tr("Lockout Settings Changed"))
-                except Exception: pass
-                log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('ok')} lockout saved {val}")
-            except Exception as e:
-                log.error(f"{kql.i('tool')} [ERROR] {kql.i('err')} lockout save failed: {e}")
-
-        self._debounce_setting("lockout_threshold", v, 2000, _persist, flush=flush)
-
-    # ==============================
-    # Clipboard clear timeout (seconds, int)
-    # ==============================
     def on_clipboard_clear_timeout_sec_change(self, value: int | float, *, flush: bool = False) -> None:
-        self.set_status_txt(self.tr("Clipboard timeout changed"))
-        v = int(round(value))
-        if v < 0: v = 0
-        log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('ok')} clipboard timeout -> {v}s")
-        self.reset_logout_timer()
-
-        username = (self.currentUsername.text() or "").strip()
-        if not username:
-            log.debug(f"{kql.i('tool')} {kql.i('warn')} no user for clipboard update")
-            return
-
-        # live apply
-        try:
-            self.clipboard_timeout = v * 1000
-            install_clipboard_guard(self.clipboard_timeout)
-        except Exception:
-            pass
-
-        def _persist(val: int):
-            try:
-                set_user_setting(username, "clipboard_clear_timeout_sec", int(val))
-                try: 
-                    update_baseline(username=username, verify_after=False, who=self.tr("Clipboard Timeout Settings Changed"))
-                except Exception: pass
-                log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('ok')} clipboard saved {val}")
-            except Exception as e:
-                log.error(f"{kql.i('tool')} [ERROR] {kql.i('err')} clipboard save failed: {e}")
-
-        self._debounce_setting("clipboard_clear_timeout_sec", v, 2000, _persist, flush=flush)
-
-
-    # ==============================
-    # Auto logout timeout (seconds, int) — 0 = OFF
-    # ==============================
+        from app.on_setting_change_ops import on_clipboard_clear_timeout_sec_change as _impl
+        return _impl(self, value, flush)
+      
     def on_auto_logout_timeout_sec_change(self, value: int | float, *, flush: bool = False) -> None:
-        v = int(round(value))
-        if v < 0: v = 0
-        log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('ok')} auto-logout -> {v}s")
-        self.reset_logout_timer()
+        from app.on_setting_change_ops import on_auto_logout_timeout_sec_change as _impl
+        return _impl(self, value, flush)
 
-        username = (self.currentUsername.text() or "").strip()
-        if not username:
-            log.debug(f"{kql.i('tool')} {kql.i('warn')} no user for auto-logout update")
-            return
-
-        self.logout_timeout = 0 if v == 0 else v * 1000
-        try: self.setup_auto_logout()
-        except Exception: pass
-
-        def _persist(val: int):
-            try:
-                set_user_setting(username, "auto_logout_timeout_sec", int(val))
-                try: 
-                    update_baseline(username=username, verify_after=False, who=self.tr("Auto Logout Settings Changed"))
-                except Exception: pass
-                log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('ok')} auto-logout saved {val}")
-            except Exception as e:
-                log.error(f"{kql.i('tool')} [ERROR] {kql.i('err')} auto-logout save failed: {e}")
-
-        self._debounce_setting("auto_logout_timeout_sec", v, 2000, _persist, flush=flush)
-
-
-    def enable_debug_logging_change(self, checked: bool) -> None:
-        self.set_status_txt(self.tr("saving logging set") + f" {checked}")
-        log.debug("%s [TOOLS] %s enable_debug_logging_change(%s)",
-                  kql.i('tool'), kql.i('ok'), checked)
-
-        # Apply runtime logging mode (console in dev only)
-        apply_debug_flag(bool(checked), keep_console=is_dev)
-
-        # Programmatic changes (during logout) set this flag to suppress popups
-        if getattr(self, "_suppress_logging_toasts", False):
-            return
-
-        # Persist per-user if theres a username
-        try:
-            username = (self.currentUsername.text() or "").strip()
-        except Exception:
-            username = ""
-
-        if username:
-            try:
-                set_user_setting(username, "debug_set", bool(checked))
-                self.set_status_txt(self.tr("Saving Done, Applying"))
-                self.debug_set = bool(checked)
-                update_baseline(username=username, verify_after=False, who=self.tr("Debug Settings Changed"))
-            except Exception as e:
-                log.warning("%s [TOOLS] %s Failed to persist debug setting: %s",
-                            kql.i('tool'), kql.i('warn'), e)
-
-        # Show user-facing info only for manual toggles
-        try:
-            if checked:
-                QMessageBox.information(
-                    self, self.tr("Logging"),
-                    self.tr("Debug logging is ON.\n\nLog file:\n") + f"{get_logfile_path()}"
-                )
-            else:
-                self.set_status_txt(self.tr("Logging is now minimized.\nNo log file will be written"))
-        except Exception:
-            pass
-
-    # ==============================
-    # --- breach checker
-    # ==============================
-
-    def enable_breach_checker_change(self, *args, **kwargs):
-        from features.security_center.security_center_ops import enable_breach_checker_change as _impl
-        return _impl(self, *args, **kwargs)
-
-    def _show_hibp_consent_modal(self) -> bool:
-        """
-        Show a one-time consent explaining the HIBP 'range' API (k-anonymity).
-        Returns True if the user accepts (Enable), False if Cancel.
-        """
-        # use configured help/privacy URLs; fall back to sensible defaults.
-        help_url = getattr(self, "SITE_HELP", SITE_HELP)
-        privacy_url = PRIVACY_POLICY
-
-        msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Information)
-        msg.setWindowTitle(self.tr("Password breach check"))
-        msg.setTextFormat(Qt.RichText)
-        msg.setText(self.tr(
-            "<b>Password breach check</b><br>"
-            "When enabled, the app checks passwords using the Have I Been Pwned “range” API.<br>"
-            "We send <b>only the first 5 characters of a SHA-1 hash</b>—"
-            "<b>never your password</b> or the full hash.<br><br>"
-            "<a href='{help_url}'>Learn more</a> · "
-            "<a href='{privacy_url}'>Privacy Policy</a>"
-        ).format(
-            help_url=help_url,
-            privacy_url=privacy_url
-        ))
-
-        # Buttons: Enable / Cancel
-        enable_btn = msg.addButton("Enable", QMessageBox.AcceptRole)
-        cancel_btn = msg.addButton(self.tr("Cancel"), QMessageBox.RejectRole)
-        # Exec (Qt5/6 compatible)
-        res = msg.exec_() if hasattr(msg, "exec_") else msg.exec()
-        return msg.clickedButton() is enable_btn
-
-    # ==============================
-    # --- watchtower rescan 
-    # ==============================
-    def _watchtower_rescan(self):
-        """
-        Trigger Watchtower rescan (legacy-safe).
-        """
-        wt = getattr(self, "watchtower", None)
-        if wt and hasattr(wt, "start_scan"):
-            wt.start_scan()
-
-    # ==============================
-    # --- zoom user profile pic value change
-    # ==============================
-
-    def auto_zoom_factor(self, value: float, *, flush: bool = False) -> None:
-        log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('ok')} zoom -> {value}")
-        self.reset_logout_timer()
-
-        try:
-            self.zoom_factor = float(value)
-            # force a re-render so the new zoom is applied immediately
-            self.load_profile_picture(force=True)
-        except Exception:
-            pass
-
-        def _persist(v):
-            try:
-                username = (self._current_username_text() or "").strip()
-                set_user_setting(username, "zoom_factor", float(v))
-                try:
-                    update_baseline(username=username, verify_after=False, who=self.tr("Zoom Pic Settings Changed"))
-                except Exception:
-                    pass
-                log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('ok')} zoom saved {v}")
-            except Exception as e:
-                log.error(f"{kql.i('tool')} [ERROR] {kql.i('err')} zoom save failed: {e}")
-
-        self._debounce_setting("zoom_factor", value, 2000, _persist, flush=flush)
 
     # ==============================
     # --- two 2fa enable/disable 
     # ==============================
     # ---------------- Manual Emergency Kit input (no persistence) ----------------
     def prompt_manual_kit_entries(self, *args, **kwargs):
-        from app.misc_ops import prompt_manual_kit_entries as _impl
+        from auth.login.auth_flow_ops import prompt_manual_kit_entries as _impl
         return _impl(self, *args, **kwargs)
 
     def emg_ask(self, *args, **kwargs):
-        from app.misc_ops import emg_ask as _impl
+        from auth.login.auth_flow_ops import emg_ask as _impl
         return _impl(self, *args, **kwargs)
 
     def toggle_2fa_setting(self, *args, **kwargs):
@@ -9124,26 +4850,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             pass
         return ""
     
-    def _active_username(self) -> str:
-        """Best-effort active username for reading user_db."""
-        try:
-            if hasattr(self, "currentUsername") and callable(getattr(self.currentUsername, "text", None)):
-                u = (self.currentUsername.text() or "").strip()
-                if u:
-                    return u
-        except Exception:
-            pass
-
-        # Fallbacks: plain attributes that may be set earlier in startup
-        for attr in ("currentUsername", "currentUser", "username", "activeUser"):
-            try:
-                v = getattr(self, attr, "")
-                if isinstance(v, str) and v.strip():
-                    return v.strip()
-            except Exception:
-                pass
-        return ""
-
     # --- schema for both main and move
 
     def _schema_category_names(self, *args, **kwargs):
@@ -9162,7 +4868,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             # Work out current username as shown in the UI
             raw_name = ""
             if hasattr(self, "currentUsername") and hasattr(self.currentUsername, "text"):
-                raw_name = (self.currentUsername.text() or "").strip()
+                raw_name = self._active_username()
 
             canonical = ""
             if raw_name:
@@ -9272,7 +4978,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
     # --- per-user field meta (table uses user_db first) ---
     def user_field_meta_for_category(self, *args, **kwargs):
-        from vault_store.vault_ui_ops import user_field_meta_for_category as _impl
+        from catalog_category.catalog_category_ops import user_field_meta_for_category as _impl
         return _impl(self, *args, **kwargs)
 
     def on_table_double_clicked(self, row: int, column: int):
@@ -9298,7 +5004,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     # --- QR show for selected item
     
     def show_qr_for_selected(self, *args, **kwargs):
-        from app.misc_ops import show_qr_for_selected as _impl
+        from vault_store.vault_ui_ops import show_qr_for_selected as _impl
         return _impl(self, *args, **kwargs)
 
     def _make_wifi_qr_payload(self, ssid: str, password: str, encryption: str = "WPA", hidden: bool = False) -> str:
@@ -9607,11 +5313,11 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     # ==============================    
 
     def _on_editor_schema_saved(self, *args, **kwargs):
-        from app.misc_ops import _on_editor_schema_saved as _impl
+        from catalog_category.catalog_category_ops import _on_editor_schema_saved as _impl
         return _impl(self, *args, **kwargs)
 
     def set_rounded_profile_picture(self, *args, **kwargs):
-        from app.misc_ops import set_rounded_profile_picture as _impl
+        from auth.login.auth_flow_ops import set_rounded_profile_picture as _impl
         return _impl(self, *args, **kwargs)
 
     # --- change user profile pic ask user to select and update image after
@@ -9619,7 +5325,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def change_profile_picture(self) -> None:
         """Let the logged-in user pick a picture and save it under Config/Profile."""
         self.reset_logout_timer()
-        username = (self.currentUsername.text() or "").strip()
+        username = self._active_username()
         if not username:
             self.safe_messagebox_warning(self, "Profile", "Please log in before changing your picture.")
             return
@@ -9684,15 +5390,15 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
            return ""
 
-
-    # ---------- login picture (login screen) ----------
-
+    # ==============================
+    # ---------- login picture (login screen)
+    # ==============================
     def update_login_picture(self, *args, **kwargs):
         from auth.login.auth_flow_ops import update_login_picture as _impl
         return _impl(self, *args, **kwargs)
 
     def load_profile_picture(self, *args, **kwargs):
-        from app.misc_ops import load_profile_picture as _impl
+        from auth.login.auth_flow_ops import load_profile_picture as _impl
         return _impl(self, *args, **kwargs)
 
     def ui_catch(fn):
@@ -9904,7 +5610,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     # ==============================
     # --- serecty ---
     # ==============================
-
     # --- Basline check
     def _shorten_path(self, p: str) -> str:
         """Make long absolute paths easier to read by replacing known roots."""
@@ -9953,248 +5658,65 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         name, ok = QInputDialog.getText(self, self.tr("Add Allowlisted Process"), self.tr("Allowlist process name (exact match):"))
         if ok and name.strip():
             add_allowlist_process(name.strip())
-    
-    # --- preflight popup to user
+
+    # ==============================
+    # --- preflight
+    # ==============================
     def maybe_prompt_enable_preflight(self, parent=None):
-        prefs = load_security_prefs()
-        if prefs.get("preflight_prompted", False):
-            return
-
-        box = QMessageBox(parent or self)
-        box.setWindowTitle(self.tr("Security Preflight"))
-        box.setIcon(QMessageBox.Icon.Question)
-        box.setText(self.tr("Enable Security Preflight checks?"))
-        box.setInformativeText(
-            "Preflight can warn you about packet sniffers, debuggers, and other tools "
-            "that increase risk. You can change this later in Settings."
-        )
-        enable_btn = box.addButton(self.tr("Enable (Recommended)"), QMessageBox.ButtonRole.AcceptRole)
-        later_btn  = box.addButton(self.tr("Not Now"), QMessageBox.ButtonRole.RejectRole)
-        box.setDefaultButton(enable_btn)
-        box.exec()
-
-        prefs["preflight_prompted"] = True
-        prefs["enable_preflight"] = (box.clickedButton() is enable_btn)
-        save_security_prefs(prefs)
+        from ui.ui_flags import maybe_prompt_enable_preflight as _impl
+        return _impl(self, parent)
 
     def _load_user_preflight_overrides(self, username: str) -> dict:
-        user = username
-        # Login-time prefs are stored per-user in the *.sp file.
-        user_sp = load_security_prefs(user) or {}
-        enable_preflight = bool(
-            user_sp.get("enable_preflight_login",
-                        user_sp.get("enable_preflight", True))
-        )
-        # Master AV toggle (login)
-        if "check_av_login" in user_sp:
-            av_enabled = bool(user_sp.get("check_av_login", False))
-        elif "check_av" in user_sp:
-            av_enabled = bool(user_sp.get("check_av", False))
-        else:
-            try:
-                av_enabled = bool(get_user_setting(user, "WinDefCheckbox", False))
-            except TypeError:
-                av_enabled = bool(get_user_setting(user, "WinDefCheckbox"))
-
-        # quick-scan (login)
-        if "defender_quick_scan_login" in user_sp:
-            quick_scan = bool(user_sp.get("defender_quick_scan_login", False))
-        elif "defender_quick_scan" in user_sp:
-            quick_scan = bool(user_sp.get("defender_quick_scan", False))
-        else:
-            try:
-                quick_scan = bool(get_user_setting(user, "DefenderQuickScan", False))
-            except TypeError:
-                quick_scan = bool(get_user_setting(user, "DefenderQuickScan"))
-        try:
-            vendor_prompt = bool(get_user_setting(user, "av_prompt_on_login", True))
-        except TypeError:
-            vendor_prompt = bool(get_user_setting(user, "av_prompt_on_login"))
-
-        # If master is off, force all AV prompts off
-        if not av_enabled:
-            quick_scan = False
-            vendor_prompt = False
-
-        return {
-            "enable_preflight": enable_preflight,
-            "check_av": av_enabled,
-            "defender_quick_scan": quick_scan,
-            "offer_vendor_ui_on_login": vendor_prompt,
-            "block_on_av_absent": True,
-            "block_on_scan_issue": True,
-            "debug": True,
-        }
+        from security.security_ops import _load_user_preflight_overrides as _impl
+        return _impl(self, username)
 
 
-    # ------------------------
+    # ==============================
     # --- Audit and Lockout Management
-   
+    # ==============================
     def load_audit_table(self, *args, **kwargs):
-        from app.misc_ops import load_audit_table as _impl
+        from security.security_ops import load_audit_table as _impl
         return _impl(self, *args, **kwargs)
 
     def delete_audit_logs(self, *args, **kwargs):
-        from app.misc_ops import delete_audit_logs as _impl
+        from security.security_ops import delete_audit_logs as _impl
         return _impl(self, *args, **kwargs)
 
     def on_export_audit_clicked(self, *args, **kwargs):
-        from app.misc_ops import on_export_audit_clicked as _impl
+        from security.security_ops import on_export_audit_clicked as _impl
         return _impl(self, *args, **kwargs)
 
     # ==============================
     # --- export/import/back up ---
     # ==============================
-    
-    # ==============================
-    # --- export/import vault data (not full back) ------------------
-    
     def export_vault_with_password(self, *args, **kwargs):
-        from vault_store.vault_ui_ops import export_vault_with_password as _impl
+        from features.backup_advisor.ui_backup_bind import export_vault_with_password as _impl
         return _impl(self, *args, **kwargs)
 
-    def import_vault_with_password(self, *args, **kwargs):
-        from vault_store.vault_ui_ops import import_vault_with_password as _impl
-        return _impl(self, *args, **kwargs)
-
-    def backup_software_folder(self):
-        self.reset_logout_timer()
-        source_dir = os.path.join("app", "software")
-        if not os.path.exists(source_dir):
-            QMessageBox.information(self, self.tr("Software Backup"), self.tr("No software folder found to back up."))
-            return
-
-        timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_dir = os.path.join("software_backups")
-        os.makedirs(backup_dir, exist_ok=True)
-        zip_path = os.path.join(backup_dir, f"software_backup_{timestamp}.zip")
-
-        with ZipFile(zip_path, 'w') as zipf:
-            for root, _, files in os.walk(source_dir):
-                for file in files:
-                    full_path = os.path.join(root, file)
-                    arcname = os.path.relpath(full_path, start=source_dir)
-                    zipf.write(full_path, arcname=arcname)
-        msg = self.tr("{ok} Software folder backedup").format(ok=kql.i('ok'))
-        log_event_encrypted(self.currentUsername.text(), self.tr("soft backed up"), msg)
-        msg = self.tr("{ok} Software folder backed up to:\n{zip_p}").format(ok=kql.i('ok'), zip_p=zip_path)
-        QMessageBox.information(self, self.tr("Software Backup"), msg)
-
-    def restore_software_folder(self):
-        self.reset_logout_timer()
-        zip_path, _ = QFileDialog.getOpenFileName(self, self.tr("Select Software Backup"), "", "ZIP Files (*.zip)")
-        if not zip_path:
-            return
-
-        restore_dir = os.path.join("app", "software")
-        os.makedirs(restore_dir, exist_ok=True)
-
-        # Optionally clear existing files
-        confirm = QMessageBox.question(self, self.tr("Restore Software Folder"), self.tr("This will overwrite existing files. Continue?"))
-        if confirm != QMessageBox.StandardButton.Yes:
-            return
-        self.reset_logout_timer()
-        rmtree(restore_dir)
-        os.makedirs(restore_dir, exist_ok=True)
-
-        with ZipFile(zip_path, 'r') as zipf:
-            zipf.extractall(restore_dir)
-        update_baseline(username=self.currentUsername.text(), verify_after=False, who=self.tr("Soft Restored"))
-        QMessageBox.information(self, self.tr("Software Restore"), self.tr("✅ Software folder restored successfully."))
+    def import_vault_with_password(self):
+        from features.backup_advisor.ui_backup_bind import import_vault_with_password as _impl
+        return _impl(self)
 
     # ==============================
     # --- Full backup/export (vault + salt + user_db + wrapped_key if present)
     # ==============================
-
-    # --- export/import vault + user_data + settings (full backup) 
-
     def export_vault(self):
-        self.set_status_txt(self.tr("Exporting Vault"))
-        """
-        UI wrapper around auth.vault_store.export_full_backup.
-        Exports a .zip.enc (encrypted with the account password) into a chosen folder.
-        """
-        self.reset_logout_timer()
-        username = self.currentUsername.text().strip()
-        if not username:
-            self.safe_messagebox_warning(self, "Export", "Please log in before exporting.")
-            return
-
-        # Ask for account password to encrypt the backup
-        pw, ok = QInputDialog.getText(
-            self, self.tr("Confirm Password"),
-            self.tr("Enter your account password:"),
-            QLineEdit.EchoMode.Password
-        )
-        if not ok or not pw:
-            return
-
-        if not validate_login(username, pw):
-            msg = "❌" + self.tr(" Wrong Password")
-            QMessageBox.information(self, self.tr("Full Backup"), msg)
-            msg = self.tr("{ok} Wrong Password").format(ok=kql.i('warn'))
-            log_event_encrypted(self.currentUsername.text(), self.tr("Full Backup"), msg)
-            return
-        msg = self.tr("{ok} Password OK").format(ok=kql.i('ok'))
-        log_event_encrypted(self.currentUsername.text(), self.tr("Full Backup"), msg)
-
-        # Let the user choose a destination folder (export function expects a directory)
-        out_dir = QFileDialog.getExistingDirectory(self, self.tr("Choose folder for backup"))
-        if not out_dir:
-            return
-
-        self.reset_logout_timer()
-        try:
-            # NOTE: export_full_backup(username, [password], out_dir)
-            written = export_full_backup(username, pw, out_dir)  # returns str path to the created file
-            msg = self.tr("{ok} Full Backup OK").format(ok=kql.i('ok'))
-            log_event_encrypted(self.currentUsername.text(), self.tr("Full Backup"), msg)
-            self.full_backup_reminder.note_full_backup_done()
-
-             # Record when this full backup was done (for Security Center)
-            try:
-                self._update_backup_timestamp(username, "last_full_backup")
-            except Exception:
-                pass
-            msg = self.tr("{ok} Full backup saved:\n{writ}").format(ok=kql.i('ok'),writ=written)
-            QMessageBox.information(self, self.tr("Export"), msg)
-        except Exception as e:
-            msg = self.tr("{ok} Export failed:\n{err}").format(ok=kql.i('err'), err=e)
-            QMessageBox.critical(self, self.tr("Export Failed"), msg)
+        from features.backup_advisor.ui_backup_bind import export_vault as _impl
+        return _impl(self)
 
     def _ensure_user_dirs(self, username: str) -> None:
-        """
-        Make sure the per-user folder tree exists so imports can write files safely.
-        """
-        from app.paths import (
-            ensure_dirs,
-            vault_file, salt_file, vault_wrapped_file, shared_key_file,
-            identities_file, user_db_file,
-        )
+        from features.backup_advisor.ui_backup_bind import _ensure_user_dirs as _impl
+        return _impl(self, username)
 
-        try:
-            ensure_dirs()
-        except Exception:
-            pass
+    def import_vault(self):
+        from features.backup_advisor.ui_backup_bind import import_vault as _impl
+        return _impl(self)
 
-        targets = [
-            Path(vault_file(username, ensure_parent=True)),
-            Path(vault_wrapped_file(username, ensure_parent=True, name_only=False)),
-            Path(salt_file(username, ensure_parent=True, name_only=False)),
-            Path(shared_key_file(username, ensure_parent=True, name_only=False)),
-            Path(identities_file(username, ensure_parent=True)),  # …/Users/<u>/identities/<u>.data
-            Path(user_db_file(username, ensure_parent=True)),     # per-user JSON
-        ]
-        for p in targets:
-            p.parent.mkdir(parents=True, exist_ok=True)
+    def import_vault_custom(self):
+        from features.backup_advisor.ui_backup_bind import import_vault_custom as _impl
+        return _impl(self)
 
-    def import_vault(self, *args, **kwargs):
-        from vault_store.vault_ui_ops import import_vault as _impl
-        return _impl(self, *args, **kwargs)
 
-    def import_vault_custom(self, *args, **kwargs):
-        from vault_store.vault_ui_ops import import_vault_custom as _impl
-        return _impl(self, *args, **kwargs)
 
     def _detect_source_hint(self, file_path: str, headers: list[str]) -> str:
         """
@@ -10319,8 +5841,8 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             name = (category_name or "").strip()
             if not name:
                 return True
-            uname = (self.currentUsername.text() or "").strip()
-            canonical = (self.currentUsername.text() or "").strip()
+            uname = self._active_username()
+            canonical = self._active_username()
             if not canonical:
                 return True
 
@@ -10401,10 +5923,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         # fallback minimal category fields.  Use "Username" consistently.
         return [{"label": x} for x in ["Title", "Username", "Password", "URL", "Notes"]]
 
-    def import_csv_entries(self, *args, **kwargs):
-        from app.misc_ops import import_csv_entries as _impl
-        return _impl(self, *args, **kwargs)
-
     def _ensure_category_exists_from_import(self, *args, **kwargs):
         from vault_store.vault_ui_ops import _ensure_category_exists_from_import as _impl
         return _impl(self, *args, **kwargs)
@@ -10417,10 +5935,10 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         """
         try:
             username = self.currentUsername.text().strip() if hasattr(self, "currentUsername") else ""
-            if not username or not getattr(self, "userKey", None):
+            if not username or not getattr(self, 'core_session_handle', None):
                 return []
 
-            entries = load_vault(username, getattr(self, 'core_session_handle', None) or self.userKey) or []
+            entries = load_vault(username, self.core_session_handle) or []
             filtered: list[dict] = []
 
             for e in entries:
@@ -10447,295 +5965,98 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         except Exception:
             return []
 
-    def export_csv(self, *args, **kwargs):
-        from app.misc_ops import export_csv as _impl
+    # ==============================
+    # --- zoom user profile pic value change
+    # ==============================
+    def auto_zoom_factor(self, value: float, *, flush: bool = False) -> None:
+        from app.on_setting_change_ops import auto_zoom_factor as _impl
+        return _impl(self, value, flush)
+
+
+    # ==============================
+    # --- Touch Screen
+    # ==============================
+    def _enable_touch_mode(self, *args, **kwargs):
+        from app.on_setting_change_ops import _enable_touch_mode as _impl
         return _impl(self, *args, **kwargs)
 
-    def _auth_export_safe(self, *args, **kwargs):
-        from auth.login.auth_flow_ops import _auth_export_safe as _impl
-        return _impl(self, *args, **kwargs)
+    def on_touch_mode_toggled_set(self, checked: bool):
+        from app.on_setting_change_ops import on_touch_mode_toggled_set as _impl
+        return _impl(self, checked)
 
-    def _auth_import_safe(self, *args, **kwargs):
-        from auth.login.auth_flow_ops import _auth_import_safe as _impl
-        return _impl(self, *args, **kwargs)
+    def save_to_user_on_touch(self, checked: bool):
+        from app.on_setting_change_ops import save_to_user_on_touch as _impl
+        return _impl(self, checked)
+
+    # ==============================
+    # --- Reminder/watchtower checks
+    # ==============================
+    def scan_due_reminders(self):
+        from features.reminders.reminder_ops import scan_due_reminders as _impl
+        return _impl(self)
+
+    def run_reminder_checks(self):
+        try:
+            from features.reminders.reminder_ops import notify_due_reminders
+            notify_due_reminders(self)
+        except Exception as e:
+            log.error(f"[REMINDERS] notify failed: {e}")
+
+    def start_watchtower_reminder_worker(self):
+        from features.reminders.reminder_ops import start_watchtower_reminder_worker
+        start_watchtower_reminder_worker(self)
+
+    def _on_worker_alert(self, data):
+       from features.reminders.reminder_ops import _on_worker_alert
+       _on_worker_alert(self, data)
+
+    def _watchtower_rescan(self):
+        """
+        Trigger Watchtower rescan (legacy-safe). auto notify on call
+        """
+        wt = getattr(self, "watchtower", None)
+        if wt and hasattr(wt, "start_scan"):
+            wt.start_scan()
+
+    # ==============================
+    # --- breach
+    # ==============================
+    def open_password_breach_checker(self):
+        from features.breach_check.breach_ops import open_password_breach_checker as _impl
+        return _impl(self)
+
+    def open_hibp_for_email(self, email: str) -> None:
+        from features.breach_check.breach_ops import open_hibp_for_email as _impl
+        return _impl(self, email)
 
     def check_selected_email_breach(self):
-        self.reset_logout_timer()
-        log.debug(str("[DEFULT] check_selected_email_breach started"))
-
-        try:
-            selected = self.vaultTable.currentRow()
-            if selected < 0:
-                return
-
-            email_col = self.get_column_index("Email")
-            if email_col is None:
-                return
-
-            item = self.vaultTable.item(selected, email_col)
-            if item:
-                self.open_hibp_for_email(item.text().strip())
-        except Exception as e:
-            log.error(str(f"[DEBUG] check_selected_email_breach error: {e}"))
-
-    # ==============================
-    # --- open password breach dulog (user can enter password)
-
-    def open_password_breach_checker(self):
-        """Open the password breach checker dialog from the Vault tab."""
-        try:
-            try:
-                self.reset_logout_timer()
-            except Exception:
-                pass
-
-            dlg = BreachCheckDialog(parent=self)
-            dlg.setModal(False)  # run as utility tool
-            dlg.show()
-
-            # keep alive
-            self._breachDlg = dlg
-
-        except Exception as e:
-            log.error(str(f"[DEBUG] Failed to open breach checker dialog: {e}"))
-   
-    # ==============================
-    # --- used in check_selected_email_breach check if been porned site
-    def open_hibp_for_email(self, email: str) -> None:
-        """
-        Open HaveIBeenPwned email breach lookup in the user's browser.
-        On first use, show a one-time consent because this sends an *email address* to a third-party service.
-        After accepting (with "Don't ask again"), we won't prompt again.
-        """
-
-        self.reset_logout_timer()
-        log.debug("[DEBUG] open_hibp_for_email started")
-
-        email = (email or "").strip()
-        if not email or "@" not in email:
-            log.debug("[WARN] Email breach check aborted — invalid or empty email.")
-            return
-
-        # Resolve active user for settings persistence
-        try:
-            username = (self.currentUsername.text() or "").strip()
-        except Exception:
-            username = None
-
-        # Read the “don’t ask again” flag
-        email_ack = False
-        if username:
-            try:
-                email_ack = bool(get_user_setting(username, "email_check_ack"))
-            except Exception:
-                email_ack = False
-
-        # If not previously acknowledged, show a one-time consent
-        if not email_ack:
-            accepted, dont_ask = self._show_email_check_modal()
-            if not accepted:
-                log.debug("[INFO] Email breach check cancelled by user.")
-                return
-            # Persist "don't ask again" if requested
-            if username and dont_ask:
-                try:
-                    set_user_setting(username, "email_check_ack", True)
-                except Exception as e:
-                    log.debug(f"[WARN] Could not persist email_check_ack: {e}")
-
-        # Launch HIBP (URL-escaped)
-        try:
-            safe_email = quote(email)
-            pnwed_url(t="em", item=safe_email)
-        except Exception as e:
-            log.error(f"[DEBUG] Error opening browser: {e}")
+        from features.breach_check.breach_ops import check_selected_email_breach as _impl
+        return _impl(self)
 
     def _show_email_check_modal(self) -> tuple[bool, bool]:
-        """
-        One-time confirmation for sending an email address to a third-party (HIBP).
-        Returns (accepted: bool, dont_ask_again: bool).
-        """
+        from features.breach_check.breach_ops import _show_email_check_modal as _impl
+        return _impl(self)
 
-        help_url = getattr(self, "SITE_HELP", SITE_HELP)
-        privacy_url = PRIVACY_POLICY
+    def enable_breach_checker_change(self, checked):
+        from app.on_setting_change_ops import enable_breach_checker_change as _impl
+        return _impl(self, checked)
 
-        msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Information)
-        msg.setWindowTitle(self.tr("Check email for known breaches"))
-        msg.setTextFormat(Qt.RichText)
-        msg.setText(
-            self.tr(
-                "<b>Email breach lookup</b><br>"
-                "This action sends the <b>email address you choose</b> to "
-                "Have I Been Pwned to look up known breaches.<br>"
-                "Your vault is not uploaded.<br><br>"
-                "<a href='{help_url}'>Learn more</a> · "
-                "<a href='{privacy_url}'>Privacy Policy</a>"
-            ).format(help_url=help_url, privacy_url=privacy_url)
-        )
-
-        # "Don't ask me again" checkbox
-        dont_ask_box = QCheckBox(self.tr("Don't ask me again"))
-        msg.setCheckBox(dont_ask_box)
-
-        cont_btn = msg.addButton(self.tr("Continue"), QMessageBox.AcceptRole)
-        cancel_btn = msg.addButton(self.tr("Cancel"), QMessageBox.RejectRole)
-
-        res = msg.exec_() if hasattr(msg, "exec_") else msg.exec()
-        accepted = (msg.clickedButton() is cont_btn)
-        return accepted, bool(dont_ask_box.isChecked())
+    def _show_hibp_consent_modal(self) -> bool:
+        from features.breach_check.breach_ops import _show_hibp_consent_modal as _impl
+        return _impl(self)
 
     # ==============================
     # --- other
     # ==============================
 
-    # --- clear passwordless
-    def clear_passwordless_unlock_on_this_device(self):
-        """Disable DPAPI device unlock for the current Windows account."""
-        username = (self.currentUsername.text() or "").strip()
-        if not username:
-            QMessageBox.information(
-                self,
-                self.tr("No user"),
-                self.tr("No active user to clear passwordless unlock for."),
-            )
-            return
-
-        confirm = QMessageBox.warning(
-            self,
-            self.tr("Disable passwordless unlock"),
-            self.tr(
-                "This will disable passwordless (DPAPI) unlock for this user "
-                "on THIS Windows account.\n\n"
-                "You will need your full password next time.\n\n"
-                "Continue?"
-            ),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-
-        if confirm != QMessageBox.Yes:
-            return
-
-        try:
-            from auth.login.login_handler import get_user_record, set_user_record
-
-            rec = get_user_record(username) or {}
-            du = rec.get("device_unlock") or {}
-
-            # Clear sensitive fields but keep audit metadata
-            du.pop("wrapped_b64", None)
-            du.pop("entropy_b64", None)
-            du["enabled"] = False
-
-            rec["device_unlock"] = du
-            set_user_record(username, rec)
-
-            QMessageBox.information(
-                self,
-                self.tr("Passwordless unlock cleared"),
-                self.tr("Passwordless unlock has been disabled for this device."),
-            )
-
-        except Exception as e:
-            log.exception("[LOGIN] failed clearing passwordless unlock")
-            QMessageBox.critical(
-                self,
-                self.tr("Error"),
-                self.tr("Failed to clear passwordless unlock:\n") + str(e),
-            )
-
-    # --- clear usernames
-    def clear_remembered_username(self):
-        resp = QMessageBox.question(
-            self,
-            self.tr("Clear remembered username"),
-            self.tr("Remove the remembered username from this device?"),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if resp != QMessageBox.Yes:
-            return
-
-        try:
-            s = QSettings("AJHSoftware", "KeyquorumVault")
-            s.remove("login/remembered_username")
-            s.sync()
-        except Exception:
-            pass
-
-        #  update UI immediately
-        try:
-            self.usernameField.clear()
-            if getattr(self, "remember_username", None):
-                self.remember_username.setChecked(False)
-        except Exception:
-            pass
-
-        QMessageBox.information(
-            self,
-            self.tr("Cleared"),
-            self.tr("Remembered username cleared for this device."),
-        )
-
-    # --- Logging 
     def enable_debug_logging_change(self, checked: bool):
-        """
-        Connected to self.debug_set_.toggled in your UI wiring.
-        When ON: start DEBUG logging to rotating file (and console if KQ_CONSOLE=1).
-        When OFF: remove handlers and set level WARNING so nothing gets written.
-        """
-        try:
-            apply_debug_flag(bool(checked))
-            if checked:
-                try:
-                    msg = self.tr("Debug logging is ON.\n\nLog file:\n{logfile_p}").format(logfile_p=get_logfile_path())
-                    QMessageBox.information(self, self.tr("Logging"), msg)
-                except Exception:
-                    pass
-            else:
-                try:
-                    self.set_status_txt(self.tr("Logging is now minimized.\nNo log file will be written"))
-                except Exception:
-                    pass
-        except Exception as e:
-            try:
-                QMessageBox.warning(self, self.tr("Logging"), self.tr("Failed to apply logging setting:\n") + f"{e}")
-            except Exception:
-                pass
+        from app.on_setting_change_ops import enable_debug_logging_change as _impl
+        return _impl(self, checked)
 
-    # --- Allways on top
+
     def set_always_on_top(self, enabled: bool):
-        """
-        Enable/disable always-on-top window behavior.
-        """
-        flags = self.windowFlags()
-        if enabled:
-            # add the flag
-            flags |= Qt.WindowStaysOnTopHint
-        else:
-            # remove the flag
-            flags &= ~Qt.WindowStaysOnTopHint
-
-        self.setWindowFlags(flags)
-        self.show()   # must re-show for the change to take effect
-        log.debug(str(f"[DEBUG] Always-on-top set to {enabled}"))
-    
-    # --- updates lable to username in app
-    def _active_username(self):
-        try:
-            if hasattr(self, "currentUsername") and hasattr(self.currentUsername, "text"):
-                u = (self.currentUsername.text() or "").strip()
-                if u:
-                    return u
-        except Exception:
-            pass
-        for attr in ("currentUsername", "currentUser", "username", "activeUser"):
-            val = getattr(self, attr, None)
-            if isinstance(val, str) and val.strip():
-                return val.strip()
-        return None
-
+        from app.on_setting_change_ops import set_always_on_top as _impl
+        return _impl(self, enabled)
 
 
 # ==============================
@@ -10809,6 +6130,8 @@ def main() -> int:
     def _run_post_show_checks():
         # Manifest + preflight from previous code, same logic
         try:
+            if is_dev:
+                return
             from security.integrity_manifest import verify_manifest_auto
             ok, msg = verify_manifest_auto(show_ui=False, parent=w, dev_app_name="keyquorum-vault")
             if not ok and msg and "skipped" not in (msg or "").lower():

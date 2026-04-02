@@ -32,6 +32,8 @@ from features.clipboard.secure_clipboard import _win_clipboard_risk_state
 from app.platform_utils import IS_WINDOWS
 from security.baseline_signer import _baseline_tracked_files, verify_baseline
 from workers.securitycenter_worker import SecurityCenterWorker
+from native.native_core import get_core
+
 
 def _tr(text: str) -> str:
     """Qt translation helper scoped to the Watchtower UI."""
@@ -372,7 +374,7 @@ def on_security_refresh_clicked(w, *, skip_av: bool = False) -> None:
         else:
             rows = 0
 
-        if getattr(w, "userKey", None) is not None:
+        if getattr(w, "core_session_handle", None) is not None:
             status_txt = _tr("Status: Unlocked ({rows} entries loaded)").format(
                 rows=rows
             )
@@ -534,7 +536,7 @@ def _update_security_vault_section(w, username: str) -> bool:
     detail_lines: list[str] = []
 
     # --- Basic state: locked / unlocked & entry count ---
-    user_key = getattr(w, "userKey", None)
+    user_key = getattr(w, "core_session_handle", None)
     unlocked = user_key is not None
 
     entry_count = 0
@@ -547,19 +549,148 @@ def _update_security_vault_section(w, username: str) -> bool:
         except Exception as e:
             corrupted = True
             vault_ok = False
-            detail_lines.append(_tr("Decrypt test failed:") + f" {e}. " + _tr("The vault file may be corrupted or the current key does not match.")
+            detail_lines.append(
+                _tr("Decrypt test failed:") + f" {e}. " +
+                _tr("The vault file may be corrupted or the current key does not match.")
             )
 
     # --- Status line text ---
     if not unlocked:
         status_txt = _tr("Status:") + " 🔒 " + _tr("Locked")
-        detail_lines.append(
-            _tr("The vault is currently locked. Data is only stored encrypted on disk.")
-        )
+        detail_lines.append(_tr("The vault is currently locked. Data is only stored encrypted on disk."))
     elif corrupted:
         status_txt = _tr("Status:") + " ⚠ " + _tr("Vault may be corrupted")
     else:
         status_txt = _tr("Status:") + " 🔓 " + _tr("Unlocked") + f" ({entry_count} " + _tr("entries loaded)")
+
+    # ------------------------------------------------------------
+    # NEW: Native core/DLL health + mode
+    # ------------------------------------------------------------
+    try:
+        core = None
+        try:
+            # Prefer your central getter if available
+            from native.native_core import get_core  # adjust if your import path differs
+            core = get_core()
+        except Exception:
+            # Fallback: some builds keep a core instance on the window
+            core = getattr(w, "core", None)
+
+        if core is None:
+            detail_lines.append("🧩 " + _tr("Native core: NOT loaded (DLL required)."))
+        else:
+            # Version / backend
+            ver = None
+            backend = None
+            try:
+                ver = core.version()
+            except Exception:
+                ver = None
+            try:
+                backend = core.crypto_backend()
+            except Exception:
+                backend = None
+
+            # Strict mode hint (best-effort; depends how you expose it)
+            strict_flag = None
+            for attr in ("STRICT_DLL_ONLY", "strict_dll_only", "_strict_dll_only"):
+                if hasattr(core, attr):
+                    try:
+                        strict_flag = bool(getattr(core, attr))
+                        break
+                    except Exception:
+                        pass
+            if strict_flag is None:
+                # some apps keep this on the window/app object
+                strict_flag = bool(getattr(w, "strict_dll_only", False))
+
+            # Ex-support (KDF v2 capability)
+            has_ex = False
+            try:
+                if hasattr(core, "has_session_open_ex"):
+                    has_ex = bool(core.has_session_open_ex())
+                elif hasattr(core, "kq_session_open_ex"):
+                    has_ex = True
+            except Exception:
+                has_ex = False
+
+            core_line = _tr("Native core") + ": "
+            if ver is not None:
+                core_line += f"v{ver}"
+            else:
+                core_line += _tr("(version unknown)")
+
+            if backend:
+                core_line += f" • {backend}"
+
+            core_line += " • " + (_tr("Strict DLL-only") if strict_flag else _tr("Non-strict / dev mode"))
+            core_line += " • " + (_tr("KDF-v2 capable (_ex supported)") if has_ex else _tr("Legacy-only (no _ex)"))
+
+            detail_lines.append("🧩 " + core_line)
+
+            # Session type hint (password vs DPAPI remembered-device)
+            try:
+                # If you track this somewhere, expose it. Otherwise we infer.
+                sess_src = getattr(w, "_last_unlock_method", None)  # e.g. "password" / "dpapi"
+                if sess_src:
+                    pretty = {
+                        "password": _tr("Password login"),
+                        "dpapi": _tr("Remembered device (DPAPI)"),
+                        "token": _tr("Remembered device token"),
+                    }.get(str(sess_src).lower(), str(sess_src))
+                    detail_lines.append("🔑 " + _tr("Session unlock method") + f": {pretty}")
+                else:
+                    # Infer a best-effort clue
+                    if getattr(w, "_remember_device_checked_on_login", False):
+                        detail_lines.append("🔑 " + _tr("Session") + ": " + _tr("Password login (remember-device was enabled)"))
+                    else:
+                        detail_lines.append("🔑 " + _tr("Session") + ": " + _tr("Password login / token (unknown)"))
+            except Exception:
+                pass
+    except Exception as e:
+        detail_lines.append(_tr("Native core state unavailable:") + f" {e}")
+
+    # ------------------------------------------------------------
+    # NEW: KDF profile details (Vault KDF v1 vs v2)
+    # ------------------------------------------------------------
+    try:
+        record = get_user_record(username) or {}
+        kdf = (record.get("kdf", {}) or {})
+        algo = (kdf.get("algo") or "argon2id").lower()
+        kdf_v = int(kdf.get("kdf_v") or kdf.get("v") or 1)
+
+        if kdf_v >= 2:
+            t = kdf.get("time_cost")
+            m = kdf.get("memory_kib")
+            p = kdf.get("parallelism")
+            hlen = kdf.get("hash_len") or kdf.get("key_len") or 32
+
+            # Pretty memory label
+            mem_txt = None
+            try:
+                if m is not None:
+                    mem_txt = f"{int(m)} KiB (~{int(int(m)/1024)} MB)"
+            except Exception:
+                mem_txt = str(m)
+
+            detail_lines.append(
+                "🧠 " + _tr("KDF profile") + f": {algo.upper()} • " +
+                _tr("v2 (per-user params)")
+            )
+            detail_lines.append(
+                "🧠 " + _tr("Argon2id params") + f": t={t}, m={mem_txt}, p={p}, out={hlen}B"
+            )
+        else:
+            detail_lines.append(
+                "🧠 " + _tr("KDF profile") + f": {algo.upper()} • " +
+                _tr("v1 (legacy fixed DLL profile)")
+            )
+            detail_lines.append(
+                _tr("Note: v1 uses the DLL’s compiled Argon2id parameters. "
+                    "Upgrade is available if your DLL supports the _ex API.")
+            )
+    except Exception as e:
+        detail_lines.append(_tr("KDF profile unavailable:") + f" {e}")
 
     # --- Vault file info (size + last write + size heuristics) ---
     vault_size_kb = None
@@ -572,56 +703,46 @@ def _update_security_vault_section(w, username: str) -> bool:
             mtime = datetime.fromtimestamp(st.st_mtime)
             age_sec = max(0, time.time() - st.st_mtime)
 
-            # human-friendly "X ago"
             mins = int(age_sec // 60)
             hrs = int(mins // 60)
             days = int(hrs // 24)
             if days > 0:
-                age_txt = f"~{days}"+ _tr("day(s) ago")
+                age_txt = f"~{days} " + _tr("day(s) ago")
             elif hrs > 0:
-                age_txt = f"~{hrs} "+ _tr("hour(s) ago")
+                age_txt = f"~{hrs} " + _tr("hour(s) ago")
             elif mins > 0:
                 age_txt = f"~{mins} " + _tr("minute(s) ago")
             else:
-                age_txt =  _tr("just now")
+                age_txt = _tr("just now")
 
-            detail_lines.append(
-                    _tr("Vault file") + f": {vpath.name} ({vault_size_kb:.1f} KB)"
-            )
-            detail_lines.append(
-                    _tr("Last write") + f": {mtime.strftime('%Y-%m-%d %H:%M:%S')} ({age_txt})"
-            )
+            detail_lines.append(_tr("Vault file") + f": {vpath.name} ({vault_size_kb:.1f} KB)")
+            detail_lines.append(_tr("Last write") + f": {mtime.strftime('%Y-%m-%d %H:%M:%S')} ({age_txt})")
 
-            # Heuristic 1: suspiciously large vault
-            if st.st_size > 50 * 1024 * 1024:  # > 50 MB
+            if st.st_size > 50 * 1024 * 1024:
                 detail_lines.append(_tr(
                     "Warning: Vault file is unusually large (> 50 MB). "
                     "This may indicate embedded binary blobs or very large attachments. "
-                    "Review whether all stored data is really needed.")
-                )
+                    "Review whether all stored data is really needed."
+                ))
 
-            # Heuristic 2: very small vault vs high entry count
             if entry_count >= 100 and vault_size_kb is not None:
-                # rough: < 0.5 KB per entry is suspicious
                 kb_per_entry = vault_size_kb / max(1, entry_count)
                 if kb_per_entry < 0.5:
                     detail_lines.append(_tr(
                         "Warning: Vault size is very small compared to the number of "
                         "entries. This can indicate truncation or an incomplete write. "
-                        "Consider exporting an encrypted backup and verifying it.")
-                    )
+                        "Consider exporting an encrypted backup and verifying it."
+                    ))
         else:
             detail_lines.append(_tr(
                 "Vault file: not found on disk. If you haven't created any entries yet "
-                "this can be normal; otherwise treat this as a serious issue.")
-            )
+                "this can be normal; otherwise treat this as a serious issue."
+            ))
     except Exception as e:
         detail_lines.append(_tr("Could not read vault file info") + f": {e}")
 
     # --- Encryption / KDF mode (static description) ---
-    detail_lines.append(
-            _tr("Encryption: AES-256-GCM for vault data, Argon2id for key derivation.")
-    )
+    detail_lines.append(_tr("Encryption: AES-256-GCM for vault data, Argon2id for key derivation."))
 
     # --- Backup reminder / auto-backup state ---
     try:
@@ -638,35 +759,24 @@ def _update_security_vault_section(w, username: str) -> bool:
                 pending = 0
 
         if mode == "off":
-            detail_lines.append(
-                    _tr("Backup reminders: Off. You won't be prompted to export encrypted backups automatically.")
-            )
+            detail_lines.append(_tr("Backup reminders: Off. You won't be prompted to export encrypted backups automatically."))
         else:
             pretty_mode = {
-                "changes":  _tr("After N changes"),
-                "logout":  _tr("On logout"),
-                "both":    _tr("After changes and on logout"),
+                "changes": _tr("After N changes"),
+                "logout": _tr("On logout"),
+                "both": _tr("After changes and on logout"),
             }.get(mode, mode)
-            detail_lines.append(
-                    _tr("Backup reminders") + f": {pretty_mode} " +
-                    _tr("(pending unsaved changes counter") + f": {pending})."
-            )
+            detail_lines.append(_tr("Backup reminders") + f": {pretty_mode} " + _tr("(pending unsaved changes counter") + f": {pending}).")
     except Exception as e:
         detail_lines.append(_tr("Backup reminder state unavailable:") + f" {e}")
 
     # --- Last successful encrypted backup age (from user record) ---
     try:
-           
         record = get_user_record(username) or {}
         backups = record.get("backups", {}) or {}
-        # prefer vault-only backup, fall back to full backup
-        last_ts = (
-            backups.get("last_vault_backup")
-            or backups.get("last_full_backup")
-        )
+        last_ts = backups.get("last_vault_backup") or backups.get("last_full_backup")
 
         if last_ts:
-            # try ISO first
             try:
                 dt = datetime.fromisoformat(str(last_ts))
                 days_ago = (datetime.utcnow().date() - dt.date()).days
@@ -677,30 +787,23 @@ def _update_security_vault_section(w, username: str) -> bool:
                 if days_ago > 30:
                     detail_lines.append(_tr(
                         "Warning: It has been more than 30 days since the last encrypted backup. "
-                        "Consider creating a fresh backup and storing it offline.")
-                    )
+                        "Consider creating a fresh backup and storing it offline."
+                    ))
             except Exception:
-                # unknown format: still show raw
-                detail_lines.append(_tr("Last encrypted backup (raw timestamp): ") + f"{last_ts} " +
-                    _tr("(format not recognised for age calculation).")
-                )
+                detail_lines.append(_tr("Last encrypted backup (raw timestamp): ") + f"{last_ts} " + _tr("(format not recognised for age calculation)."))
         else:
-            detail_lines.append(
-                _tr("Last encrypted backup: none recorded yet. "
-                "Consider creating an encrypted backup and storing it offline.")
-            )
+            detail_lines.append(_tr(
+                "Last encrypted backup: none recorded yet. "
+                "Consider creating an encrypted backup and storing it offline."
+            ))
     except Exception as e:
         detail_lines.append(_tr("Backup history unavailable") + f": {e}")
 
     # --- Corruption flag explicit line ---
     if corrupted:
-        detail_lines.append(_tr(
-            "Vault corruption check") + ": ⚠ FAILED " + _tr("(see decrypt error above). "
-            "If this persists, restore from a recent encrypted backup.")
-        )
+        detail_lines.append(_tr("Vault corruption check") + ": ⚠ " + _tr("FAILED (see decrypt error above). If this persists, restore from a recent encrypted backup."))
     elif vault_ok:
-        detail_lines.append(_tr("Vault corruption check") + ": ✔ " + _tr("Passed (file decrypted successfully).")
-        )
+        detail_lines.append(_tr("Vault corruption check") + ": ✔ " + _tr("Passed (file decrypted successfully)."))
 
     # --- Push to UI ---
     try:
@@ -709,10 +812,7 @@ def _update_security_vault_section(w, username: str) -> bool:
         pass
 
     try:
-        # Prepend a translated "Details:" to the joined lines
-        w.vaultDetailsLabel.setText(
-            _tr("Details:\n") + "\n".join(detail_lines)
-        )
+        w.vaultDetailsLabel.setText(_tr("Details:\n") + "\n".join(detail_lines))
     except Exception:
         pass
 
@@ -1229,64 +1329,59 @@ def _security_center_clear_ui(w) -> None:
     """
     # --- stop/ignore any running worker ---
     try:
-        w = getattr(w, "_sc_worker", None)
-        if w:
-            # mark worker as cancelled so finish signal can't update UI
-            setattr(w, "_kq_cancelled", True)
-            # ask thread to stop if it supports it
+        worker = getattr(w, "_sc_worker", None)
+        if worker:
+            setattr(worker, "_kq_cancelled", True)
             try:
-                w.requestInterruption()
+                worker.requestInterruption()
             except Exception:
                 pass
             try:
-                w.quit()
+                worker.quit()
             except Exception:
                 pass
             try:
-                w.wait(150)  # small wait; don't hang UI
+                worker.wait(150)
             except Exception:
                 pass
+        try:
+            w._sc_worker = None
+        except Exception:
+            pass
     except Exception:
         pass
 
-    # --- clear labels / text fields (guarded) ---
     def _set(name: str, text: str = ""):
         try:
-            getattr(w, name).setText(text)
-        except Exception:
-            pass
+            obj = getattr(w, name, None)
+            if obj is not None:
+                obj.setText(text)
+        except Exception as e:
+            log.error(f"Clear security center item {name} error: {e}")
 
-    # Baseline
     _set("baselineIntegrityStatus", _tr("Status: (not scanned)"))
     _set("baselineIntegrityDetails", "")
 
-    # Manifest
     _set("manifestIntegrityStatus", _tr("Status: (not scanned)"))
     _set("manifestIntegrityDetails", "")
 
-    # Process scan / preflight
     _set("processScanStatus", _tr("Status: (not scanned)"))
     _set("processScanDetails", "")
 
-    # Vault status
     _set("vaultStatusLabel", _tr("Status: Locked"))
     _set("vaultDetailsLabel", "")
 
-    # Antivirus
     _set("antivirusStatus", _tr("Status: (unknown)"))
     _set("antivirusDetails", "")
 
-    # Clipboard history section (you have two variants; clear both safely)
     _set("windowsClipboardStatusLabel", _tr("Status: (unknown)"))
     _set("windowsClipboardDetailsLabel", "")
     _set("systemClipboardStatusLabel", _tr("Status: (unknown)"))
     _set("systemClipboardDetailsLabel", "")
 
-    # Windows updates
     _set("windowsUpdatesStatusLabel", _tr("Status: (unknown)"))
     _set("windowsUpdatesDetailsLabel", "")
 
-    # Account section
     _set("recovery_m_2", _tr("Account Mode: (unknown)"))
     _set("accountPasswordStrengthLabel", _tr("Password Strength: (unknown)"))
     _set("accountTwofaStatusLabel", _tr("2FA: (unknown)"))
@@ -1296,18 +1391,18 @@ def _security_center_clear_ui(w) -> None:
     _set("accountBackupLastVaultLabel", _tr("Last Vault Backup: (unknown)"))
     _set("accountPasswordLastChangedLabel", _tr("Last Password Change: (unknown)"))
 
-    # System section
     _set("systemTpmStatusLabel", "")
     _set("systemSecureBootStatusLabel", "")
     _set("systemKernelDmaStatusLabel", "")
     _set("systemWindowsActivatedLabel", "")
     _set("systemDeviceIdLabel", "")
 
-    # Score / status bar
     try:
-        w.securityScoreBar.setValue(0)
+        if getattr(w, "securityScoreBar", None):
+            w.securityScoreBar.setValue(0)
     except Exception:
         pass
+
     _set("securityScoreLabel", _tr("Security Score: 0/100 — (not scanned)"))
 
     try:
@@ -1315,7 +1410,6 @@ def _security_center_clear_ui(w) -> None:
     except Exception:
         pass
 
-    # --- clear per-session cache values that affect account panel ---
     try:
         if hasattr(w, "ps_score"):
             w.ps_score = None

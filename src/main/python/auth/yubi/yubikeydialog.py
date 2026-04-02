@@ -33,16 +33,68 @@ from qtpy.QtCore import QCoreApplication
 def _tr(text: str) -> str:
     return QCoreApplication.translate("yubikeydialog", text)
 
+
+def _derive_password_key_for_user(username: str, password: str, salt: bytes) -> bytes:
+    """
+    Derive the password-side vault key using the account's authoritative KDF profile.
+
+    This MUST match normal password login / account creation. Using the legacy
+    derive_key_argon2id(password, salt) path here can produce a different key for
+    KDF v2+ accounts, which then breaks vault loading after WRAP disable.
+    """
+    if not isinstance(password, str) or not password:
+        raise ValueError("password must be a non-empty string")
+    if not isinstance(salt, (bytes, bytearray, memoryview)) or not bytes(salt):
+        raise ValueError("salt must be non-empty bytes")
+
+    from auth.login.login_handler import get_user_record
+    from vault_store.kdf_utils import normalize_kdf_params
+
+    core = get_core()
+    if not core:
+        raise RuntimeError("Native core not loaded. DLL is required.")
+
+    try:
+        rec = get_user_record(username) or {}
+        kdf = normalize_kdf_params(rec.get("kdf") or {}) if isinstance(rec, dict) else {"kdf_v": 1}
+    except Exception:
+        kdf = {"kdf_v": 1}
+
+    pw_buf = bytearray(password.encode("utf-8"))
+    try:
+        if (
+            isinstance(kdf, dict)
+            and int(kdf.get("kdf_v", 1)) >= 2
+            and hasattr(core, "derive_vault_key_ex")
+            and getattr(core, "has_derive_vault_key_ex", lambda: False)()
+        ):
+            return bytes(core.derive_vault_key_ex(
+                pw_buf,
+                bytes(salt),
+                time_cost=int(kdf.get("time_cost", 3)),
+                memory_kib=int(kdf.get("memory_kib", 256000)),
+                parallelism=int(kdf.get("parallelism", 2)),
+            ))
+        return bytes(core.derive_vault_key(pw_buf, bytes(salt)))
+    finally:
+        try:
+            core.secure_wipe(pw_buf)
+        except Exception:
+            for i in range(len(pw_buf)):
+                pw_buf[i] = 0
+
 # --- Yubi Backend ---
 from auth.yubi.yk_backend import YKBackend
-# --- Two-of-two helpers (support both module names) ---
-try:
-    from auth.tfa.two_of_two import enable_yk_hmac_gate
-except Exception:
-    enable_yk_hmac_gate = None
+from native.native_core import get_core
+enable_yk_hmac_gate = None
+
+from app.dev import dev_ops
+is_dev = dev_ops.dev_set
 
 # --- Identity store
 from auth.identity_store import get_yubi_meta_quick, set_yubi_config, bind_recovery_wrapper, bind_yubi_wrapper, clear_yubi_config
+from auth.login.login_handler import get_user_record, set_user_record
+from auth.windows_hello.session import clear_device_unlock
 
 # ==============================
 # ---------------- Small modal "Touch" spinner ----------------
@@ -117,16 +169,18 @@ class _YkEnableWorker(QThread):
     done = Signal(dict)
 
     def __init__(self, *, mode: str, username: str, master_key: Optional[bytes],
-                 serial: Optional[str], slot: int, ykman_path: Optional[str],
-                 password: str):
+                 current_session: Optional[int], serial: Optional[str], slot: int, ykman_path: Optional[str],
+                 password: str, owner=None):
         super().__init__()
         self.mode = mode  # "wrap" or "gate"
         self.username = username
         self.master_key = master_key
+        self.current_session = int(current_session) if isinstance(current_session, int) and current_session > 0 else None
         self.serial = serial
         self.slot = int(slot or 2)
         self.ykman_path = ykman_path
         self.password = password
+        self.owner = owner
 
     def _call_helper(self, fn, **kwargs):
         if fn is None: return None
@@ -189,9 +243,6 @@ class _YkEnableWorker(QThread):
             )
 
             if self.mode == "wrap":
-                if not self.master_key or not isinstance(self.master_key, (bytes, bytearray)):
-                    raise RuntimeError(_tr("Unlock the vault first: WRAP needs the master key."))
-
                 self.status.emit(_tr("Enabling YubiKey WRAP…"))
 
                 # --- Inline wrap creation (matches login unwrap recipe) ---
@@ -199,19 +250,27 @@ class _YkEnableWorker(QThread):
                 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
                 # 1) Derive password_key = Argon2id(password, user_salt)
-                from app.paths import salt_file
+                from auth.salt_file import load_master_salt_for_user
 
                 try:
-                    user_salt = salt_file(self.username, ensure_parent=False).read_bytes()
-                except FileNotFoundError:
-                    raise RuntimeError(f"User salt file not found for '{self.username}'")
+                    user_salt = load_master_salt_for_user(self.username)
+                except Exception as e:
+                    raise RuntimeError(f"Could not load master salt for '{self.username}': {e}")
 
-                try:
-                    # use Argon2id function
-                    from vault_store.kdf_utils import derive_key_argon2id
-                except Exception:
-                    from vault_store.kdf_utils import derive_key_argon2id 
-                password_key = derive_key_argon2id(self.password or "", user_salt)  # 32B
+                password_key = _derive_password_key_for_user(self.username, self.password or "", user_salt)  # 32B
+
+                # STRICT DLL-only mode keeps the unlocked vault behind a native session handle.
+                # For first-time WRAP enable on a password-only vault, we can still derive
+                # the current MK as password_key for wrapper metadata, but vault migration
+                # itself MUST use the native session handle.
+                if not self.master_key or not isinstance(self.master_key, (bytes, bytearray)):
+                    self.master_key = bytes(password_key)
+
+                if not self.master_key or not isinstance(self.master_key, (bytes, bytearray)):
+                    raise RuntimeError(_tr("Unlock the vault first: WRAP needs the master key."))
+
+                if not isinstance(self.current_session, int) or self.current_session <= 0:
+                    raise RuntimeError(_tr("Unlock the vault first: missing native session handle."))
 
                 # 2) Touch YubiKey with a fresh WRAP salt (we will store this salt)
                 wrap_salt = os.urandom(16)
@@ -229,9 +288,41 @@ class _YkEnableWorker(QThread):
                 mk = bytes(self.master_key)
                 if bytes_equal(mk, password_key):
                     new_mk = os.urandom(32)
-                    rekey_user_stores(self.username, mk, new_mk)  # vault now requires unwrap to get new_mk
+                    core = get_core()
+                    new_session = None
+                    try:
+                        new_session = core.open_session_from_key(new_mk)
+                        rekey_user_stores(
+                            self.username,
+                            mk,
+                            new_mk,
+                            old_vault_session=self.current_session,
+                            new_vault_session=new_session,
+                        )  # vault now requires unwrap to get new_mk
+                        try:
+                            from features.security_center.vault_security_update_ops import migrate_post_rekey_side_stores
+                            owner = self.owner if self.owner is not None else self
+                            mig_ok, mig_warnings = migrate_post_rekey_side_stores(
+                                w=owner,
+                                username=self.username,
+                                old_session_handle=self.current_session,
+                                new_session_handle=int(new_session),
+                                refresh_device_unlock=True,
+                            )
+                            try:
+                                log.info("[WRAP-ENABLE] side-store migration ok=%s warnings=%s", mig_ok, mig_warnings)
+                            except Exception:
+                                pass
+                        except Exception as e:
+                            L(f"[WRAP] post-rekey side-store migration warning: {e!r}")
+                    finally:
+                        try:
+                            if new_session:
+                                core.close_session(new_session)
+                        except Exception:
+                            pass
                     mk = new_mk
-                    self.master_key = new_mk  # keep session unlocked with the new MK
+                    self.master_key = new_mk
 
                 # Ensure identity recovery wrapper and yubi wrapper track this MK
                 try:
@@ -287,12 +378,7 @@ class _YkEnableWorker(QThread):
                 except Exception:
                     backup_codes = []
 
-                # update live session key in parent (so UI actions keep working)
-                try:
-                    if hasattr(self.parent(), "_set_user_key"):
-                        self.parent()._set_user_key(mk, reason="wrap-enable")
-                except Exception:
-                    pass
+                # Worker has no UI parent; the caller refreshes session state after finished_setup.
 
                 self.done.emit({"ok": True, "mode": "wrap", "recovery_key": rk_print, "backup_codes": backup_codes})
                 return
@@ -563,6 +649,7 @@ class YubiKeySetupDialog(QDialog):
             mode=mode,
             username=self.username,
             master_key=self.current_mk,
+            current_session=(getattr(self.parent(), "core_session_handle", None) if self.parent() is not None else None),
             serial=serial,
             slot=slot,
             ykman_path=self._ykman_path_guess(),
@@ -747,6 +834,7 @@ class YubiKeySetupDialog(QDialog):
             # Also clear identity header copy (no crypto impact)
             try:
                 clear_yubi_config(self.username, self._password or "")
+
             except Exception as e:
                 err = err or e
 
@@ -782,16 +870,20 @@ class YubiKeySetupDialog(QDialog):
             except Exception:
                 parent = None
 
-            if parent is not None and hasattr(parent, "userKey"):
+            current_session = None
+            if parent is not None and hasattr(parent, "core_session_handle"):
                 try:
-                    mk = bytes(getattr(parent, "userKey"))
+                    sess = getattr(parent, "core_session_handle")
+                    if isinstance(sess, int) and sess > 0:
+                        current_session = int(sess)
                 except Exception:
-                    mk = None
+                    current_session = None
 
             if mk is None and isinstance(self.current_mk, (bytes, bytearray)):
                 mk = bytes(self.current_mk)
 
-            if not mk:
+            if not isinstance(mk, (bytes, bytearray)) and not current_session:
+            # if not mk and not current_session:
                 # We cannot safely re-encrypt the vault key → refuse to disable
                 QMessageBox.warning(
                     self,
@@ -817,8 +909,8 @@ class YubiKeySetupDialog(QDialog):
 
             # Derive the password_key using the same salt as login
             try:
-                from app.paths import salt_file
-                user_salt = salt_file(self.username, ensure_parent=False).read_bytes()
+                from auth.salt_file import load_master_salt_for_user
+                user_salt = load_master_salt_for_user(self.username)
             except Exception as e:
                 msg = self.tr("Cannot disable WRAP: vault backup required.\n\n"
                               "Create a full encrypted backup first (File → Export Vault).\n\n"
@@ -831,11 +923,7 @@ class YubiKeySetupDialog(QDialog):
                 return
 
             try:
-                try:
-                    from vault_store.kdf_utils import derive_key_argon2id
-                except Exception:
-                    from vault_store.kdf_utils import derive_key_argon2id  # legacy fallback
-                password_key = derive_key_argon2id(self._password or "", user_salt)
+                password_key = _derive_password_key_for_user(self.username, (self._password or ""), user_salt)
             except Exception as e:
                 msg = self.tr("You cannot disable YubiKey WRAP without a vault backup; "
                                 "export your vault first.\n\n"
@@ -857,8 +945,31 @@ class YubiKeySetupDialog(QDialog):
                     self.tr("YubiKey WRAP"), msg )
                 return
 
+            if not isinstance(password_key, (bytes, bytearray)):
+                QMessageBox.warning(
+                    self,
+                    self.tr("YubiKey WRAP"),
+                    self.tr("Cannot disable WRAP because the password key could not be derived.")
+                )
+                return
+
+
+            if is_dev:
+                log.debug("[WRAP-DISABLE] ===== BEGIN =====")
+                log.debug("[WRAP-DISABLE] user=%s", self.username)
+                log.debug("[WRAP-DISABLE] session=%s", current_session)
+                log.debug("[WRAP-DISABLE] mk_present=%s", isinstance(mk, (bytes, bytearray)))
+                log.debug("[WRAP-DISABLE] pwk_len=%s", len(password_key) if isinstance(password_key,(bytes,bytearray)) else 0)
+                try:
+                    _rec = get_user_record(self.username) or {}
+                    _kdf = ((_rec or {}).get("kdf") or {}) if isinstance(_rec, dict) else {}
+                except Exception:
+                    _kdf = {}
+                log.debug("[WRAP-DISABLE] target password KDF=%s", _kdf)
+                log.debug("[WRAP-DISABLE] calling rekey_user_stores")
+
             try:
-                rekey_user_stores(self.username, mk, password_key)
+                rekey_user_stores(self.username, mk, password_key, old_vault_session=current_session)
             except Exception as e:
                 msg = self.tr("You cannot disable YubiKey WRAP without a vault backup; "
                                 "export your vault first.\n\n"
@@ -868,19 +979,134 @@ class YubiKeySetupDialog(QDialog):
                     self,
                     self.tr("YubiKey WRAP"), msg)
                 return
+            if is_dev:
+                log.debug("[WRAP-DISABLE] rekey_user_stores OK")
+
+            # Verify the migrated vault can be opened using the password-derived key
+            # BEFORE we remove WRAP config. If this fails, abort and keep WRAP enabled.
+            verify_session = None
+            try:
+                from vault_store.vault_store import load_vault
+                core = get_core()
+                if core is None or not hasattr(core, "open_session_from_key"):
+                    raise RuntimeError("Native core is unavailable for post-migration verification.")
+                verify_session = int(core.open_session_from_key(bytearray(password_key)))
+                _rows = load_vault(self.username, verify_session)
+
+                if is_dev:
+                    log.debug("[WRAP-DISABLE] verify rows=%s", len(_rows) if isinstance(_rows, list) else -1)
+
+                # Also verify that the *next normal password login* can open the vault
+                # using the account's configured KDF profile. This catches the exact
+                # mismatch where WRAP disable rekeys to a legacy/v1-derived password key
+                # while normal login later uses KDF v2+.
+                verify_login_session = None
+                try:
+                    from auth.login.login_handler import get_user_record
+                    from vault_store.kdf_utils import normalize_kdf_params
+
+                    _rec = get_user_record(self.username) or {}
+                    _kdf = normalize_kdf_params((_rec or {}).get("kdf") or {}) if isinstance(_rec, dict) else {"kdf_v": 1}
+                    pw_buf = bytearray((self._password or "").encode("utf-8"))
+                    try:
+                        if (
+                            int((_kdf or {}).get("kdf_v", 1)) >= 2
+                            and hasattr(core, "open_session_ex")
+                            and getattr(core, "has_session_open_ex", lambda: False)()
+                        ):
+                            verify_login_session = int(core.open_session_ex(
+                                pw_buf,
+                                bytes(user_salt),
+                                time_cost=int((_kdf or {}).get("time_cost", 3)),
+                                memory_kib=int((_kdf or {}).get("memory_kib", 256000)),
+                                parallelism=int((_kdf or {}).get("parallelism", 2)),
+                            ))
+                        else:
+                            verify_login_session = int(core.open_session(pw_buf, bytes(user_salt)))
+                    finally:
+                        try:
+                            core.secure_wipe(pw_buf)
+                        except Exception:
+                            for i in range(len(pw_buf)):
+                                pw_buf[i] = 0
+
+                    _rows2 = load_vault(self.username, verify_login_session)
+                    if is_dev:
+                        log.debug("[WRAP-DISABLE] verify next-login rows=%s", len(_rows2) if isinstance(_rows2, list) else -1)
+                    if not isinstance(_rows2, list):
+                        raise RuntimeError("Normal password-login verification returned an invalid payload.")
+                finally:
+                    try:
+                        if verify_login_session:
+                            get_core().close_session(verify_login_session)
+                    except Exception:
+                        pass
+
+                if not isinstance(_rows, list):
+                    raise RuntimeError("Post-migration vault verification returned an invalid payload.")
+            except Exception as e:
+                msg = self.tr(
+                    "You cannot disable YubiKey WRAP because the migrated vault could not be verified.\n\n"
+                    "WRAP is still enabled to protect against data loss.\n\n"
+                    "(Verification failed: {err})"
+                ).format(err=e)
+                QMessageBox.warning(self, self.tr("YubiKey WRAP"), msg)
+                return
+            finally:
+                try:
+                    if verify_session:
+                        get_core().close_session(verify_session)
+                except Exception:
+                    pass
 
             # Best-effort: refresh recovery wrapper to track the new MK (password_key)
             try:
-                bind_recovery_wrapper(self.username, self._password or "", password_key)
+                bind_recovery_wrapper(self.username, (self._password or ""), password_key)
             except Exception as e:
                 L(f"[disable-wrap] bind_recovery_wrapper warning: {e!r}")
 
+            # Migrate side stores while both sessions are still available.
+            try:
+                from features.security_center.vault_security_update_ops import migrate_post_rekey_side_stores
+                core = get_core()
+                live_new_session = int(core.open_session_from_key(bytearray(password_key)))
+                try:
+                    mig_ok, mig_warnings = migrate_post_rekey_side_stores(
+                        w=(parent if parent is not None else self),
+                        username=self.username,
+                        old_session_handle=current_session,
+                        new_session_handle=live_new_session,
+                        refresh_device_unlock=True,
+                    )
+                    try:
+                        log.info("[WRAP-DISABLE] side-store migration ok=%s warnings=%s", mig_ok, mig_warnings)
+                    except Exception:
+                        pass
+                finally:
+                    try:
+                        if live_new_session and (parent is None or getattr(parent, 'core_session_handle', None) != live_new_session):
+                            core.close_session(live_new_session)
+                    except Exception:
+                        pass
+            except Exception as e:
+                L(f"[WRAP-DISABLE] post-rekey side-store migration warning: {e!r}")
+
+            # No live session handoff here; force a clean logout and next clean login.
+
             # Now it is SAFE to drop WRAP config:
             err = None
+            from auth.identity_store import get_yubi_config_public
+            pub = get_yubi_config_public(self.username) or {}
+            log.debug("[WRAP-DISABLE] identity BEFORE clear: %s", pub)
+
+
             try:
-                clear_yubi_config(self.username, self._password or "")
+                clear_yubi_config(self.username, (self._password or ""))
             except Exception as e:
                 err = e
+
+            pub2 = get_yubi_config_public(self.username) or {}
+            log.debug("[WRAP-DISABLE] identity AFTER clear: %s", pub2)
 
             # Also clear user_db twofactor record if present
             try:
@@ -899,12 +1125,40 @@ class YubiKeySetupDialog(QDialog):
                     self,
                      self.tr("YubiKey WRAP"), msg )
             else:
+                # Clear any stale remembered-device token.
+                # After WRAP disable the vault key has changed, so old DPAPI tokens may
+                # still decrypt to the pre-disable key and break later DPAPI login.
+                try:
+                    rec = get_user_record(self.username) or {}
+                    before_du = bool((rec.get("device_unlock") or {}))
+                    before_toks = len(rec.get("device_unlock_tokens") or [])
+                    rec = clear_device_unlock(rec)
+                    rec["device_unlock_tokens"] = []
+                    set_user_record(self.username, rec)
+                    log.debug(
+                        "[WRAP-DISABLE] cleared stale device unlock token user=%s had_blob=%s had_tokens=%s",
+                        self.username, before_du, before_toks
+                    )
+                except Exception as e:
+                    log.debug("[WRAP-DISABLE] device unlock clear warning: %r", e)
+
+                # Remove any stale wrapped-vault blob. After WRAP is disabled the next login is
+                # already a direct password-only vault session. Leaving a legacy .kq_wrap file on
+                # disk makes the login rescue path try to unwrap an already-correct session, which
+                # turns it into the wrong one and later vault decrypts fail with rc=-10.
+                try:
+                    from app.paths import vault_wrapped_file
+                    _wp = vault_wrapped_file(self.username, ensure_parent=False)
+                    if _wp.exists():
+                        _wp.unlink()
+                        log.debug("[WRAP-DISABLE] removed stale wrap blob: %s", _wp)
+                except Exception as e:
+                    log.debug("[WRAP-DISABLE] wrap blob cleanup warning: %r", e)
                 # We successfully migrated MK back to password_key.
                 # For safety, we will log the user out so the next session
                 # cleanly uses password-only protection.
                 try:
-                    if parent is not None and hasattr(parent, "_set_user_key"):
-                        parent._set_user_key(password_key, reason="wrap-disable")
+                    log.debug("[WRAP-DISABLE] skipping _set_user_key live handoff user=%s", self.username)
                 except Exception:
                     pass
 
@@ -916,13 +1170,12 @@ class YubiKeySetupDialog(QDialog):
                         "Your vault is now protected by your password only.\n"
                         "Maximum-security mode remains active.\n\n"
                         "For your security, you will now be logged out.\n"
-                        "Please log in again using your account password."
+                        "Please log in again using your account password.\n\n"
+                        "Remember Device will need to be enabled again after this login."
                     ),
                 )
 
-                self._reflect_current_mode()
-
-                # 🔐 Force logout on the parent main window, if available
+                                # 🔐 Force logout on the parent main window, if available
                 try:
                     if parent is not None and hasattr(parent, "logout_user"):
                         try:

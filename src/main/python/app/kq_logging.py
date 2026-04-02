@@ -33,10 +33,13 @@ import logging, os, sys, traceback
 from logging.handlers import RotatingFileHandler
 from typing import Optional
 import re
-# NOTE: avoid circular import with app.paths; import lazily inside functions
-def __user_log_file(username: Optional[str] = None):
-    from app.paths import user_log_file as _ulf  # local import (break circular)
-    return _ulf(username) if username is not None else _ulf()
+try:
+    from app.paths import user_log_file
+except Exception:
+    # NOTE: avoid circular import with app.paths; import lazily inside functions
+    def user_log_file(username: Optional[str] = None):
+        from app.paths import user_log_file as _ulf  # local import (break circular)
+        return _ulf(username) if username is not None else _ulf()
 
 # ==============================
 # = Redaction filter (hide secrets)
@@ -246,7 +249,7 @@ def setup_logging(logger_name: str = _LOGGER_NAME,
         lg.addFilter(RedactFilter())
 
     # File handler (default or per-user)
-    target_path = _user_log_file(username, ensure_parent=True) if username else _default_log_file()
+    target_path = user_log_file(username, ensure_parent=True) if username else _default_log_file()
     _detach_active_file_handler(lg)
     _ACTIVE_FILE_HANDLER = _make_file_handler(target_path, level)
     _attach_file_handler(lg, _ACTIVE_FILE_HANDLER)
@@ -273,7 +276,7 @@ def set_log_user(username: Optional[str]) -> None:
     # Keep current level / console setup
     current_level = lg.level
 
-    target_path = _user_log_file(username, ensure_parent=True) if username else _default_log_file()
+    target_path = user_log_file(username, ensure_parent=True) if username else _default_log_file()
     if _ACTIVE_USERNAME == username and _ACTIVE_FILE_HANDLER:
         # already on the desired file
         return
@@ -327,6 +330,7 @@ def apply_debug_flag(enabled: bool, *, keep_console: bool | None = None) -> None
         else:
             _remove_console_handler(lg)
         lg.debug("[logging] debug mode enabled")
+
     else:
         lg.setLevel(logging.WARNING)
         if _ACTIVE_FILE_HANDLER:

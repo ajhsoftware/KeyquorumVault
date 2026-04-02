@@ -40,12 +40,91 @@ from auth.login.login_handler import (
 from auth.pw.password_utils import validate_password
 from security.timestamp_utils import now_utc_iso
 from security.baseline_signer import update_baseline
+from native.native_core import get_core
+from vault_store.kdf_utils import normalize_kdf_params
 
 log = logging.getLogger("keyquorum")
 log.debug("[DEBUG] 🔐 Change Password Dialog Loaded")
 
+
+def _open_native_session_for_user(username: str, password_text: str) -> int:
+    
+    """Open a strict native session using the user's stored KDF profile."""
+    if not username or not password_text:
+        raise ValueError("username and password are required")
+
+    from auth.salt_file import read_master_salt_strict
+    salt = read_master_salt_strict(username)
+    if not salt:
+        raise ValueError("User salt not found")
+
+    rec = get_user_record(username) or {}
+    kdf = normalize_kdf_params(rec.get("kdf") or {}) if isinstance(rec, dict) else {}
+
+    core = get_core()
+    if not core:
+        raise RuntimeError("Native core not loaded. DLL is required.")
+
+    pw_buf = bytearray(password_text.encode("utf-8"))
+    try:
+        if (
+            isinstance(kdf, dict)
+            and int(kdf.get("kdf_v", 1)) >= 2
+            and hasattr(core, "open_session_ex")
+            and getattr(core, "has_session_open_ex", lambda: False)()
+        ):
+            return int(core.open_session_ex(
+                pw_buf,
+                bytes(salt),
+                time_cost=int(kdf.get("time_cost", 3)),
+                memory_kib=int(kdf.get("memory_kib", 256000)),
+                parallelism=int(kdf.get("parallelism", 2)),
+            ))
+        return int(core.open_session(pw_buf, bytes(salt)))
+    finally:
+        try:
+            core.secure_wipe(pw_buf)
+        except Exception:
+            for i in range(len(pw_buf)):
+                pw_buf[i] = 0
+
+def _close_native_session_safe(session_handle) -> None:
+    try:
+        if isinstance(session_handle, int) and session_handle > 0:
+            get_core().close_session(int(session_handle))
+    except Exception:
+        pass
+
 def _norm(s: str) -> str:
     return (s or "").strip()
+
+
+def show_message(self):
+    # Recommend a full backup before any password / key changes
+    reply = QMessageBox.warning(
+        self,
+        self.tr("Security Warning"),
+        self.tr(
+            "Changing your password, rotating the salt, or enabling/disabling wrap "
+            "(e.g. YubiKey) will re-encrypt all protected parts of your vault.\n\n"
+
+            "This includes:\n"
+            "• Authenticator store\n"
+            "• Password history\n"
+            "• Soft delete (trash)\n"
+            "• Catalog data\n\n"
+
+            "Any issue during this process could make this data inaccessible.\n"
+            "For your safety, it is strongly recommended to create a FULL encrypted backup first.\n\n"
+
+            "Do you want to create a backup before continuing?"
+        ),
+        QMessageBox.Yes | QMessageBox.No,
+        QMessageBox.Yes,
+    )
+    return reply
+
+
 
 def _persist_backup_codes(canonical_username: str, codes_plain: list[str], *, password_for_identity: str) -> None:
     """Persist *login* backup codes via the Identity Store (single source of truth).
@@ -75,7 +154,7 @@ class ChangePasswordDialog(QDialog, Ui_SecurePasswordChangeDialog):
             recovery_mode = bool(acct.get("recovery_mode", False))
             is_max_security = not recovery_mode
 
-            # Max-security: do not allow generating recovery-mode secrets here
+            # Max-security: do not allow generating recovery-mode
             if is_max_security:
                 self.updateBackupCodesCheckbox.setChecked(False)
                 self.updateBackupCodesCheckbox.setEnabled(False)
@@ -177,13 +256,17 @@ class ChangePasswordDialog(QDialog, Ui_SecurePasswordChangeDialog):
                 QMessageBox.warning(self, self.tr("Two-Factor Authentication"), self.tr("2FA verification was not completed."))
                 return
 
-            # Keep the current session key so the app can run a post-login rewrap
-            # (e.g., Authenticator Store secrets) after the user logs back in.
+            # Preserve only the CURRENT native session handle for any later login-time
+            # migration. No fall back to raw bytes
+            old_session_handle = None
             try:
                 if parent is not None:
-                    parent._prev_userKey = getattr(parent, "userKey", None) or self.user_key
+                    sess = getattr(parent, "core_session_handle", None)
+                    if isinstance(sess, int) and sess > 0:
+                        old_session_handle = int(sess)
+                        parent._prev_core_session_handle = int(sess)
             except Exception:
-                pass
+                old_session_handle = None
 
             # Update user record + crypto materials
             result = create_or_update_user(
@@ -271,6 +354,72 @@ class ChangePasswordDialog(QDialog, Ui_SecurePasswordChangeDialog):
                 except Exception:
                     log.warning("[SEC] Failed to persist new backup codes for %s", canonical)
 
+            # Immediately migrate session-encrypted side stores while the OLD native session is
+            # still alive. This is more reliable than waiting for the next login.
+            migration_warnings = []
+            new_session_handle = None
+            try:
+                if isinstance(old_session_handle, int) and old_session_handle > 0:
+                    new_session_handle = _open_native_session_for_user(canonical, new_pw)
+
+                    try:
+                        from features.security_center.vault_security_update_ops import migrate_post_rekey_side_stores
+
+                        mig_ok, mig_warnings = migrate_post_rekey_side_stores(
+                            w=parent,
+                            username=canonical,
+                            old_session_handle=old_session_handle,
+                            new_session_handle=new_session_handle,
+                            refresh_device_unlock=True,
+                        )
+
+                        if mig_warnings:
+                            migration_warnings.extend(
+                                self.tr("• {msg}").format(msg=str(m)) for m in mig_warnings
+                            )
+
+                        try:
+                            from features.systemtray.systemtry_ops import notify_other
+                            notify_other(self, "Password Update", "Security stores refreshed")
+                        except Exception:
+                            pass
+
+                    except Exception as e:
+                        migration_warnings.append(
+                            self.tr("• Side-store migration: FAILED — {msg}").format(msg=str(e))
+                        )
+            finally:
+                _close_native_session_safe(new_session_handle)
+            
+            if migration_warnings:
+                title =  self.tr("Migration warnings")
+                msg = self.tr(
+                        "Some files could not be updated after your password change.\n\n"
+                        "{details}\n\n"
+                        "What you can do:\n"
+                        "• Log out and log in again.\n"
+                        "• If it still fails, restore from your most recent FULL backup."
+                    ).format(details="\n".join(migration_warnings))
+
+                QMessageBox.warning(
+                    self,
+                    title,
+                    msg)
+
+                try:
+                    from features.systemtray.systemtry_ops import notify_other
+                    notify_other(self, title, msg)
+                except Exception:
+                    pass
+            
+            # We handled side-store migration already. Avoid a second login-time run
+            # against a stale/closed old session.
+            try:
+                if parent is not None and hasattr(parent, "_prev_core_session_handle"):
+                    delattr(parent, "_prev_core_session_handle")
+            except Exception:
+                pass
+
             # If we have any new secrets, offer to build/update the Emergency Kit
             try:
                 if parent is not None and hasattr(parent, "emg_ask") and (new_codes or new_recovery_key):
@@ -339,19 +488,22 @@ class ChangePasswordDialog(QDialog, Ui_SecurePasswordChangeDialog):
                 update_baseline(canonical, verify_after=False, who=self.tr("Password Updated"))
             except Exception as e:
                 log.warning("[BASELINE] update_baseline failed: %s", e)
-
+            title = self.tr("Password Updated")
+            msg = self.tr(
+                    "Your password has been updated successfully.\n\n"
+                    "Keyquorum now needs a quick re-login to refresh your encryption keys "
+                    "Click OK, then log in again using your new password."),
             # Single, clear message (no double popups)
             QMessageBox.information(
                 self,
-                self.tr("Password Updated"),
-                self.tr(
-                    "Your password has been updated successfully.\n\n"
-                    "Keyquorum now needs a quick re-login to refresh your encryption keys "
-                    "and keep features like the Authenticator working.\n\n"
-                    "Please don’t close the app.\n"
-                    "Click OK, then log in again using your new password."
-                ),
-            )
+                title,
+                msg,)
+            
+            try:
+                from features.systemtray.systemtry_ops import notify_other
+                notify_other(self, title, msg)
+            except Exception:
+                pass
 
             # Force logout (parent will return to login screen)
             try:

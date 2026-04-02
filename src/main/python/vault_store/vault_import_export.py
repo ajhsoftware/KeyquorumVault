@@ -11,8 +11,9 @@ the Free Software Foundation, either version 3 of the License, or
 
 Keyquorum Vault is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."""
 
+"""
 This module implements all backup and restore functionality for
 Keyquorum Vault.  It was extracted from the original ``main.py`` to
 isolate the business logic related to exporting and importing vaults
@@ -76,29 +77,18 @@ from pathlib import Path
 from zipfile import ZipFile
 from shutil import rmtree
 from typing import Optional, Set, Tuple
+try:
+    from app.qt_imports import *  # noqa: F401,F403
+except Exception:
+    pass
 
-from qtpy.QtWidgets import (
-    QFileDialog,
-    QInputDialog,
-    QLineEdit,
-    QMessageBox,
-    QDialog,
-    QGroupBox,
-    QVBoxLayout,
-    QLabel,
-    QDialogButtonBox,
-    QCheckBox,
-    QRadioButton,
-)
-
-from auth.logout_flow import reset_logout_timer
-from auth.login_handler import validate_login
+from auth.logout.logout_flow import reset_logout_timer
+from auth.login.login_handler import validate_login
 from vault_store.vault_store import (
     export_vault_with_password as _export_pw_fn,
     import_vault_with_password as _import_pw_fn,
     export_full_backup,
-    import_full_backup,
-)
+    import_full_backup,)
 from security.baseline_signer import update_baseline
 from security.audit_v2 import log_event_encrypted
 import app.kq_logging as kql
@@ -186,9 +176,8 @@ class RestoreOptionsDialog(QDialog):
         # Hint
         hint = QLabel(
             self.tr(
-                "Tip: to restore only your user record, untick everything except “User record (user_db)”."
-            )
-        )
+                "Tip: to restore only your user record, untick everything except “User record (user_db)”."))
+
         hint.setWordWrap(True)
 
         # Buttons
@@ -391,10 +380,11 @@ def import_vault_with_password(w) -> None:
             ),
         )
         try:
+            from features.auth_store.auth_ops import _auth_reload_table
             w.refresh_category_selector()
             w.refresh_category_dependent_ui()
             w.load_vault_table()
-            w._auth_reload_table()
+            _auth_reload_table(w)
             w.set_status_txt(w.tr("Vault backup imported"))
         except Exception:
             pass
@@ -726,12 +716,7 @@ def import_vault_custom(w) -> None:
         update_baseline(username=username, verify_after=False, who=w.tr("Selective restore OK"))
         msg = w.tr("{ok}Restore completed\n{in_p}").format(ok=kql.i("ok"), in_p=in_path)
         QMessageBox.information(w, w.tr("Import"), msg)
-        try:
-            if hasattr(w, "currentUsername"):
-                w.currentUsername.setText(username)
-            w.load_vault_table()
-        except Exception:
-            pass
+        w.logout_user()
     except Exception as e:
         msg = w.tr("{ok} Restore completed\n{err}").format(ok=kql.i("err"), err=e)
         QMessageBox.critical(w, w.tr("Import Failed"), msg)

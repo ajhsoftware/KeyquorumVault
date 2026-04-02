@@ -65,6 +65,7 @@ class _Signals(QObject):
 def _norm(s: str) -> str:
     return (s or "").strip()
 
+
 def _parse_bool(v) -> bool:
     if isinstance(v, bool):
         return v
@@ -82,6 +83,7 @@ def _parse_bool(v) -> bool:
         return False
 
     return False
+
 
 def stable_id_for_entry(e: dict) -> str:
     """Stable identifier derived from non-secret entry content."""
@@ -133,26 +135,13 @@ def _parse_expiry_to_last_day(exp: str) -> Optional[datetime]:
     return None
 
 
-def _get_password(e: dict) -> str:
-    """Best-effort password fetch across mixed schemas."""
-    for k in ("password", "Password", "pass", "Pass"):
-        v = e.get(k)
+def _get_password_fast(e: dict, canon: dict) -> str:
+    if "password" in canon:
+        v = e.get(canon["password"])
         if isinstance(v, str) and v.strip():
             return v.strip()
-    # fallback: look for any key that canonical-maps to password
-    for k in e.keys():
-        try:
-            if canonical_autofill_key(k) == "password":
-                v = e.get(k)
-                if isinstance(v, str) and v.strip():
-                    return v.strip()
-        except Exception:
-            continue
-    # last resort: substring match
-    for k, v in e.items():
-        if isinstance(k, str) and "password" in k.lower() and isinstance(v, str) and v.strip():
-            return v.strip()
-    return ""
+
+    return e.get("password") or e.get("Password") or ""
 
 
 class ScanTask(QRunnable):
@@ -182,6 +171,8 @@ class ScanTask(QRunnable):
         self.enable_card_expiry = bool(enable_card_expiry)
         self.enable_missing_2fa = bool(enable_missing_2fa)
         self.card_warn_days = int(card_warn_days or 30)
+        self._canon_cache = {}
+        self._expiry_cache = {}
 
     def _mk_eid(self, e: dict, i: int) -> str:
         try:
@@ -212,25 +203,35 @@ class ScanTask(QRunnable):
         return "(untitled)"
 
     def _canon_map(self, e: dict) -> Dict[str, str]:
-        out: Dict[str, str] = {}
-        for label in e.keys():
+        key = tuple(sorted(e.keys()))
+
+        if key in self._canon_cache:
+            return self._canon_cache[key]
+
+        out = {}
+        for label in key:
             try:
                 ck = canonical_autofill_key(label)
             except Exception:
                 ck = None
-            if not ck:
-                continue
-            if ck not in out:
+            if ck and ck not in out:
                 out[ck] = label
+
+        self._canon_cache[key] = out
         return out
 
     def _find_expiry_label(self, e: dict) -> Optional[str]:
+
+        key = tuple(sorted(e.keys()))
+        if key in self._expiry_cache:
+            return self._expiry_cache[key]
 
         # 1️⃣ Prefer canonical mapping first
         for label in e.keys():
             try:
                 key = canonical_autofill_key(label)
                 if key in ("expiry_date", "expiry date", "card_expiry"):
+                    self._expiry_cache[key] = label
                     return label
             except Exception:
                 pass
@@ -247,6 +248,7 @@ class ScanTask(QRunnable):
                 "valid through",
                 "card expiry"
             }:
+                self._expiry_cache[key] = label
                 return label
 
         # 3️⃣ Safe fallback (must contain expiry but NOT password)
@@ -254,10 +256,11 @@ class ScanTask(QRunnable):
             low = str(label).strip().lower()
 
             if "expiry" in low and "password" not in low:
+                self._expiry_cache[key] = label
                 return label
 
-        return None
 
+        return None
 
     def run(self):
         try:
@@ -268,47 +271,46 @@ class ScanTask(QRunnable):
             pwd_groups: Dict[str, list[dict]] = {}
 
             for i, e in enumerate(entries):
-                if i % 5 == 0:
+                if not e:
+                    continue
+
+                #if i % 5 == 0:
+                if i % 200 == 0:
                     self.s.progress.emit(int((i / total) * 35))
 
                 title = self._title(e)
                 eid = self._mk_eid(e, i)
                 canon = self._canon_map(e)
-
-                pw = _get_password(e)
+                pw = _get_password_fast(e, canon)
 
                 is_card = (str(e.get("kind") or "").lower() == "credit_card")
                 # Only treat as "login-like" if it really looks like a password login entry
                 has_password_field = ("password" in canon) or ("Password" in e) or bool(pw)
 
                 # -------- Username / URL applicability --------
-                # Skip these checks for card entries (they usually don't have usernames/URLs)
-                if not is_card:
+                url = _norm(str(e.get("url") or ""))
+
+                if not pw and not url and not is_card:
+                    continue
+
+                # Skip URL-related checks if no URL exists
+                if url:
+
                     if "username" in canon and has_password_field:
                         username = _norm(str(e.get(canon["username"]) or ""))
                         if not username:
                             issues.append(WTIssue("Missing Username", eid, title, "No username set.", 1))
 
+                    
                     if has_password_field:
-                        # Prefer normalised URL (from watchtower.py)
-                        url = _norm(str(e.get("url") or ""))
-
-                        # Fallbacks (in case older data / other paths didn't normalise)
-                        if not url:
-                            url = _norm(str(
-                                e.get("Website") or e.get("website") or e.get("URL") or e.get("url") or ""
-                            ))
-
-                        if not url:
-                            issues.append(WTIssue("Missing URL", eid, title, "No login URL set.", 1))
-                        elif url.lower().startswith("http://"):
+                        if url.startswith("http://"):
                             issues.append(
                                 WTIssue(
                                     "Insecure URL (HTTP)",
                                     eid,
                                     title,
-                                    f"Uses HTTP instead of HTTPS ({url}).",
-                                    2
+                                    "URL uses HTTP instead of HTTPS.",
+                                    2,
                                 )
                             )
 
@@ -342,23 +344,39 @@ class ScanTask(QRunnable):
                                     WTIssue("Missing 2FA", eid, title, "2FA is disabled for this login.", 2)
                                 )
 
+                # -------- Expired item flag / age --------
+                flag = _parse_bool(e.get("password_expired"))
+                if flag:
+                    issues.append(WTIssue("Expired Item", eid, title, "Entry is marked as expired.", 3))
 
-                # -------- Password age/strength/reuse --------
+                days = None
+                matched_key = None
+                for key in ("pw_changed_at", "updated_at", "last_updated", "Date", "created_at"):
+                    v = e.get(key)
+                    if not v:
+                        continue
+                    try:
+                        sv = str(v).strip()
+                        if len(sv) == 10 and "-" in sv:
+                            dtv = datetime.strptime(sv, "%Y-%m-%d")
+                            days = (datetime.now() - dtv).days
+                        else:
+                            dtv = datetime.fromisoformat(sv.replace("Z", "+00:00"))
+                            if getattr(dtv, "tzinfo", None):
+                                days = (datetime.now(dtv.tzinfo) - dtv).days
+                            else:
+                                days = (datetime.now() - dtv).days
+                        matched_key = key
+                       
+                        break
+                    except Exception as ex:
+                        log.error(f"[WT-EXPIRE] {ex}, key {key}")
+
+                if days is not None and self.max_age_days and days > self.max_age_days:
+                    issues.append(WTIssue("Expired Item", eid, title, f"Last changed {days} days ago.", 3))
+
+                # -------- Password age/strength/reuse/breach --------
                 if pw:
-                    days = None
-                    for key in ("pw_changed_at", "updated_at", "last_updated"):
-                        v = e.get(key)
-                        if not v:
-                            continue
-                        try:
-                            dt = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
-                            days = (datetime.now(dt.tzinfo) - dt).days
-                            break
-                        except Exception:
-                            continue
-                    if days is not None and self.max_age_days and days > self.max_age_days:
-                        issues.append(WTIssue("Old Password", eid, title, f"Last changed {days} days ago.", 2))
-
                     try:
                         score = int(self.get_strength(pw))
                     except Exception:
@@ -369,7 +387,18 @@ class ScanTask(QRunnable):
                     pwh = hashlib.sha256(pw.encode("utf-8")).hexdigest()
                     pwd_groups.setdefault(pwh, []).append({"eid": eid, "title": title})
 
-                
+                    # Respect user settings: only check HIBP when the feature is enabled.
+                    # This must run per entry, otherwise only the last password scanned is checked.
+                    if self.enable_breach and self.breach_check:
+                        try:
+                            count = int(self.breach_check(pw) or 0)
+                        except Exception:
+                            count = 0
+
+                        if count > 0:
+                            issues.append(
+                                WTIssue("Known Breach", eid, title, f"Seen {count}× in breaches.", 3)
+                            )
 
                 # -------- Card expiry checks (field-driven) --------
                 if self.enable_card_expiry and (e.get("kind") == "credit_card"):
@@ -402,22 +431,7 @@ class ScanTask(QRunnable):
                     issues.append(WTIssue("Reused Password", x["eid"], x["title"],
                                          f"Same password used in: {names}{more}.", 3))
 
-            # Breach check
-            if self.enable_breach and callable(self.breach_check):
-                for i, e in enumerate(entries):
-                    if i % 2 == 0:
-                        self.s.progress.emit(35 + int((i / total) * 55))
-                    pw = _get_password(e)
-                    if not pw:
-                        continue
-                    try:
-                        count = int(self.breach_check(pw) or 0)
-                    except Exception:
-                        count = 0
-                    if count > 0:
-                        issues.append(WTIssue("Known Breach", self._mk_eid(e, i), self._title(e),
-                                             f"Seen {count}× in breaches.", 3))
-
+            expire_count = sum(1 for it in issues if it.kind == "Expired Item")
             self.s.progress.emit(100)
             self.s.finished.emit(issues)
 

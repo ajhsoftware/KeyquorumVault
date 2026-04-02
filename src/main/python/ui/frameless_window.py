@@ -23,7 +23,7 @@ import webbrowser
 # --- password gen ---
 from auth.pw.password_generator import show_password_generator_dialog
 from features.url.main_url import (SITE_MAIN, SITE_HELP, SITE_SUPPORT, SITE_SUPPORT_ME, PRIVACY_POLICY,
-                    SITE_ANDROID, SITE_LINUX, SITE_VIDEO, SITE_SEC, SITE_THREAT, SITE_BUG_FIX,
+                    SITE_ANDROID, SITE_LINUX, SITE_VIDEO, SITE_SEC, SITE_THREAT, SITE_BUG_FIX,SITE_UPDATE,
                     SITE_CATALOG, SITE_BROWSER, SITE_BROW_TEST, REDDIT, CATEGORY_DOWN,WATCH)
 
 from qtpy.QtCore import QCoreApplication
@@ -398,9 +398,10 @@ class FramelessWindowMixin:
         add_entry("🔒 " + self.tr("Password Generator"), self.open_generator)
         self._mainMenu.addSeparator()
         add_entry("🏠 " + self.tr("AJH Software"), url=SITE_MAIN)
-        add_entry("📱 " + self.tr("Android (Soon)"), url=SITE_ANDROID)  # or SITE_MAIN
-        add_entry("📱 " + self.tr("Watch Auth (Soon)"), url=WATCH)      # or SITE_MAIN
-        add_entry("🐧 " + self.tr("Linux (Soon)"), url=SITE_LINUX)      # or SITE_MAIN
+        add_entry("📱 " + self.tr("Android (Soon)"), url=SITE_ANDROID)
+        add_entry("📱 " + self.tr("Watch Auth (Soon)"), url=WATCH)
+        add_entry("🐧 " + self.tr("Linux (Soon)"), url=SITE_LINUX)
+        add_entry("🐧 " + self.tr("Releases"), url=SITE_UPDATE)
         self._mainMenu.addSeparator()
         add_entry("💡 " + self.tr("Help / Feedback"), url=SITE_HELP)
         add_entry("💡 " + self.tr("Help (Videos)"), url=SITE_VIDEO)

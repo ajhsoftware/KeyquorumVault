@@ -234,7 +234,7 @@ def _is_defender_running() -> bool:
 def _any_av_present(debug: bool=False) -> Tuple[bool, list[str], str]:
     """
     Returns (present, product_names, source):
-      source ∈ {"wmi", "defender-fallback", "none"}
+      source  {"wmi", "defender-fallback", "none"}
     """
     names, err = _detect_av_products_wmi(debug=debug)
     if names:
@@ -463,7 +463,7 @@ def _ensure_qapp():
         from qtpy.QtWidgets import QApplication
     except Exception:
         return None
-    # If no QApplication exists, we won't create one here (caller manages app).
+    # If no QApplication exists.
 
 def _show_info_dialog(message: str, parent=None) -> None:
     try:
@@ -614,12 +614,34 @@ def ask_preflight_decision(parent, suspicious: list[str], prefs: dict | None = N
         if suspicious_indicators and not legit:
             box.setText("🚨 " + _tr("High-risk processes detected:"))
             box.setInformativeText("\n".join(f"• {p}" for p in suspicious_indicators))
+            try:
+                from features.systemtray.systemtry_ops import notify_other
+                title = "🚨 High-risk processes detected:"
+                txt = "\n".join(f"• {p}" for p in suspicious_indicators)
+                notify_other(parent, title, txt)
+            except Exception as e:
+                log.error(f"Error showing notify {e}")
+
         elif suspicious_indicators and legit:
             box.setText("🚨 " + _tr("Risky processes detected:"))
             box.setInformativeText("\n".join(f"• {p}" for p in suspicious))
+            try:
+                from features.systemtray.systemtry_ops import notify_other
+                title = "🚨 Risky processes detected:"
+                txt = "\n".join(f"• {p}" for p in suspicious)
+                notify_other(parent, title, txt)
+            except Exception as e:
+                log.error(f"Error showing notify {e}")
         else:
             box.setText("⚠️ " + _tr("Potentially risky tools detected:"))
             box.setInformativeText("\n".join(f"• {p}" for p in legit))
+            try:
+                from features.systemtray.systemtry_ops import notify_other
+                title = "🚨 Potentially risky tools detected:"
+                txt = "\n".join(f"• {p}" for p in legit)
+                notify_other(parent, title, txt)
+            except Exception as e:
+                log.error(f"Error showing notify {e}")
 
         details: list[str] = []
         any_notes = False
@@ -909,6 +931,7 @@ def run_preflight_checks(
     parent=None,
     prefs: Optional[dict] = None
 ) -> bool:
+
     try:
         effective = prefs if isinstance(prefs, dict) else load_security_prefs()
     except Exception as e:
@@ -923,81 +946,75 @@ def run_preflight_checks(
         return True
 
     # ---------------- Antivirus presence check ----------------
-    check_av_flag = bool(effective.get("check_av", effective.get("check_defender", False)))
-    if check_av_flag and _is_windows():
-        ok_av, names, source = _any_av_present(debug=debug)
-        if ok_av:
-            _dbg(debug, f"AV present via {source}: {names}")
+    from app.dev import dev_ops
+    is_dev = dev_ops.dev_set
 
-            # If Defender is OFF but another AV is present, offer to open vendor UI (respect config)
-            if not _is_defender_running():
-                if bool(effective.get("offer_vendor_ui_on_login", False)):
-                    _offer_vendor_scan(parent, debug=debug)
-        else:
-            msg = _tr(
-                "⚠️ No active antivirus was detected.\n\n"
-                "To help protect your vault, it is recommended that an antivirus solution "
-                "is installed and enabled before proceeding.\n\n"
-                "Please enable or install an antivirus first.\n\n"
-                "If no antivirus is installed on this system, it is strongly recommended "
-                "that you do NOT enter any credentials or unlock the vault, to help keep "
-                "your data safe.\n\n"
-                "Remember: this app is only as secure as the system it runs on.\n"
-                "Strong system security = a strong vault."
-            )
-            if bool(effective.get("block_on_av_absent", True)):
-                cont = _ask_quit_or_continue(parent, _tr("No Antivirus Detected"), msg, default_quit=True)
-                if not cont:
-                    return False
+    if not is_dev:  # turn off in dev 
+        check_av_flag = bool(effective.get("check_av", effective.get("check_defender", False)))
+        if check_av_flag and _is_windows():
+            ok_av, names, source = _any_av_present(debug=debug)
+            if ok_av:
+                _dbg(debug, f"AV present via {source}: {names}")
+
+                # If Defender is OFF but another AV is present, offer to open vendor UI (respect config)
+                if not _is_defender_running():
+                    if bool(effective.get("offer_vendor_ui_on_login", False)):
+                        _offer_vendor_scan(parent, debug=debug)
             else:
-                _show_warning_dialog(msg, parent)
+                msg = _tr(
+                    "⚠️ No active antivirus was detected.\n\n"
+                    "To help protect your vault, it is recommended that an antivirus solution "
+                    "is installed and enabled before proceeding.\n\n"
+                    "Please enable or install an antivirus first.\n\n"
+                    "If no antivirus is installed on this system, it is strongly recommended "
+                    "that you do NOT enter any credentials or unlock the vault, to help keep "
+                    "your data safe.\n\n"
+                    "Remember: this app is only as secure as the system it runs on.\n"
+                    "Strong system security = a strong vault."
+                )
+                if bool(effective.get("block_on_av_absent", True)):
+                    cont = _ask_quit_or_continue(parent, _tr("No Antivirus Detected"), msg, default_quit=True)
+                    if not cont:
+                        return False
+                else:
+                    _show_warning_dialog(msg, parent)
 
-        # -------------- ask to run Defender Quick Scan --------------
-        if bool(effective.get("defender_quick_scan", False)):
-            try:
-                from qtpy.QtWidgets import QMessageBox
-                _ensure_qapp()
-                box = QMessageBox(parent)
-                box.setWindowTitle(_tr("Windows Defender Quick Scan"))
-                box.setIcon(QMessageBox.Icon.Question)
-                box.setText(_tr("Run a Windows Defender Quick Scan before proceeding?"))
-                run_btn = box.addButton(_tr("Run Scan"), QMessageBox.ButtonRole.AcceptRole)
-                skip_btn = box.addButton(_tr("Skip"), QMessageBox.ButtonRole.RejectRole)
-                quit_btn = box.addButton(_tr("Quit"), QMessageBox.ButtonRole.DestructiveRole)
-                box.setDefaultButton(run_btn)
-                box.exec()
+            # -------------- ask to run Defender Quick Scan --------------
+            if bool(effective.get("defender_quick_scan", False)):
+                try:
+                    from qtpy.QtWidgets import QMessageBox
+                    _ensure_qapp()
+                    box = QMessageBox(parent)
+                    box.setWindowTitle(_tr("Windows Defender Quick Scan"))
+                    box.setIcon(QMessageBox.Icon.Question)
+                    box.setText(_tr("Run a Windows Defender Quick Scan before proceeding?"))
+                    run_btn = box.addButton(_tr("Run Scan"), QMessageBox.ButtonRole.AcceptRole)
+                    skip_btn = box.addButton(_tr("Skip"), QMessageBox.ButtonRole.RejectRole)
+                    quit_btn = box.addButton(_tr("Quit"), QMessageBox.ButtonRole.DestructiveRole)
+                    box.setDefaultButton(run_btn)
+                    box.exec()
 
-                if box.clickedButton() is quit_btn:
-                    return False
-                if box.clickedButton() is run_btn:
-                    rc, msg = _run_defender_quick_scan_interactive(parent=parent, debug=debug)
-                    _dbg(debug, msg)
-                    if rc != 0 and bool(effective.get("block_on_scan_issue", True)):
-                        warn = (_tr(
-                            "⚠️ Windows Defender reported issues during a Quick Scan "
-                            "(threats found or error).\n\n"
-                            "Do NOT proceed until you've resolved all threats or removed external media."
-                        ))
-                        cont = _ask_quit_or_continue(parent, _tr("Defender Scan Warning"), warn, default_quit=True)
-                        if not cont:
-                            return False
-            except Exception as e:
-                _dbg(debug, f"Could not prompt for Defender scan: {e}")
+                    if box.clickedButton() is quit_btn:
+                        return False
+                    if box.clickedButton() is run_btn:
+                        rc, msg = _run_defender_quick_scan_interactive(parent=parent, debug=debug)
+                        _dbg(debug, msg)
+                        if rc != 0 and bool(effective.get("block_on_scan_issue", True)):
+                            warn = (_tr(
+                                "⚠️ Windows Defender reported issues during a Quick Scan "
+                                "(threats found or error).\n\n"
+                                "Do NOT proceed until you've resolved all threats or removed external media."
+                            ))
+                            cont = _ask_quit_or_continue(parent, _tr("Defender Scan Warning"), warn, default_quit=True)
+                            if not cont:
+                                return False
+                except Exception as e:
+                    _dbg(debug, f"Could not prompt for Defender scan: {e}")
 
     # ---------------- Suspicious process scan ----------------
     flagged = scan_for_suspicious_processes(effective)
     if not flagged:
         _dbg(debug, _tr("All clear (no suspicious processes)."))
-        return True
-
-    if is_dev:
-        _show_warning_dialog(_tr(
-            "Suspicious tools detected (dev mode):\n\n")
-            + "\n".join(f"• {p}" for p in flagged)
-            + "\n\n" + _tr("Continuing (higher risk)."),
-            parent,
-        )
-        _dbg(debug, _tr("Dev mode: continuing despite:"), flagged)
         return True
 
     decision = ask_preflight_decision(parent, flagged, prefs=effective)

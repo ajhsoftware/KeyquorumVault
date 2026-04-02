@@ -242,7 +242,12 @@ PORTABLE_CFG_SUBDIR    = "config"
 PORTABLE_DOCS_SUBDIR   = "docs"
 
 BLOB_REL_PATH = r"resources\\portable\\core.kqpkg"
-KEY0_B64 = "base64 32B key here"
+
+try:
+    from app.owner import KEY0_B64, family_name
+
+except Exception: # values
+    KEY0_B64 = "base64 32B key here"
 
 def _get_pfn() -> str:
     p = os.getenv("KQ_APP_PFN")
@@ -251,8 +256,7 @@ def _get_pfn() -> str:
         from winsdk.windows.applicationmodel import Package  
         return str(Package.current.id.family_name)
     except Exception:
-
-        return  "<PackageFamilyName>"
+        return  family_name
 
 def _read_blob_pfn(blob_path: Path) -> str | None:
     try:
@@ -386,7 +390,7 @@ $s.Save()"""
 # ==============================
 # BUILD PORTABLE APP ONLY (no user data touched)
 # ==============================
-def build_portable_app(parent, target_root: Path) -> bool:
+def build_portable_app(parent, target_root: Path, *, show_ui: bool = True) -> bool:
     usb_base = Path(target_root)
     if not _probe_writable(usb_base):
         return False
@@ -401,7 +405,7 @@ def build_portable_app(parent, target_root: Path) -> bool:
     if not ok:
         try: shutil.rmtree(usb_stage)
         except Exception: pass
-        if QMessageBox:
+        if show_ui and QMessageBox:
             QMessageBox.warning(parent, "Portable Payload Missing/Invalid", str(why))
         return False
 
@@ -428,15 +432,17 @@ def build_portable_app(parent, target_root: Path) -> bool:
     except Exception as e:
         try: shutil.rmtree(usb_stage)
         except Exception: pass
-        if QMessageBox:
+        if show_ui and QMessageBox:
             QMessageBox.critical(parent, "Finalize Failed", str(e))
         return False
 
     _create_root_shortcut(usb_base, usb_final)
-    if QMessageBox:
-        QMessageBox.information(parent, "Portable App Ready",
-                                f"Portable app created at:\n{usb_final}\n\n"
-                                "You can now move user data separately.")
+    if show_ui and QMessageBox:
+        QMessageBox.information(
+            parent,
+            "Portable App Ready",
+            f"Portable app created at:\n{usb_final}\n\nYou can now move user data separately.",
+        )
     return True
 
 # ============================== Back-compat / utility helpers ========
@@ -542,8 +548,12 @@ def _selective_copy_phase2_user_tree(src_root: Path, dst_root: Path, username: s
     _try_copy(src_MAIN / name_db,   dst_MAIN / name_db,   "user_db")
     _try_copy(src_MAIN / name_ids,  dst_MAIN / name_ids,  "identities")
 
-    # ---- Salt ----
-    _try_copy(src_STORE / name_salt, dst_STORE / name_salt, "salt file")
+    # ---- Salt (legacy / optional only) ----
+    # Newer accounts store the vault salt in the identity header (.kq_id),
+    # so a standalone salt file is no longer required. Still copy it if
+    # present so older accounts/backups remain portable.
+    if name_salt:
+        _try_copy(src_STORE / name_salt, dst_STORE / name_salt, "salt file (legacy optional)")
 
     # ---- Config (prefs, baseline, audits) ----
     _try_copy(src_CONFIG / name_prefs, dst_CONFIG / name_prefs, "security prefs")
@@ -663,6 +673,7 @@ def _expected_phase2_paths(username: str, base: Path) -> dict[str, Path]:
     names = {
         "db":   _name("user_db_file"),
         "vault":_name("vault_file"),
+        # Standalone salt file is legacy/optional; modern accounts keep salt in .kq_id.
         "salt": _name("salt_file"),
         "ids":  _name("identities_file"),
         "prefs":_name("security_prefs_file"),
@@ -722,11 +733,12 @@ def _list_portable_users_verbose(portable_root: Path, username_hint: str | None 
         has_vault = vault_dir(username).exists()
         has_db    = user_db_file(username).exists()
         has_id    = identities_file(username).exists()
-        has_salt  = salt_file(username).exists()
+        has_salt  = salt_file(username).exists()  # legacy optional
         has_cfg   = (config_dir(username) / "Config.enc").exists()
 
-        # Minimum viable portable user
-        if not (has_vault and has_db and has_id):
+        # Minimum viable portable user:
+        # vault may not exist yet for a brand-new account, but identity + db must.
+        if not (has_db and has_id):
             continue
 
         out.append({
@@ -747,7 +759,8 @@ def _list_portable_users_verbose(portable_root: Path, username_hint: str | None 
 def move_user_data_to_usb(parent, target_root: Path, username: str, *, delete_local: bool = True) -> bool:
     """
     COPY the union of LOCAL and ROAMING per-user trees to USB, preserving Phase-2 layout.
-    Verifies presence of salt + user_db; vault is recommended but not mandatory.
+    Verifies presence of identity + user_db; vault is recommended but not mandatory.
+    Standalone salt files are treated as legacy/optional only.
     PERMANENTLY deletes the original local user folders after successful verification.
     """
     from qtpy.QtWidgets import QMessageBox
@@ -783,9 +796,12 @@ def move_user_data_to_usb(parent, target_root: Path, username: str, *, delete_lo
             QMessageBox.critical(parent, "Move to USB", f"Copy failed from:\n{src_root}\n\n{e}")
             return False
 
-    # Verify minimal presence (salt + db); vault warn-only
+    # Verify minimal presence.
+    # Required now: identity + user_db.
+    # Vault is warn-only because brand-new users may not have one yet.
+    # Salt file is legacy/optional because modern accounts keep salt in .kq_id.
     expect = _expected_phase2_paths(username, dst_root)
-    missing = [k for k in ("salt", "db") if k not in expect or not expect[k].exists()]
+    missing = [k for k in ("ids", "db") if k not in expect or not expect[k].exists()]
     if missing:
         QMessageBox.critical(
             parent, "Move to USB",
@@ -912,7 +928,8 @@ def restore_from_usb(parent, usb_root: Path, username: str) -> bool:
     """
     Restore a user's data from USB back to the PC, honoring Phase-2 layout:
       - Vault -> LOCAL
-      - DB/IDs/Config/Salt -> ROAMING
+      - DB/IDs/Config -> ROAMING
+      - Salt -> ROAMING only if a legacy standalone salt file exists
       - settings//Software -> LOCAL
     After verification, permanently deletes the USB user folder.
     """
@@ -1040,12 +1057,14 @@ def restore_from_usb(parent, usb_root: Path, username: str) -> bool:
         QMessageBox.critical(parent, "Restore from USB", f"Copy failed:\n{e}")
         return False
 
-    # Verify
+    # Verify.
+    # Required now: identity + user_db in roaming.
+    # Salt file is legacy/optional only because modern accounts keep salt in .kq_id.
     expect_local  = _expected_phase2_paths(username, dst_local_root)
     expect_roam   = _expected_phase2_paths(username, dst_roam_root)
     def _exists(d, key): return key in d and d[key].exists()
-    if not (_exists(expect_roam, "salt") and _exists(expect_roam, "db")):
-        QMessageBox.critical(parent, "Restore from USB", "Verification failed: salt or db missing.")
+    if not (_exists(expect_roam, "ids") and _exists(expect_roam, "db")):
+        QMessageBox.critical(parent, "Restore from USB", "Verification failed: identity or user_db missing.")
         return False
 
     # Detach any FileHandlers pointing under the USB user dir, then delete it

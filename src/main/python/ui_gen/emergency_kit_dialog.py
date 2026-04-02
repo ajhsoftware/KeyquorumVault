@@ -64,7 +64,8 @@ class EmergencyKitDialog(QDialog):
         v.addLayout(btns)
 
         try:
-            from app.basic import is_dev
+            from app.dev import dev_ops
+            is_dev = dev_ops.dev_set
             # Diagnose
             if is_dev:
                 self.btn_diag = QPushButton(self.tr("Diagnose…"), self)

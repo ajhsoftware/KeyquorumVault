@@ -20,10 +20,9 @@ Goal:
 ## 🟡 Backward Compatibility – Must Ship Next Update
 
 - [x] Log when the Native C++ core is loaded / when fallback is used
-- [ ] Show a clear user-facing status (Security Center preferred) indicating:
+- [x] Show a clear user-facing status (Security Center preferred) indicating:
   - Native C++ core: **Active** / **Unavailable**
   - If unavailable: advise the user to check DLL location + logs for details
-- [ ] Show a **one-time** notice when fallback mode is used (no repeated popups)
 ---
 
 
@@ -100,8 +99,8 @@ Function should:
 ## 🟡 D) Backward Compatibility (Minor Improvements Optional)
 
 ### 8. DLL Feature Detection
-- [ ] Check `kq_version()` or export presence
-- [ ] Graceful message if required export missing
+- [x] Check `kq_version()` or export presence
+- [x] Graceful message if required export missing
 - [x] Fallback only if safe
 
 ### 9. Legacy Key Fallback
@@ -152,3 +151,9 @@ Function should:
 ### Current Status: Phase 1 – Native Session Architecture Complete
 
 Remaining items are polish-level hardening, not structural security issues.
+
+### Current Status: Phase 2 – Native Session Architecture + KDF Versioning Complete
+
+Remaining work is polish-level lifecycle consolidation.
+
+

@@ -22,7 +22,7 @@ class DeviceUnlockDialog(QDialog):
     """
     A standalone dialog for managing Windows Hello / YubiKey (FIDO2)
     in both Recovery-Mode (convenience) and Maximum-Security (2-of-2).
-    Pass your main app instance so we can access user_record, userKey, etc.
+    Pass your main app instance so we can access user_record, core_session_handle, etc.
     """
     def __init__(self, app, parent=None):
         super().__init__(parent or app)

@@ -163,3 +163,5 @@ def dpapi_unwrap_mk(wrapped_b64: str, entropy_b64: str) -> bytes:
             LocalFree(out_blob.pbData)
         if desc:
             LocalFree(desc)
+
+

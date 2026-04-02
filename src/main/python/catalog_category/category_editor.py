@@ -1158,13 +1158,13 @@ class CategoryEditor(QWidget):
                 return
 
             # --- FIX: vault key from parent ---
-            # Correct method: find the real MainWindow that has userKey
-            host = self._find_host_with("userKey")
+            # Correct method: find the real MainWindow that has core_session_handle
+            host = self._find_host_with("core_session_handle")
             if host is None:
                 QMessageBox.critical(self, self.tr("Error"), self.tr("Cannot find vault host."))
                 return
 
-            key = getattr(host, "userKey", None)
+            key = getattr(host, "core_session_handle", None)
             if not key:
                 QMessageBox.critical(self, self.tr("Error"), self.tr("No vault key available. Please ensure vault is loaded."))
                 return
@@ -1452,6 +1452,7 @@ def show_category_editor(self, uname: str):
     Ensure the editor exists and navigate to it. Pass uname from MainWindow.
     """
     self.init_category_editor_tab(uname)
+
     try:
         from qtpy.QtWidgets import QStackedWidget
         sw = getattr(self, "stackedWidget", None)

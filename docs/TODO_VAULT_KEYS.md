@@ -27,16 +27,16 @@ Password → Identity Store (Argon2id wrapper salt) → unwrap DMK → unwrap Va
   - `unwrap_vault_key_dmk(dmk, nonce, ct) -> vk`
 - [ ] Update vault open session logic:
   - On login: decrypt identity → get DMK → unwrap VK → decrypt vault envelope
-- [ ] Stop creating `*.slt` for **new accounts**.
-- [ ] Update CLI tool `cli_decrypt_store.py`:
+- [x] Stop creating `*.slt` for **new accounts**.
+- [x] Update CLI tool `cli_decrypt_store.py`:
   - Support end-to-end: password → identity → DMK → VK → vault
   - Keep legacy mode for password+salt vaults (migration support)
 
 ### Acceptance Criteria
 
-- [ ] New accounts do not create `*.slt` files.
-- [ ] Vault decrypt works using identity store + password only.
-- [ ] Existing accounts continue to work unchanged until migrated.
+- [x] New accounts do not create `*.slt` files.
+- [x] Vault decrypt works using identity store + password only.
+- [x] Existing accounts continue to work unchanged until migrated.
 
 ---
 
@@ -50,10 +50,10 @@ store wrapped VK in identity store → remove or archive legacy salt
 
 ### Work Items
 
-- [ ] Detection logic:
+- [x] Detection logic:
   - Check presence of legacy `*.slt` OR identity meta field missing `vault_mode`
-- [ ] Migration steps (safe order):
-  - [ ] Decrypt using legacy method
+- [x] Migration steps (safe order):
+  - [x] Decrypt using legacy method
   - [ ] Generate new VK (32 bytes random)
   - [ ] Re-encrypt vault with VK
   - [ ] Store wrapped VK under DMK in identity store

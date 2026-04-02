@@ -18,6 +18,7 @@ from __future__ import annotations
 # This module contains methods extracted from main.py to reduce file size.
 # We intentionally "inherit" main module globals so the moved code can run unchanged.
 import sys as _sys
+from tkinter import E
 from auth.login.login_handler import set_user_setting, get_user_setting, get_user_record
 from new_users.tour import maybe_show_quick_tour
 from features.backup_advisor.backup_advisor import BackupAdvisor
@@ -26,7 +27,11 @@ from security.secure_audit import log_event_encrypted
 from auth.identity_store import get_login_backup_count_quick, get_2fa_backup_count_quick
 from security.preflight import load_security_prefs 
 from device.utils_device import get_device_fingerprint
-from app.basic import is_dev, DEBUG_ON
+from app.dev import dev_ops
+
+is_dev = dev_ops.dev_set
+DEBUG_ON = dev_ops.DEBUG_ON
+
 
 _MAIN = (
     _sys.modules.get("__main__")
@@ -42,21 +47,18 @@ try:
     from app.qt_imports import *  # noqa: F401,F403
 except Exception:
     pass
+
+
 def load_setting(self, *args, **kwargs):
     log.debug(f"{kql.i('tool')} [SETTINGS] loading settings")
     self.set_status_txt(self.tr("Loading Settings"))
-
-    # load lang
-
     self._init_language_from_file()
-
-    # Always have a username available
-    user = (self.currentUsername.text() or "").strip()
+    user = self._active_username()
 
     # --- Device fingerprint → encrypted audit log (best-effort) ---
     try:
         fp, ctx = get_device_fingerprint()
-        self.set_status_txt(self.tr("Loading Settings: System Fingerprint"))
+        self.set_status_txt(self.tr("Loading Settings: System Finger"))
 
         # Hide fingerprint & identifiers if running in dev mode
         if is_dev:
@@ -81,7 +83,7 @@ def load_setting(self, *args, **kwargs):
 
         log_event_encrypted(user, "login", msg)
     except Exception as e:
-        log.debug(f"[audit] device fingerprint failed: {e}")
+        log.debug(f"[audit] device finger error {e}")
 
     # --- Defaults (code-side fallbacks) ---
     threshold = 5
@@ -113,8 +115,6 @@ def load_setting(self, *args, **kwargs):
     rec: dict = {}
     settings: dict = {}
 
-    # --- Load settings (and clamp for Free) ---
-
     try:
         try:
             rec = get_user_record(user)
@@ -132,7 +132,6 @@ def load_setting(self, *args, **kwargs):
             f"Load user settings failed, using defaults. Error: {e}"
         )
 
-    # log.debug(f"{kql.i('tool')} [SETTINGS] raw settings: {settings}")
     # --- Read values (already clamped for Free) ---
     try:
         threshold = int(settings.get("lockout_threshold", 5))
@@ -186,11 +185,17 @@ def load_setting(self, *args, **kwargs):
             log.error(f"{kql.i('tool')} [ERROR] settings cloud data error: {e}")
             cloud = {}
 
-        self.auto = bool(cloud.get("auto_sync", False))
+        self.auto = bool(get_user_setting(user, "auto_sync", cloud.get("sync_enable", cloud.get("auto_sync", False))))
         self.cloud_wrap = bool(cloud.get("cloud_wrap", False))
         self.cloud_enabled = bool(cloud.get("enabled", False))
-        self.provider = cloud.get("provider", False)
-
+        # --- Cloud sync status labels (Settings → Cloud Sync) ---
+        if cloud:
+            try:
+                from features.sync.sync_ops import _update_cloudsync_label
+                _update_cloudsync_label(self, user)
+            except Exception as e:
+                log.error(f"cloud label update: {e}")
+      
         # --- Backup counts (labels) ---
         try:
             _login_left = get_login_backup_count_quick(user)
@@ -245,7 +250,7 @@ def load_setting(self, *args, **kwargs):
     _set("DefenderQuickScan_", "setChecked", defender_qs_login)
     _set("DefenderQuickScan_1", "setChecked", defender_qs_login)
 
-    _set("preflight_check_now_1", "setEnabled", True)  # harmless if missing
+    _set("preflight_check_now_1", "setEnabled", True)  
 
     # Startup controls
 
@@ -280,15 +285,18 @@ def load_setting(self, *args, **kwargs):
                 self.autoStartBridgeCheck.toggled.disconnect()
             except Exception:
                 pass
-            self.autoStartBridgeCheck.toggled.connect(self.on_toggle_autostart_bridge)
+            from bridge.bridge_ops import on_toggle_autostart_bridge
+            self.autoStartBridgeCheck.toggled.connect(lambda t: on_toggle_autostart_bridge(self, t))
 
         # Conservative: do not auto-start unless explicitly checked by user
         if autostart:
             try:
-                tok = self.ensure_bridge_token(new=False)
+                from bridge.bridge_helpers import ensure_bridge_token
+                from bridge.bridge_ops import start_bridge_server, start_bridge_monitoring
+                tok = ensure_bridge_token(user, new=False)
                 if tok:
-                    self.start_bridge_server(strict=None)
-                    self.start_bridge_monitoring()
+                    start_bridge_server(self, strict=None)
+                    start_bridge_monitoring(self,)
                     log.info(
                         "[BRIDGE] Autostart enabled by user; server started on 127.0.0.1"
                     )
@@ -328,25 +336,20 @@ def load_setting(self, *args, **kwargs):
 
     # --- Cloud UI enablement ---
     try:
+        from features.sync.sync_ops import enable_buttons, disable_buttons
         if self.cloud_enabled:
             self.set_status_txt(self.tr("Loading set: Cloud UI Enablement"))
-            self.move_vault_to_cloud.setEnabled(False)
-            self.stop_cloud_sync.setEnabled(True)
-            self.on_sync_now.setEnabled(True)
-            self.extra_cloud_wrap.setEnabled(True)
-            self.autosync_.setEnabled(True)
+            enable_buttons(self)
         else:
-            self.move_vault_to_cloud.setEnabled(True)
-            self.stop_cloud_sync.setEnabled(False)
-            self.on_sync_now.setEnabled(False)
-            self.extra_cloud_wrap.setEnabled(False)
-            self.autosync_.setEnabled(False)
+            disable_buttons(self)
+
     except Exception as e:
         log.error(f"{kql.i('tool')} [ERROR] Cloud UI toggle failed: {e}")
 
     # Refresh tables/UI
     try:
         try:
+            pass
             self.refresh_category_selector()
         except Exception:
             pass
@@ -354,15 +357,10 @@ def load_setting(self, *args, **kwargs):
             self.refresh_category_dependent_ui()
         except Exception:
             pass
-        self.load_vault_table()
 
     except Exception:
-        # fall back: try once more
-        try:
-            self.load_vault_table()
-        except Exception as e:
-            log.error(f"{kql.i('tool')} [ERROR] Vault table load failed: {e}")
-
+        log.error(f"{kql.i('tool')} [ERROR] Vault table load failed: {e}")
+            
     # --- One-time 'What's New' popup ---
     try:
         # Slight delay so it appears after the main window is stable
@@ -375,28 +373,21 @@ def load_setting(self, *args, **kwargs):
     except Exception as e:
         log.error(f"{kql.i('tool')} [ERROR] {kql.i('user')} Failed to load audit table: {e}")
 
-
-    # --- Backup reminder prefs (device-local via QSettings) ---
+    # --- Backup reminder prefs (per-user via QSettings) ---
     try:
         self.set_status_txt(self.tr("Backup reminder setup"))
-        qs = QSettings("AJH Software", "Keyquorum Vault")
+        from features.backup_advisor.ui_backup_bind import init_backup_avisor
+        init_backup_avisor(self)
+        log.debug(f"[SETTINGS] Backup reminder mode={getattr(self, '_backup_remind_mode', 'both')}")
 
-        # Load user preference
-        mode = str(qs.value("backup/remindMode", "both")).lower()
-        if mode not in ("off", "changes", "logout", "both"):
-            mode = "both"
-        self._backup_remind_mode = mode
-
-        thr = int(qs.value("backup/changesThreshold", 5) or 5)
-
-        # Create advisor (ready for note_change / logout prompts)
-        self.backupAdvisor = BackupAdvisor(
-            self,
-            do_backup_callable=self.export_vault_with_password,
-        )
-        self.backupAdvisor.threshold = max(1, int(thr))
-
-        log.debug(f"[SETTINGS] Backup reminder mode={mode}, threshold={thr}")
+        pending = 0
+        if hasattr(self, "backupAdvisor") and self.backupAdvisor:
+            try:
+                pending = int(self.backupAdvisor.pending_changes())
+            
+            except Exception:
+                pending = 0
+        self.changes_backup.setText(("(unbackedup changes counter") + f": {pending}).")
     except Exception as e:
         log.error(f"[SETTINGS] BackupAdvisor init failed: {e}")
 
@@ -448,75 +439,6 @@ def load_setting(self, *args, **kwargs):
         f"{kql.i('tool')} [SETTINGS] {kql.i('ok')} "
         f"Settings OK: topmost={self.ontop}, theme applied, categories refreshed"
     )
-
-
-
-def _debounce_setting(self, key: str, value, delay_ms: int, persist_fn, *, flush: bool = False):
-    """
-    Debounce persistence for a setting.
-    - key: unique id for the setting (e.g. 'logout_timeout_sec')
-    - value: latest value to persist
-    - delay_ms: debounce window in ms
-    - persist_fn(latest_value): function to call when the timer fires
-    - flush=True runs persist immediately (e.g. on editingFinished)
-    """
-    self._ensure_debounce_store()
-    self._debounce_values[key] = value
-
-    # ---- immediate commit (editingFinished) ----
-    if flush:
-        # stop & remove any pending timer
-        t = self._debounce_timers.pop(key, None)
-        if t:
-            try: t.stop()
-            except Exception: pass
-
-        # skip if not changed
-        if self._debounce_last_saved.get(key) == value:
-            return
-
-        try:
-            persist_fn(value)
-            self._debounce_last_saved[key] = value
-        except Exception as e:
-            log.error("debounce(flush) %s failed: %s", key, e)
-          
-        finally:
-            # clear any stale pending
-            self._debounce_values.pop(key, None)
-        return
-
-    # ---- debounced commit (valueChanged) ----
-    t = self._debounce_timers.get(key)
-    if t is None:
-        t = QTimer(self)
-        t.setSingleShot(True)
-
-        def _fire():
-            latest = self._debounce_values.pop(key, None)
-            if latest is None:
-                return
-            # avoid duplicate commit of same value
-            if self._debounce_last_saved.get(key) == latest:
-                return
-            try:
-                persist_fn(latest)
-                self._debounce_last_saved[key] = latest
-            except Exception as e:
-                log.error("debounce(timer) %s failed: %s", key, e)
-                
-            finally:
-                tm = self._debounce_timers.pop(key, None)
-                if tm:
-                    try: tm.stop()
-                    except Exception: pass
-
-        t.timeout.connect(_fire)
-        self._debounce_timers[key] = t
-
-    try: t.stop()
-    except Exception: pass
-    t.start(int(delay_ms))
 
 
 

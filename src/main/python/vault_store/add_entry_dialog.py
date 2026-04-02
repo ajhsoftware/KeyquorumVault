@@ -112,7 +112,7 @@ except Exception:
     def showprefiled(): return ["games", "app", "software", "social media"]
 
 # ------------------------- Breach cache utilities -----------------------------
-from app.paths import breach_cache
+from app.paths import breach_cache, config_dir
 
 def _cache_path(username) -> str:
     return breach_cache(username, ensure_dir=True)
@@ -123,7 +123,8 @@ def load_breach_cache(username) -> dict:
         if os.path.exists(p):
             with open(p, "r", encoding="utf-8") as f:
                 return json.load(f)
-    except Exception:
+    except Exception as e:
+        log.info(f"[BCACHE] Error {e}")
         pass
     return {}
 
@@ -132,7 +133,7 @@ def save_breach_cache(username, cache: dict):
         with open(_cache_path(username), "w", encoding="utf-8") as f:
             json.dump(cache, f, indent=2)
     except Exception as e:
-        log.error(' '.join(map(str, ("[UI ADD] [⚠️] Failed to save breach cache:", e))))
+        log.error(' '.join(map(str, ("[BCACHE] [⚠️] Failed to save breach cache:", e))))
 
 def sha1_password(password: str) -> str:
     return hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
@@ -152,7 +153,6 @@ def _normalize_field_dict(d: dict) -> dict:
         "is_reminder_field": bool(d.get("is_reminder_field")),
         "placeholder": d.get("placeholder", ""),
     }
-
 
 def _user_schema_meta(parent, category: str, uname: str):
     """Read a per-user category schema stored in user_db (if available)."""
@@ -186,7 +186,6 @@ def _user_schema_meta(parent, category: str, uname: str):
             out.append({"label": f.strip(), "sensitive": False, "file_load": False,
                         "hide": False, "url": False, "required": False, "is_reminder_field": False, "placeholder": ""})
     return out
-
 
 def _module_schema_meta(category: str):
     try:
@@ -278,7 +277,7 @@ class PasswordHistoryDialog(QDialog):
         return None
 
     def _normalize(self, history_list):
-        """Return list of dicts with keys: ts, hash (keep full), days"""
+        """Return list of dicts with keys: ts, hash (keep full), days, entry_id."""
         out = []
         now = dt.datetime.now()
         for h in (history_list or []):
@@ -286,9 +285,10 @@ class PasswordHistoryDialog(QDialog):
                 continue
             ts = str(h.get("ts") or h.get("time") or "")
             full_hash = str(h.get("hash") or h.get("fp") or "")
+            entry_id = str(h.get("entry_id") or h.get("id") or h.get("_id") or h.get("row_id") or "")
             d = self._parse_iso(ts)
             days = (now - d).days if d else ""
-            out.append({"ts": ts, "hash": full_hash, "days": days})
+            out.append({"ts": ts, "hash": full_hash, "days": days, "entry_id": entry_id})
         # newest first
         try:
             out.sort(key=lambda r: self._parse_iso(r["ts"]) or dt.datetime.min, reverse=True)
@@ -308,24 +308,26 @@ class PasswordHistoryDialog(QDialog):
             self.table.selectRow(0)
 
     def _restore_selected(self):
-        row = self.table.currentRow()
-        if row < 0 or row >= len(self._history):
-            return
-        
-        #old_hash = self._history[row]["hash"]  # full digest
-        rec = self._history[row]
-        old_hash = rec.get("hash") or rec.get("fp") or ""
-        # Hand off to the parent dialog (AddEntryDialog) to perform the restore
-        par = self.parent()
-        if par and hasattr(par, "_restore_password_from_history"):
-            par._restore_password_from_history(old_hash)
-            self.accept()
-        else:
-            QMessageBox.information(
-                self, self.tr("Restore"),
-                self.tr("Restore handler not available in parent dialog.")
-            )
+        try:
+            row = self.table.currentRow()
+            if row < 0 or row >= len(self._history):
+                return
 
+            rec = dict(self._history[row] or {})
+            # Hand off to the parent dialog (AddEntryDialog) to perform the restore.
+            # Pass the full record so the parent can use the entry_id that was stored
+            # alongside the visible hash/timestamp row.
+            par = self.parent()
+            if par and hasattr(par, "_restore_password_from_history"):
+                par._restore_password_from_history(rec)
+                self.accept()
+            else:
+                QMessageBox.information(
+                    self, self.tr("Restore"),
+                    self.tr("Restore handler not available in parent dialog.")
+                )
+        except Exception as e:
+            log.error(f"[PW] Error On Restore {e}")
 
 # ------------------------------- Dialog class --------------------------------
 class AddEntryDialog(QDialog):
@@ -833,6 +835,11 @@ class AddEntryDialog(QDialog):
         if not username:
             return {}
 
+        session_handle = getattr(par, "core_session_handle", None)
+        if not isinstance(session_handle, int) or not session_handle:
+            # Strict DLL-only: no session => no decrypted catalog access
+            return {}
+
         # Prefer built-ins if available on the parent (main app keeps these)
         CLIENTS = getattr(par, "CLIENTS", None)
         ALIASES = getattr(par, "ALIASES", None)
@@ -846,10 +853,10 @@ class AddEntryDialog(QDialog):
         if not isinstance(AUTOFILL_RECIPES, dict): AUTOFILL_RECIPES = {}
 
         ret = load_effective_catalogs_from_user(
-            username,
+            str(config_dir(username)),
             CLIENTS, ALIASES, PLATFORM_GUIDE,
             AUTOFILL_RECIPES,
-            user_key=getattr(par, "userKey", None),
+            session_handle=session_handle,
         )
 
         # Support both return shapes (4 or 5)
@@ -918,6 +925,7 @@ class AddEntryDialog(QDialog):
             log.warning("[EMAIL] Failed to attach completers: %s", e)
 
     # --------------------------- History helpers ---------------------------
+
     def on_platform_help_clicked(self):
         """
         Show platform keyword help — only when category is 'Games'.
@@ -938,43 +946,98 @@ class AddEntryDialog(QDialog):
         except Exception as e:
             log.warning("on_platform_help_clicked failed: %s", e)
 
-    def _restore_password_from_history(self, old_hash: str):
+
+    def _history_entry_id(self) -> str:
+        """Resolve the restore-cache key for this edited entry.
+
+        Strict DLL-only restore cache is keyed by entry id (or exact vault index as a
+        last resort), not by password hash.
+        """
+        try:
+            if isinstance(getattr(self, "existing_entry", None), dict):
+                e = self.existing_entry
+                entry_id = str(e.get("id") or e.get("_id") or e.get("row_id") or "").strip()
+                if entry_id:
+                    return entry_id
+        except Exception:
+            pass
+
+        try:
+            if hasattr(self, "_vault_index"):
+                i = int(getattr(self, "_vault_index"))
+                if i >= 0:
+                    return str(i)
+        except Exception:
+            pass
+
+        return ""
+
+    def _restore_password_from_history(self, history_rec=None):
         """
         One-click restore: pull the last plaintext from the encrypted cache.
-        We ignore the hash match and just use the last known value for this entry.
+
+        Strict DLL-only path:
+        - use the active native DLL session handle from the parent window
+        - resolve the restore-cache entry by entry_id / vault index
+        - do not derive or use any Python-side key fallback
         """
         par = self.parent()
         if not par:
             return
 
-        # Re-auth if you want (optional)
+        entry_id = ""
         try:
-            if hasattr(par, "_prompt_master_or_yk") and not par._prompt_master_or_yk():
-                return
-        except Exception:
-            pass
-
-        # Find stable entry id
-        try:
-            entry_id = str(
-                self.existing_entry.get("id") or self.existing_entry.get("_id") or
-                self.existing_entry.get("row_id") or getattr(self, "_vault_index", "")
-            )
+            if isinstance(history_rec, dict):
+                entry_id = str(
+                    history_rec.get("entry_id")
+                    or history_rec.get("id")
+                    or history_rec.get("_id")
+                    or history_rec.get("row_id")
+                    or ""
+                ).strip()
         except Exception:
             entry_id = ""
 
-        pw = par._pwlast_get(par.currentUsername.text(), par.userKey, entry_id, max_age_days=90)
-        if pw:
-            try:
-                self.passwordField.setText(pw)
-                self.passwordField.setFocus()
-            except Exception:
-                pass
-        else:
-            from qtpy.QtWidgets import QMessageBox
+        if not entry_id:
+            entry_id = self._history_entry_id()
+
+        if not entry_id:
             QMessageBox.information(
-                self, self.tr("Restore"),
-                self.tr("No recent password found to restore (older than 90 days or not cached yet)."))
+                self,
+                self.tr("Restore"),
+                self.tr("This entry does not have a restore-cache id yet, so the previous password cannot be restored.")
+            )
+            return
+
+        session_handle = getattr(par, "core_session_handle", None)
+        if not isinstance(session_handle, int) or session_handle <= 0:
+            QMessageBox.information(
+                self,
+                self.tr("Restore"),
+                self.tr("Unlock your vault first before restoring a previous password.")
+            )
+            return
+
+        try:
+            from vault_store.soft_delete_ops import _pwlast_get
+            username = par.currentUsername.text() if hasattr(par, "currentUsername") else ""
+            pw = _pwlast_get(username, session_handle, entry_id, max_age_days=90)
+            log.debug("[PW] restore lookup entry_id=%s found=%s", entry_id, bool(pw))
+            if pw:
+                try:
+                    self.passwordField.setText(pw)
+                    self.passwordField.setFocus()
+                    self.passwordField.selectAll()
+                except Exception as e:
+                    log.error(f"[PW] Error {e}")
+            else:
+                QMessageBox.information(
+                    self,
+                    self.tr("Restore"),
+                    self.tr("No recent password found to restore (older than 90 days or not cached yet).")
+                )
+        except Exception as e:
+            log.error(f"[PW] Error {e}")
 
     def _pw_text(self) -> str:
         # Prefer bound password widget; fall back to fields dict
@@ -983,8 +1046,10 @@ class AddEntryDialog(QDialog):
                 t = self.passwordField.text()
                 if isinstance(t, str):
                     return t
-        except Exception:
+        except Exception as e:
+            log.error(f"[PW] Error {e}")
             pass
+
         f = getattr(self, "fields", {}) or {}
         for k in ("Password", "password", "pwd", "pass", "secret", "Secret"):
             w = f.get(k)
@@ -1036,7 +1101,7 @@ class AddEntryDialog(QDialog):
             if hasattr(self, "_vault_index"):
                 from vault_store.vault_store import load_vault  
                 uname = par.currentUsername.text() if (par and hasattr(par, "currentUsername") and hasattr(par.currentUsername, "text")) else ""
-                key = getattr(par, "userKey", None)
+                key = getattr(par, "core_session_handle", None)
                 entries = load_vault(uname, key) if uname and key else []
                 if 0 <= self._vault_index < len(entries):
                     hist = list(entries[self._vault_index].get("password_history") or [])
@@ -1045,7 +1110,8 @@ class AddEntryDialog(QDialog):
             else:
                 if hasattr(self, "_resolve_existing_history"):
                     hist = list(self._resolve_existing_history() or [])
-        except Exception:
+        except Exception as e:
+            log.error(f"[PW] Check usage Error: {e}")
             pass
 
         if not hist:
@@ -1080,17 +1146,19 @@ class AddEntryDialog(QDialog):
                 try:
                     from vault_store.vault_store import load_vault
                     uname = par.currentUsername.text() if (par and hasattr(par, "currentUsername") and hasattr(par.currentUsername, "text")) else ""
-                    key = getattr(par, "userKey", None)
+                    key = getattr(par, "core_session_handle", None)
                     entries = load_vault(uname, key) if uname and key else []
                     if 0 <= self._vault_index < len(entries):
                         return list(entries[self._vault_index].get("password_history") or [])
-                except Exception:
+                except Exception as e:
+                    log.error(f"[PWH] Error {e}")
                     pass
 
             # Or, if the caller gave us the entry dict, use it directly
             if hasattr(self, "existing_entry") and isinstance(self.existing_entry, dict):
                 return list(self.existing_entry.get("password_history") or [])
         except Exception:
+            log.error(f"[PW] fetch Error: {e}")
             pass
 
     def _on_show_history(self):
@@ -1112,18 +1180,28 @@ class AddEntryDialog(QDialog):
 
         cutoff = dt.datetime.now() - dt.timedelta(days=90)
         norm = []
-        for h in hist:
-            if not isinstance(h, dict):
-                continue
-            hv = h.get("hash") or h.get("fp")
-            ts = str(h.get("ts") or h.get("time") or "")
-            # only keep records with a hash/fp; ts optional but preferred
-            if not hv:
-                continue
-            t = _parse_iso(ts)
-            if t and t < cutoff:
-                continue
-            norm.append({"hash": hv, "ts": ts})
+        entry_id = self._history_entry_id()
+        try:
+            for h in hist:
+                if not isinstance(h, dict):
+                    continue
+                hv = h.get("hash") or h.get("fp")
+                ts = str(h.get("ts") or h.get("time") or "")
+                # only keep records with a hash/fp; ts optional but preferred
+                if not hv:
+                    continue
+                t = _parse_iso(ts)
+                if t and t < cutoff:
+                    continue
+                norm.append({"hash": hv, "ts": ts, "entry_id": entry_id})
+        except Exception as e:
+            log.error(f"[PW] Error {e}")
+            QMessageBox.information(
+                self,
+                self.tr("Password History"),
+                self.tr(f"Error on password history {e}")
+            )
+            return
 
         if not norm:
             QMessageBox.information(
