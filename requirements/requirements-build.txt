@@ -1,0 +1,5 @@
+# Build tools (fbs / packaging)
+
+fbs==1.2.2
+pyinstaller==6.16.0
+pyinstaller-hooks-contrib==2025.8

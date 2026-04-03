@@ -1,0 +1,24 @@
+# Core runtime dependencies (flexible versions)
+
+PySide6>=6.9
+cryptography>=45
+requests>=2.32
+urllib3>=2.5
+pillow>=11.3
+psutil>=7.2
+pyotp>=2.9
+qasync>=0.28
+filelock>=3.19
+
+# Optional / hardware / security features
+fido2>=2.0
+yubikey-manager>=5.8
+hidapi>=0.14
+pyscard>=2.3
+cbor2>=5.9
+
+# Extras used in project
+lxml>=6.0
+reportlab>=4.4
+qrcode>=8.2
+opencv-python>=4.12
