@@ -9,15 +9,35 @@ __pycache__/
 # C extensions
 *.so
 
+#zip/exe
+*.zip
+*.exe
+
+# Tools / local builds
+tools/*.tar.gz
+tools/*.zip
+*.tar.gz
+
+# Python
+__pycache__/
+*.pyc
+
+# Env / secrets (VERY important)
+.env
+*.key
+*.pem
+secrets.json
+
 # Distribution / packaging
 build/
 dist/
 target/
 *.egg-info/
 .eggs/
+
 # MSIX layout output (huge; build artifact)
 msix/
-#
+
 app/owner.py
 **/app/owner.py
 # Packaged portable vault / exports (never commit)
@@ -27,9 +47,6 @@ app/owner.py
 *.spec
 *.toc
 *.pyi
-
-#zip
-*.zip
 
 # Qt / build caches
 *.pdb
@@ -41,10 +58,10 @@ __pycache__/
 *.spec
 *.manifest
 
+
 # ===============================
 # Virtual Environments
 # ===============================
-
 venv/
 .venv/
 env/
