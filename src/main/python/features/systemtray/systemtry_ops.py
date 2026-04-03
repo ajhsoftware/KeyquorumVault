@@ -12,14 +12,6 @@ def setup_tray(self):
         self.tray.setToolTip("Keyquorum Vault")
         self.tray.show()
 
-     
-        self.tray.showMessage(
-            "Keyquorum test 2",
-            "Testing custom icon notification.",
-            QSystemTrayIcon.Information,
-            5000,
-        )
-
         self.last_alerts = {
             "expired": 0,
             "breach": 0,
