@@ -1,5 +1,0 @@
-# Dev + test dependencies (not needed to run the app)
-pytest==8.4.2
-pluggy==1.6.0
-iniconfig==2.1.0
-Pygments==2.19.2

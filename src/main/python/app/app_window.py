@@ -40,10 +40,12 @@ Current rough structure:
 This note is here to explain the temporary structure while the refactor is in progress.
 """
 
-
 # ==============================
 # --- sysimport/environ/pyside6 backend(important)/F401/
 # ==============================
+
+import os
+os.environ["QT_API"] = "pyside6"
 
 from unittest import skip
 import _fbs_bootstrap
@@ -52,9 +54,6 @@ from app.platform_utils import open_path
 from features.url.main_url import open_url
 from app.qt_imports import *
 from vault_store.soft_delete_ops import _pwlast_save, _pwlast_load
-# Force QtPy to use PySide6 BEFORE importing qtpy
-os.environ["QT_API"] = "pyside6"
-
 
 # ==============================
 # --- PySide6
@@ -74,7 +73,6 @@ is_dev = dev_ops.dev_set
 # - touchscreen frendly
 # ==============================
 from qtpy.QtCore import Qt
-from qtpy import PYSIDE6
 
 # Make Qt synthesize touch/mouse events both ways (helps hybrid devices)
 try:
@@ -83,7 +81,6 @@ try:
     QApplication.setAttribute(Qt.AA_SynthesizeMouseForUnhandledTouchEvents, True)
 except Exception:
     pass
-
 # ---- Touch detection (Qt + Windows fallback) ----
 def _qt_has_touch() -> bool:
     """Try multiple Qt bindings to detect any touch devices."""
