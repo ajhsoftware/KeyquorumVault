@@ -126,3 +126,6 @@ Release/
 *.iobj
 *.lib
 *.exp
+
+*.tar.gz
+tools/*.tar.gz
