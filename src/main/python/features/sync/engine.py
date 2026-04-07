@@ -218,6 +218,8 @@ class SyncEngine:
             self._state_set("last_local_sha256", str(sc.get("last_local_sha256") or ""))
             self._state_set("last_remote_sha256", str(sc.get("last_remote_sha256") or ""))
             self._state_set("last_remote_version", str(sc.get("last_remote_version") or ""))
+            self._state_set("last_remote_revision", str(sc.get("last_remote_revision") or ""))
+            self._state_set("last_sync_base_revision", str(sc.get("last_sync_base_revision") or ""))
         except Exception:
             pass
 
@@ -311,8 +313,18 @@ class SyncEngine:
             log.debug(f"[SYNC] bundle auto-migration skipped: {e}")
 
     def _bundle_local_path(self, local_vault_path: str) -> str:
-        base = os.path.dirname(local_vault_path)
-        return os.path.join(base, "cloudsync.kqsync")
+        """
+        Build the local staging bundle OUTSIDE the watched vault folder.
+
+        Writing cloudsync.kqsync beside the vault file causes the local directory
+        watcher to see our own sync-generated writes and can trigger endless
+        auto-sync loops. Keep the staging bundle in a per-user temp/cache folder
+        instead.
+        """
+        uname = (getattr(self, "_current_user", None) or getattr(self, "username", None) or "default").strip() or "default"
+        root = os.path.join(tempfile.gettempdir(), "Keyquorum", "sync_staging", uname)
+        os.makedirs(root, exist_ok=True)
+        return os.path.join(root, "cloudsync.kqsync")
 
     def _get_bundle_map(self, sc: Dict, local_vault_path: str) -> Dict[str, str]:
         """
@@ -329,11 +341,133 @@ class SyncEngine:
 
         return {"vault": local_vault_path}
 
-    def _build_bundle(self, sc: Dict, local_vault_path: str) -> str:
+
+    def _device_id(self) -> str:
+        """
+        Stable per-device identifier for sync metadata.
+        Stored in QSettings so one device keeps the same ID across sessions.
+        """
+        try:
+            s = QSettings()
+            existing = str(s.value("sync/device_id", "") or "").strip()
+            if existing:
+                return existing
+            did = secrets.token_hex(8)
+            s.setValue("sync/device_id", did)
+            return did
+        except Exception:
+            return secrets.token_hex(8)
+
+    @staticmethod
+    def _safe_int(value, default: int = 0) -> int:
+        try:
+            return int(value)
+        except Exception:
+            return int(default)
+
+    def _read_bundle_manifest_from_path(self, path: str) -> dict:
+        try:
+            with zipfile.ZipFile(path, "r") as z:
+                raw = z.read("manifest.json")
+            data = json.loads(raw.decode("utf-8", "ignore") or "{}")
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def _bundle_remote_info(
+        self,
+        p: ProviderBase,
+        sc: dict,
+        cloud_path: str,
+        *,
+        session_handle: int = 0,
+        wrapped: bool = False,
+    ) -> dict:
+        """
+        Read remote bundle manifest info in a wrap-aware way.
+        Returns a dict containing revision/base_revision/content_hash/files.
+        """
+        tmp = None
+        tmp_unwrapped = None
+        try:
+            remote_path = cloud_path
+            if getattr(p, "name", "") != "localpath":
+                fd, tmp = tempfile.mkstemp(prefix="kq_sync_remote_", suffix=".bin")
+                os.close(fd)
+                p.download_to(sc, tmp)
+                remote_path = tmp
+
+            if not (remote_path and os.path.isfile(remote_path)):
+                return {
+                    "revision": 0,
+                    "base_revision": 0,
+                    "device_id": "",
+                    "content_hash": "",
+                    "files": [],
+                    "manifest": {},
+                }
+
+            inspect_path = remote_path
+            if wrapped:
+                raw = Path(remote_path).read_bytes()
+                if raw[:4] == _MAGIC_WRAP:
+                    if not isinstance(session_handle, int) or not session_handle:
+                        return {
+                            "revision": 0,
+                            "base_revision": 0,
+                            "device_id": "",
+                            "content_hash": "",
+                            "files": [],
+                            "manifest": {},
+                        }
+                    plain = wrap_decrypt(session_handle, raw)
+                    fd, tmp_unwrapped = tempfile.mkstemp(prefix="kq_sync_remote_plain_", suffix=".kqsync")
+                    os.close(fd)
+                    Path(tmp_unwrapped).write_bytes(plain)
+                    inspect_path = tmp_unwrapped
+
+            mf = self._read_bundle_manifest_from_path(inspect_path)
+            items = (mf.get("items") or {}) if isinstance(mf, dict) else {}
+            if not isinstance(items, dict):
+                items = {}
+            files = sorted(items.keys())
+            return {
+                "revision": self._safe_int(mf.get("revision"), 0),
+                "base_revision": self._safe_int(mf.get("base_revision"), 0),
+                "device_id": str(mf.get("device_id") or ""),
+                "content_hash": self._stable_manifest_hash_from_items(items),
+                "files": files,
+                "manifest": mf,
+            }
+        except Exception:
+            return {
+                "revision": 0,
+                "base_revision": 0,
+                "device_id": "",
+                "content_hash": "",
+                "files": [],
+                "manifest": {},
+            }
+        finally:
+            for path in (tmp_unwrapped, tmp):
+                if path and os.path.exists(path):
+                    try:
+                        os.remove(path)
+                    except Exception:
+                        pass
+
+    def _build_bundle(self, sc: Dict, local_vault_path: str, *, revision: int | None = None, base_revision: int | None = None, device_id: str | None = None) -> str:
         bundle_path = self._bundle_local_path(local_vault_path)
         files = self._get_bundle_map(sc, local_vault_path)
 
-        manifest = {"magic": _MAGIC_SYNCB.decode("ascii", "ignore"), "ts": int(time.time()), "items": {}}
+        manifest = {
+            "magic": _MAGIC_SYNCB.decode("ascii", "ignore"),
+            "ts": int(time.time()),
+            "revision": self._safe_int(revision, 0),
+            "base_revision": self._safe_int(base_revision, 0),
+            "device_id": str(device_id or self._device_id() or ""),
+            "items": {},
+        }
 
         tmp = None
         try:
@@ -521,10 +655,22 @@ class SyncEngine:
                                 pass
 
     # --- core sync ---
+    
     def sync_now(self, session_handle: int, interactive: bool = False) -> str:
+        """
+        Stable sync policy for desktop + Android bundle sync.
+
+        Rules:
+        - Never create a conflict copy during normal sync.
+        - First pairing with an existing remote prefers pulling the remote.
+        - Auto/live sync prefers pushing the current local edit after backing up the remote.
+        - If both sides changed, use a deterministic winner:
+            * remote wins when it has advanced past this device's last known base revision
+            * otherwise local wins
+        - Before overwriting either side, create a safety backup of the side being replaced.
+        """
         notice_prefix = ""
 
-        # Ownership check before sync (prevents overwriting another user's vault on shared machines)
         try:
             vault_path = getattr(self, "_get_vault", lambda: None)()
             cu = getattr(self, "_current_user", None) or getattr(self, "username", None)
@@ -533,17 +679,18 @@ class SyncEngine:
                 return _tr("blocked-owner")
         except Exception as e:
             log.error(f"[SYNC] [ERROR] Ownership check failed: {e}")
+            cu = getattr(self, "_current_user", None) or getattr(self, "username", None)
 
         cfg, p = self.configured()
         sc = cfg["sync"]
-
-        # multi-file sync, ensure use a dedicated .kqsync remote target.
         self._maybe_migrate_to_bundle_target(cfg, sc, getattr(self, "_get_vault", lambda: "")())
 
         local_vault_path = self._get_vault()
         local_path = local_vault_path
+        bundle_mode = self._is_bundle_mode(sc)
+        device_id = self._device_id()
 
-        if self._is_bundle_mode(sc):
+        if bundle_mode:
             local_path = self._build_bundle(sc, local_vault_path)
             try:
                 sc["files_in_cloud"] = ",".join(sorted(self._get_bundle_map(sc, local_vault_path).keys()))
@@ -556,7 +703,6 @@ class SyncEngine:
 
         cloud_wrap = bool(sc.get("cloud_wrap"))
         effective_wrap = _remote_effective_wrap(p, sc, cloud_wrap)
-
         if effective_wrap and not cloud_wrap:
             sc["cloud_wrap"] = True
             sc["wrap_autodetected"] = True
@@ -572,262 +718,264 @@ class SyncEngine:
             except Exception:
                 pass
 
-        # Ensure local exists or bootstrap from remote
+        remote_exists = p.remote_exists(sc)
+
+        # Prefer bootstrapping from the remote when the current local copy does not exist.
         if not os.path.isfile(local_path):
-            if p.remote_exists(sc):
+            if remote_exists:
                 self._download_to_local(p, sc, session_handle, local_path, cloud_wrap)
-                if self._is_bundle_mode(sc):
+                if bundle_mode:
                     try:
                         self._apply_bundle(sc, local_vault_path, local_path)
                     except Exception as e:
-                        log.warning(f"[SYNC] bundle extract failed: {e}")
+                        log.warning(f"[SYNC] bundle extract failed during bootstrap: {e}")
+                    local_path = self._build_bundle(sc, local_vault_path)
             else:
                 raise NotFound(_tr("Neither local nor remote vault file exists"))
 
-        # Remote does not exist: first push
-        if not p.remote_exists(sc):
-            self._upload_from_local(p, sc, session_handle, local_path, cloud_wrap)
+        if bundle_mode:
+            local_sha, local_files = self._bundle_manifest_hash_local(sc, local_vault_path)
+        else:
+            local_sha = sha256_file(local_path) if os.path.isfile(local_path) else ""
+            local_files = []
 
-            # Pairing state (device-local): use stable manifest hash for bundle mode.
-            if self._is_bundle_mode(sc):
-                local_sha, local_files = self._bundle_manifest_hash_local(sc, local_vault_path)
-                try:
-                    self._state_mark(str(cu or ""), "files_in_cloud", ",".join(local_files))
-                except Exception:
-                    pass
-            else:
-                local_sha = sha256_file(local_path) if os.path.isfile(local_path) else ""
-                try:
-                    self._state_mark(str(cu or ""), "files_in_cloud", "vault")
-                except Exception:
-                    pass
+        remote_ver = ""
+        remote_revision = 0
+        remote_base_revision = 0
+        remote_files = []
+        remote_manifest = {}
+        if bundle_mode and remote_exists:
+            remote_info = self._bundle_remote_info(
+                p,
+                sc,
+                sc.get("remote_path", ""),
+                session_handle=session_handle,
+                wrapped=bool(effective_wrap),
+            )
+            remote_sha = str(remote_info.get("content_hash") or "")
+            remote_files = list(remote_info.get("files") or [])
+            remote_revision = self._safe_int(remote_info.get("revision"), 0)
+            remote_base_revision = self._safe_int(remote_info.get("base_revision"), 0)
+            remote_manifest = dict(remote_info.get("manifest") or {})
+        elif remote_exists:
+            remote_sha, _remote_mtime, remote_ver = p.remote_meta(sc)
+        else:
+            remote_sha = ""
 
+        last_local_sha = self._state_get("last_local_sha256", str(sc.get("last_local_sha256") or ""))
+        last_remote_sha = self._state_get("last_remote_sha256", str(sc.get("last_remote_sha256") or ""))
+        last_remote_revision = self._safe_int(
+            self._state_get("last_remote_revision", str(sc.get("last_remote_revision") or "0")),
+            0,
+        )
+        last_sync_base_revision = self._safe_int(
+            self._state_get("last_sync_base_revision", str(sc.get("last_sync_base_revision") or "0")),
+            0,
+        )
+
+        def _mark_files_cloud(files: list[str]) -> None:
+            try:
+                self._state_mark(str(cu or ""), "files_in_cloud", ",".join(files) if bundle_mode else "vault")
+            except Exception:
+                pass
+
+        def _save_state_synced(local_hash: str, remote_hash: str, revision: int, *, pushed: bool = False, pulled: bool = False) -> None:
             sc.update(
                 {
-                    "last_local_sha256": local_sha,
-                    "last_remote_sha256": local_sha,
-                    "last_remote_version": "",
+                    "last_local_sha256": local_hash,
+                    "last_remote_sha256": remote_hash,
+                    "last_remote_version": remote_ver or sc.get("last_remote_version", ""),
+                    "last_remote_revision": str(revision),
+                    "last_sync_base_revision": str(revision),
+                    "conflict_pending": False,
+                    "conflict_path": "",
                 }
             )
             self._persist_state_from_sc(sc)
             self._save(cfg)
-            self._mark_synced_now(str(cu or ""), pushed=True)
-            return notice_prefix + _tr("pushed")
+            self._mark_synced_now(str(cu or ""), pushed=pushed, pulled=pulled)
 
-        # Compute stable local/remote state hashes.
-        if self._is_bundle_mode(sc):
-            local_sha, local_files = self._bundle_manifest_hash_local(sc, local_vault_path)
-        else:
-            local_files = []
-            local_sha = sha256_file(local_path) if os.path.isfile(local_path) else ""
-        local_mtime = os.path.getmtime(local_path) if os.path.isfile(local_path) else 0.0
+        def _pull_remote() -> str:
+            self._download_to_local(p, sc, session_handle, local_path, cloud_wrap)
+            if bundle_mode:
+                try:
+                    self._apply_bundle(sc, local_vault_path, local_path)
+                except Exception as e:
+                    log.warning(f"[SYNC] bundle extract failed during pull: {e}")
+            _mark_files_cloud(remote_files or local_files)
+            _save_state_synced(remote_sha, remote_sha, remote_revision, pulled=True)
+            return notice_prefix + _tr("pulled")
 
-        # Remote meta: for bundle mode, use manifest hash (stable) rather than ciphertext bytes.
-        remote_ver = ""
-        remote_mtime = 0.0
-        if p.remote_exists(sc):
-            _rsha_bytes, remote_mtime, remote_ver = p.remote_meta(sc)
-            if self._is_bundle_mode(sc):
-                remote_sha, remote_files = self._bundle_manifest_hash_remote(
+        def _push_local(push_base_revision: int | None = None) -> str:
+            base_rev = max(push_base_revision if push_base_revision is not None else 0, last_sync_base_revision, remote_revision, last_remote_revision, 0) if bundle_mode else 0
+            next_revision = base_rev + 1 if bundle_mode else 0
+            upload_path = self._build_bundle(
+                sc,
+                local_vault_path,
+                revision=next_revision,
+                base_revision=base_rev,
+                device_id=device_id,
+            ) if bundle_mode else local_path
+            self._upload_from_local(p, sc, session_handle, upload_path, cloud_wrap)
+            if bundle_mode:
+                pushed_remote_info = self._bundle_remote_info(
                     p,
                     sc,
                     sc.get("remote_path", ""),
                     session_handle=session_handle,
-                    wrapped=bool(effective_wrap),
+                    wrapped=bool(cloud_wrap),
                 )
+                new_remote_sha = str(pushed_remote_info.get("content_hash") or local_sha)
+                new_remote_revision = self._safe_int(pushed_remote_info.get("revision"), next_revision)
+                _mark_files_cloud(local_files or remote_files)
             else:
-                remote_sha = _rsha_bytes
-                remote_files = []
-        else:
-            remote_sha = ""
-            remote_files = []
+                try:
+                    new_remote_sha, _, _new_remote_ver = p.remote_meta(sc)
+                except Exception:
+                    new_remote_sha = local_sha
+                new_remote_revision = 0
+                _mark_files_cloud([])
+            _save_state_synced(local_sha, new_remote_sha, new_remote_revision, pushed=True)
+            return notice_prefix + _tr("pushed")
 
-        # Device-local pairing state (baseline-safe)
-        last_local_sha = self._state_get("last_local_sha256", "")
-        last_remote_sha = self._state_get("last_remote_sha256", "")
-
-        # One-time migration: user enabled Extra Wrap but remote is still unwrapped
+        # One-time migration: rewrite the cloud copy with wrap if enabled locally.
         if cloud_wrap and (not effective_wrap) and not sc.get("wrap_migrated"):
             try:
-                self._upload_from_local(p, sc, session_handle, local_path, cloud_wrap=True)
-                new_remote_sha, _, new_ver = p.remote_meta(sc)
-                sc.update(
-                    {
-                        "wrap_migrated": True,
-                        "last_local_sha256": sha256_file(local_path),
-                        "last_remote_sha256": new_remote_sha,
-                        "last_remote_version": new_ver or sc.get("last_remote_version", ""),
-                    }
-                )
-                self._persist_state_from_sc(sc)
+                result = _push_local(push_base_revision=max(remote_revision, last_remote_revision, 0))
+                sc["wrap_migrated"] = True
                 self._save(cfg)
-                try:
-                    self._state_mark(str(cu or ""), "files_in_cloud", ",".join(remote_files or local_files or []) if self._is_bundle_mode(sc) else "vault")
-                except Exception:
-                    pass
-                self._mark_synced_now(str(cu or ""))
-                return notice_prefix + _tr("synced")
+                return result if result != _tr("pushed") else notice_prefix + _tr("synced")
             except Exception as e:
                 log.error(f"[SYNC] wrap migration failed: {e}")
-                # continue normal flow
 
-        # Nothing changed since last sync (device-local pairing state)
-        if (
-            remote_sha == self._state_get("last_remote_sha256", str(sc.get("last_remote_sha256") or ""))
-            and local_sha == self._state_get("last_local_sha256", str(sc.get("last_local_sha256") or ""))
-        ):
-            return notice_prefix + _tr("noop")
+        if remote_exists and remote_sha == local_sha:
+            _mark_files_cloud(remote_files or local_files)
+            _save_state_synced(local_sha, remote_sha, remote_revision)
+            return notice_prefix + (_tr("noop") if last_local_sha == local_sha and last_remote_sha == remote_sha else _tr("synced"))
 
-        # First-time pairing: choose direction by mtime to avoid false conflicts
-        if (not self._state_get("last_local_sha256", str(sc.get("last_local_sha256") or ""))
-            and not self._state_get("last_remote_sha256", str(sc.get("last_remote_sha256") or ""))):
-            if remote_sha == local_sha:
-                sc.update(
-                    {
-                        "last_local_sha256": local_sha,
-                        "last_remote_sha256": remote_sha,
-                        "last_remote_version": remote_ver or sc.get("last_remote_version", ""),
-                    }
-                )
-                self._persist_state_from_sc(sc)
-                self._save(cfg)
-                self._mark_synced_now(str(cu or ""))
-                return notice_prefix + _tr("synced")
+        if not remote_exists:
+            return _push_local(push_base_revision=max(last_remote_revision, 0))
 
-            if remote_mtime >= local_mtime:
-                self._download_to_local(p, sc, session_handle, local_path, cloud_wrap)
-                if self._is_bundle_mode(sc):
-                    try:
-                        self._apply_bundle(sc, local_vault_path, local_path)
-                    except Exception as e:
-                        log.warning(f"[SYNC] bundle extract failed: {e}")
-                sc.update(
-                    {
-                        "last_local_sha256": remote_sha,
-                        "last_remote_sha256": remote_sha,
-                        "last_remote_version": remote_ver or sc.get("last_remote_version", ""),
-                    }
-                )
-                self._persist_state_from_sc(sc)
-                self._save(cfg)
-                if self._is_bundle_mode(sc):
-                    try:
-                        self._state_mark(str(cu or ""), "files_in_cloud", ",".join(remote_files or []))
-                    except Exception:
-                        pass
-                self._mark_synced_now(str(cu or ""), pulled=True)
-                return notice_prefix + _tr("pulled")
-
-
-            self._upload_from_local(p, sc, session_handle, local_path, cloud_wrap)
-
-            if self._is_bundle_mode(sc):
-                new_remote_sha = local_sha
-                new_ver = ""
+        # Stable first-pair rule:
+        # If this device has no recorded sync lineage yet, prefer seeding the cloud
+        # from the current local state instead of blindly pulling and overwriting
+        # a freshly-added local entry.
+        if not last_local_sha and not last_remote_sha:
+            log.info("[SYNC-FIX] First pair detected → prefer LOCAL push")
+            if remote_exists:
                 try:
-                    self._state_mark(str(cu or ""), "files_in_cloud", ",".join(local_files or []))
-                except Exception:
-                    pass
-            else:
-                new_remote_sha, _, new_ver = p.remote_meta(sc)
-
-            sc.update(
-                {
-                    "last_local_sha256": local_sha,
-                    "last_remote_sha256": new_remote_sha,
-                    "last_remote_version": new_ver or sc.get("last_remote_version", ""),
-                }
-            )
-            self._persist_state_from_sc(sc)
-            self._save(cfg)
-            self._mark_synced_now(str(cu or ""), pushed=True)
-            return notice_prefix + _tr("pushed")
-
-
-
-        # Conflict: both sides changed since last sync
-        last_ts = 0.0  # timestamps are stored outside user_db
-        if (
-            remote_mtime > last_ts
-            and local_mtime > last_ts
-            and remote_sha != local_sha
-        ):
-            result = self._resolve_conflict(
-                p, sc, session_handle, local_path, cloud_wrap, remote_mtime, local_mtime
-            )
-            self._persist_state_from_sc(sc)
-            self._save(cfg)
-            return result
-
-        # Pull
-        if remote_mtime > last_ts and remote_sha != local_sha:
-            self._download_to_local(p, sc, session_handle, local_path, cloud_wrap)
-            if self._is_bundle_mode(sc):
-                try:
-                    self._apply_bundle(sc, local_vault_path, local_path)
+                    self._backup_remote_for_live_sync(p, sc)
+                    log.info("[SYNC-FIX] Remote backup created before first push")
                 except Exception as e:
-                    log.warning(f"[SYNC] bundle extract failed: {e}")
-            sc.update(
-                {
-                    "last_local_sha256": remote_sha,
-                    "last_remote_sha256": remote_sha,
-                    "last_remote_version": remote_ver or sc.get("last_remote_version", ""),
-                }
+                    log.warning(f"[SYNC-FIX] Remote backup failed: {e}")
+            return _push_local(push_base_revision=max(last_remote_revision, remote_revision, 0))
+
+        local_changed = (local_sha != last_local_sha)
+        remote_changed = (remote_sha != last_remote_sha)
+        remote_advanced_since_base = False
+        remote_is_known_base = False
+        if bundle_mode:
+            remote_is_known_base = (remote_revision == last_sync_base_revision)
+            remote_advanced_since_base = (remote_revision > last_sync_base_revision) or (remote_base_revision > last_sync_base_revision)
+            if remote_sha == last_remote_sha and remote_revision == last_remote_revision:
+                remote_is_known_base = True
+
+        try:
+            log.info(
+                "[SYNC] stable decision interactive=%s local_changed=%s remote_changed=%s remote_rev=%s last_base=%s last_remote_rev=%s remote_base_rev=%s",
+                interactive,
+                local_changed,
+                remote_changed,
+                remote_revision,
+                last_sync_base_revision,
+                last_remote_revision,
+                remote_base_revision,
             )
-            self._persist_state_from_sc(sc)
-            self._save(cfg)
-            try:
-                self._state_mark(str(cu or ""), "files_in_cloud", ",".join(remote_files or []) if self._is_bundle_mode(sc) else "vault")
-            except Exception:
-                pass
-            self._mark_synced_now(str(cu or ""), pulled=True)
-            return notice_prefix + _tr("pulled")
+        except Exception:
+            pass
 
-        # Push
-        if local_mtime > last_ts and remote_sha != local_sha:
-            self._upload_from_local(p, sc, session_handle, local_path, cloud_wrap)
+        if not local_changed and remote_changed:
+            return _pull_remote()
 
-            if self._is_bundle_mode(sc):
-                # After push, remote state equals local manifest state.
-                new_remote_sha = local_sha
-                new_ver = ""
+        if local_changed and not remote_changed:
+            if not interactive:
                 try:
-                    self._state_mark(str(cu or ""), "files_in_cloud", ",".join(local_files or []))
-                except Exception:
-                    pass
+                    self._backup_remote_for_live_sync(p, sc)
+                except Exception as e:
+                    log.warning(f"[SYNC] live backup failed (continuing with push): {e}")
+            return _push_local()
+
+        if local_changed and remote_changed:
+            remote_wins = False
+            if bundle_mode:
+                remote_wins = remote_advanced_since_base
             else:
-                new_remote_sha, _, new_ver = p.remote_meta(sc)
+                remote_wins = bool(last_remote_sha and remote_sha != last_remote_sha)
+
+            if remote_wins:
                 try:
-                    self._state_mark(str(cu or ""), "files_in_cloud", "vault")
-                except Exception:
-                    pass
+                    self._backup_local_for_pull(local_path, label="before_pull")
+                except Exception as e:
+                    log.warning(f"[SYNC] local backup before pull failed: {e}")
+                return _pull_remote()
 
-            sc.update(
-                {
-                    "last_local_sha256": local_sha,
-                    "last_remote_sha256": new_remote_sha,
-                    "last_remote_version": new_ver or sc.get("last_remote_version", ""),
-                }
-            )
-            self._persist_state_from_sc(sc)
-            self._save(cfg)
-            self._mark_synced_now(str(cu or ""), pushed=True)
-            return notice_prefix + _tr("pushed")
+            try:
+                self._backup_remote_for_live_sync(p, sc)
+            except Exception as e:
+                log.warning(f"[SYNC] remote backup before push failed: {e}")
+            return _push_local()
 
-        sc.update(
-            {
-                "last_local_sha256": local_sha,
-                "last_remote_sha256": remote_sha,
-                "last_remote_version": remote_ver or sc.get("last_remote_version", ""),
-            }
-        )
-        self._persist_state_from_sc(sc)
-        self._save(cfg)
-        self._mark_synced_now(str(cu or ""))
+        _mark_files_cloud(remote_files or local_files)
+        _save_state_synced(local_sha, remote_sha, remote_revision)
         return notice_prefix + _tr("synced")
 
 
     # --- internal helpers ---
+
+    def _backup_remote_for_live_sync(self, p: ProviderBase, sc: Dict) -> None:
+        """Best-effort remote backup before non-interactive live push."""
+        try:
+            if not p.remote_exists(sc):
+                return
+        except Exception:
+            return
+
+        remote_path = (sc.get("remote_path") or "").strip()
+        if not remote_path:
+            return
+
+        try:
+            base_dir = os.path.dirname(remote_path) or tempfile.gettempdir()
+            backup_dir = os.path.join(base_dir, "cloud_history")
+            os.makedirs(backup_dir, exist_ok=True)
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            ext = os.path.splitext(remote_path)[1] or ".bin"
+            backup_path = os.path.join(backup_dir, f"backup_{stamp}{ext}")
+            if getattr(p, "name", "") == "localpath" and os.path.isfile(remote_path):
+                shutil.copy2(remote_path, backup_path)
+            else:
+                p.download_to(sc, backup_path)
+            log.info(f"[SYNC] remote backup saved -> {backup_path}")
+        except Exception:
+            raise
+
+
+    def _backup_local_for_pull(self, local_path: str, label: str = "pull") -> None:
+        """Best-effort local backup before a remote pull overwrites local files."""
+        try:
+            if not (local_path and os.path.isfile(local_path)):
+                return
+            base_dir = os.path.dirname(local_path) or tempfile.gettempdir()
+            backup_dir = os.path.join(base_dir, "pull_history")
+            os.makedirs(backup_dir, exist_ok=True)
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            ext = os.path.splitext(local_path)[1] or ".bin"
+            backup_path = os.path.join(backup_dir, f"{label}_{stamp}{ext}")
+            shutil.copy2(local_path, backup_path)
+            log.info(f"[SYNC] local backup saved -> {backup_path}")
+        except Exception:
+            raise
+
     def _remote_sha(self, p: ProviderBase, sc: Dict) -> str:
         try:
             return p.remote_meta(sc)[0]

@@ -98,6 +98,9 @@ def load_setting(self, *args, **kwargs):
     self.DefenderQuickScan = False
     self.set_touch = False
     self.offer_tour_on_first_login = False
+    self.auto = False
+    self.cloud_wrap = False
+    self.cloud_enabled = False
 
     # --- Helper to set widget value safely without emitting signals ---
     def _set(widget_name: str, setter: str, value):
@@ -153,7 +156,6 @@ def load_setting(self, *args, **kwargs):
         )
 
         # debug flag: force-on in dev, else from settings (default False)
-
         if is_dev and DEBUG_ON:
             self.debug_set = True
             log.info(f"{kql.i('debug')} [DEBUG] Debug forced ON in dev mode")
@@ -177,7 +179,7 @@ def load_setting(self, *args, **kwargs):
             self.recovery_m.setText(self.tr("🔐 Maximum Security (no recovery)"))
         elif recovery_mode is True:
             self.recovery_m.setText(self.tr("🔐 Recovery Mode"))
-        
+
         # --- Cloud prefs (per-user) ---
         try:
             cloud = (rec.get("cloud") if isinstance(rec, dict) else None) or {}
@@ -185,9 +187,16 @@ def load_setting(self, *args, **kwargs):
             log.error(f"{kql.i('tool')} [ERROR] settings cloud data error: {e}")
             cloud = {}
 
-        self.auto = bool(get_user_setting(user, "auto_sync", cloud.get("sync_enable", cloud.get("auto_sync", False))))
+        self.auto = bool(
+            get_user_setting(
+                user,
+                "auto_sync",
+                cloud.get("sync_enable", cloud.get("auto_sync", False)),
+            )
+        )
         self.cloud_wrap = bool(cloud.get("cloud_wrap", False))
         self.cloud_enabled = bool(cloud.get("enabled", False))
+
         # --- Cloud sync status labels (Settings → Cloud Sync) ---
         if cloud:
             try:
@@ -195,7 +204,7 @@ def load_setting(self, *args, **kwargs):
                 _update_cloudsync_label(self, user)
             except Exception as e:
                 log.error(f"cloud label update: {e}")
-      
+
         # --- Backup counts (labels) ---
         try:
             _login_left = get_login_backup_count_quick(user)
@@ -227,14 +236,22 @@ def load_setting(self, *args, **kwargs):
     global_prefs = load_security_prefs(None)  # resolves to shared "default" file
     user_prefs = load_security_prefs(user) if user else {}
 
-    enable_preflight_startup = bool(global_prefs.get("enable_preflight_startup", global_prefs.get("enable_preflight", False)))
-    enable_preflight_login = bool(user_prefs.get("enable_preflight_login", user_prefs.get("enable_preflight", False)))
+    enable_preflight_startup = bool(
+        global_prefs.get("enable_preflight_startup", global_prefs.get("enable_preflight", False))
+    )
+    enable_preflight_login = bool(
+        user_prefs.get("enable_preflight_login", user_prefs.get("enable_preflight", False))
+    )
 
     check_av_startup = bool(global_prefs.get("check_av_startup", global_prefs.get("check_av", False)))
     check_av_login = bool(user_prefs.get("check_av_login", user_prefs.get("check_av", False)))
 
-    defender_qs_startup = bool(global_prefs.get("defender_quick_scan_startup", global_prefs.get("defender_quick_scan", False)))
-    defender_qs_login = bool(user_prefs.get("defender_quick_scan_login", user_prefs.get("defender_quick_scan", False)))
+    defender_qs_startup = bool(
+        global_prefs.get("defender_quick_scan_startup", global_prefs.get("defender_quick_scan", False))
+    )
+    defender_qs_login = bool(
+        user_prefs.get("defender_quick_scan_login", user_prefs.get("defender_quick_scan", False))
+    )
     self.set_status_txt(self.tr("Set Settings"))
 
     _set("ontop_", "setChecked", bool(self.ontop))
@@ -250,11 +267,9 @@ def load_setting(self, *args, **kwargs):
     _set("DefenderQuickScan_", "setChecked", defender_qs_login)
     _set("DefenderQuickScan_1", "setChecked", defender_qs_login)
 
-    _set("preflight_check_now_1", "setEnabled", True)  
+    _set("preflight_check_now_1", "setEnabled", True)
 
     # Startup controls
-
-    # Startup controls (new UI names end with _2)
     _set("enablePreflightCheckbox_2", "setChecked", enable_preflight_startup)
     _set("enableWinDefCheckbox_2", "setChecked", check_av_startup)
     _set("DefenderQuickScan_2", "setChecked", defender_qs_startup)
@@ -296,10 +311,8 @@ def load_setting(self, *args, **kwargs):
                 tok = ensure_bridge_token(user, new=False)
                 if tok:
                     start_bridge_server(self, strict=None)
-                    start_bridge_monitoring(self,)
-                    log.info(
-                        "[BRIDGE] Autostart enabled by user; server started on 127.0.0.1"
-                    )
+                    start_bridge_monitoring(self)
+                    log.info("[BRIDGE] Autostart enabled by user; server started on 127.0.0.1")
             except Exception as e:
                 log.error(f"[BRIDGE] Autostart failed: {e}")
     except Exception as e:
@@ -342,14 +355,35 @@ def load_setting(self, *args, **kwargs):
             enable_buttons(self)
         else:
             disable_buttons(self)
-
     except Exception as e:
         log.error(f"{kql.i('tool')} [ERROR] Cloud UI toggle failed: {e}")
 
-    # Refresh tables/UI
+    # --- Cloud engine init after successful login ---
+    # Always build/configure the engine when cloud sync is enabled.
+    # Only arm watcher/timer when auto-sync is enabled.
+    try:
+        if bool(getattr(self, "cloud_enabled", False)):
+            from features.sync.sync_ops import _configure_sync_engine
+
+            user = self._active_username()
+            if user:
+                self.set_status_txt(self.tr("Loading set: Cloud Engine"))
+                _configure_sync_engine(self, user, "load_setting")
+                log.info("[CLOUD] sync engine configured after load_setting")
+
+                if bool(getattr(self, "auto", False)):
+                    from features.sync.sync_ops import _watch_local_vault, _init_auto_sync
+                    _watch_local_vault(self)
+                    _init_auto_sync(self)
+                    log.info("[AUTO-SYNC] watcher/poll armed after load_setting")
+                else:
+                    log.info("[AUTO-SYNC] auto-sync disabled; engine only")
+    except Exception as e:
+        log.error(f"[AUTO-SYNC] load_setting init failed: {e}")
+
+    # --- Refresh tables/UI ---
     try:
         try:
-            pass
             self.refresh_category_selector()
         except Exception:
             pass
@@ -357,10 +391,9 @@ def load_setting(self, *args, **kwargs):
             self.refresh_category_dependent_ui()
         except Exception:
             pass
-
-    except Exception:
+    except Exception as e:
         log.error(f"{kql.i('tool')} [ERROR] Vault table load failed: {e}")
-            
+
     # --- One-time 'What's New' popup ---
     try:
         # Slight delay so it appears after the main window is stable
@@ -384,7 +417,6 @@ def load_setting(self, *args, **kwargs):
         if hasattr(self, "backupAdvisor") and self.backupAdvisor:
             try:
                 pending = int(self.backupAdvisor.pending_changes())
-            
             except Exception:
                 pending = 0
         self.changes_backup.setText(("(unbackedup changes counter") + f": {pending}).")
@@ -423,10 +455,9 @@ def load_setting(self, *args, **kwargs):
                 try:
                     self.launchBeforeAutofillCheck.toggled.connect(
                         self.on_toggle_launch_before_autofill,
-                        Qt.ConnectionType.UniqueConnection,  # prevents duplicate connects if supported
+                        Qt.ConnectionType.UniqueConnection,
                     )
                 except (TypeError, AttributeError):
-                    # Fallback when UniqueConnection isn't supported
                     self.launchBeforeAutofillCheck.toggled.connect(
                         self.on_toggle_launch_before_autofill
                     )
@@ -439,6 +470,5 @@ def load_setting(self, *args, **kwargs):
         f"{kql.i('tool')} [SETTINGS] {kql.i('ok')} "
         f"Settings OK: topmost={self.ontop}, theme applied, categories refreshed"
     )
-
 
 

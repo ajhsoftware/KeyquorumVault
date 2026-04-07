@@ -3809,7 +3809,6 @@ def successful_login(self, *args, **kwargs):
     except Exception as e:
         log.exception(f"{kql.i('sign')} -> {kql.i('err')} [S-LOGIN] Post-login Salt Migration Skipped: {e}")
 
-    
     _aw('notify_usb_loaded_once', lambda *a, **k: None)(self, username)
 
     try: # Start watching for USB removal when in portable mode
@@ -3817,7 +3816,7 @@ def successful_login(self, *args, **kwargs):
 
     except Exception as e:
         log.exception(f"{kql.i('sign')} -> {kql.i('err')} [S-LOGIN]  Watching For USB Removal Portable Mode")
-     
+
     try:  # Compute per-session password strength score (used for Security Center)
         from auth.pw.password_utils import estimate_strength_score
         pw = getattr(self, "current_password", "") or ""
@@ -3833,6 +3832,9 @@ def successful_login(self, *args, **kwargs):
         self.current_password = None
     except Exception:
         pass
+
+    # Note: Sync Not Working remove for now stop show
+    #self.on_sync_now_2.show()
 
     if not already_finalized:
         # WRAP accounts must NOT unlock vault until YubiKey completes
@@ -3982,6 +3984,16 @@ def successful_login(self, *args, **kwargs):
             log.info("✅ [S-LOGIN] bridge online at 127.0.0.1:%s • token=%s", port, tmask)
     except Exception:
         log.exception(f"{kql.i('sign')} -> {kql.i('err')} [S-LOGIN] Bridge Failed to start")
+
+    # 🔧 Ensure sync engine is ready BEFORE any sync attempt
+    try:
+        from features.sync.sync_ops import _configure_sync_engine
+
+        username = self._active_username()
+        if username:
+            _configure_sync_engine(self, username, "post-login-init")
+    except Exception as e:
+        log.debug(f"[CLOUD] engine init failed at login: {e}")
 
     try:  # Sync engine (key-aware)
         from features.sync.sync_ops import _cloud_sync_safe

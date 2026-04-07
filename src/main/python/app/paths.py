@@ -674,10 +674,6 @@ def breach_cache(username: str, *, ensure_parent: bool = False, name_only: bool 
     name = f"{username}_breach_cache.json"
     return Path(name) if name_only else config_dir(username, ensure_parent=ensure_parent) / name
 
-# NOTE: old removed old dev key
-def dev_file(username: str, *, ensure_parent: bool = False, name_only: bool = False) -> Path:
-    name = "dev_entitlements.json"
-    return Path(name) if name_only else config_dir(username, ensure_parent=ensure_parent) / name
 
 def ui_file(name: str = "keyquorum_ui", *, must_exist: bool = False) -> Path:
     return res_path(Path("ui") / f"{name}.ui", must_exist=must_exist)
@@ -758,7 +754,6 @@ def ensure_dirs(username: str | None = None) -> None:
 # -----------------------------------
 def bridge_token_dir(username: str | None = None, ensure_parent: bool = True) -> Path:
     return config_dir(username, ensure_parent=ensure_parent) / "BTOK.txt"
-
 
 def find_passkey_manager_exe(base_dir: str) -> str | None:
     cands = []
@@ -847,7 +842,7 @@ def user_log_paths(username: str | None = None) -> None:
     log.info(f"{kql.i('path')} [US_PATHS] {spf} exists={spf.exists()}")
     # log.info(f"{kql.i('path')} [US_PATHS] {csf} exists={csf.exists()}")
     log.info(f"{kql.i('path')} [US_PATHS] {cf} exists={cf.exists()}")
-    log.info(f"{kql.i('path')} [US_PATHS] {casf} exists={casf.exists()}")
+    #log.info(f"{kql.i('path')} [US_PATHS] {casf} exists={casf.exists()}")
     log.info(f"{kql.i('path')} [US_PATHS] {skf} exists={skf.exists()}")
     log.info(f"{kql.i('path')} [US_PATHS] {bcf} exists={bcf.exists()}")
     log.info(f"{kql.i('path')} [US_PATHS] {pif} exists={pif.exists()}")

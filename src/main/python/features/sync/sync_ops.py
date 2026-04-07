@@ -45,6 +45,84 @@ from pathlib import Path
 from features.sync.engine import SyncEngine
 from app.qt_imports import *
 
+import inspect
+
+
+
+def _sync_now_safe(engine, session_handle, *, interactive=False, prefer_local=False):
+    """
+    Safe wrapper for mixed SyncEngine versions.
+    Prevents crashes when prefer_local is not supported.
+    """
+    try:
+        fn = getattr(engine, "sync_now", None)
+        if fn is None:
+            return "no-engine"
+
+        params = inspect.signature(fn).parameters
+
+        if "prefer_local" in params:
+            return fn(session_handle, interactive=interactive, prefer_local=prefer_local)
+
+        # fallback (OLD ENGINE)
+        return fn(session_handle, interactive=interactive)
+
+    except Exception as e:
+        log.error(f"[SYNC] safe call failed: {e}")
+        return "error"
+
+
+# ==============================
+# --- manual sync ---
+# ==============================
+
+def _manual_pull(self):
+    try:
+        username = self._active_username()
+        if not username:
+            return
+
+        log.info("[SYNC] Manual PULL triggered")
+
+        _restore_local_from_remote(self, username=username)
+        _update_cloudsync_label(self, username, last_result="pulled")
+
+        try:
+            update_baseline(
+                username=username,
+                verify_after=False,
+                who=self.tr("Manual Pull From Cloud"),
+            )
+        except Exception:
+            pass
+
+    except Exception as e:
+        log.error(f"[SYNC] Manual pull error: {e}")
+
+
+def _manual_push(self):
+    try:
+        username = self._active_username()
+        if not username:
+            return
+
+        log.info("[SYNC] Manual PUSH triggered")
+
+        _seed_remote_from_local(self)
+        _update_cloudsync_label(self, username, last_result="pushed")
+
+        try:
+            update_baseline(
+                username=username,
+                verify_after=False,
+                who=self.tr("Manual Push To Cloud"),
+            )
+        except Exception:
+            pass
+
+    except Exception as e:
+        log.error(f"[SYNC] Manual push error: {e}")
+
 
 # ==============================
 # Cloud Sync UI helpers
@@ -71,6 +149,7 @@ def _kq_sync_state_get(username: str) -> dict:
             "last_local_sha256": str(qs.value(base + "last_local_sha256", "") or ""),
             "last_remote_sha256": str(qs.value(base + "last_remote_sha256", "") or ""),
             "last_remote_version": str(qs.value(base + "last_remote_version", "") or ""),
+            "last_remote_revision": str(qs.value(base + "last_remote_revision", "") or ""),
             "files_in_cloud": str(qs.value(base + "files_in_cloud", "") or ""),
         }
     except Exception:
@@ -81,6 +160,7 @@ def _kq_sync_state_get(username: str) -> dict:
             "last_local_sha256": "",
             "last_remote_sha256": "",
             "last_remote_version": "",
+            "last_remote_revision": "",
             "files_in_cloud": "",
         }
 
@@ -106,6 +186,31 @@ def _fmt_ts(ts: int) -> str:
         return datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
         return "Never"
+
+# Sync scope helpers
+def _set_cloud_sync_scope(self, scope: str) -> None:
+    """Set current cloud sync bundle scope.
+
+    Supported scopes:
+    - 'live' : minimal bundle for frequent auto-sync
+    - 'full' : full account bundle for manual sync / new device restore
+    """
+    try:
+        scope = (scope or "live").strip().lower()
+    except Exception:
+        scope = "live"
+    if scope not in {"live", "full"}:
+        scope = "live"
+    self._cloud_sync_scope = scope
+
+
+def _get_cloud_sync_scope(self) -> str:
+    try:
+        scope = str(getattr(self, "_cloud_sync_scope", "live") or "live").strip().lower()
+    except Exception:
+        scope = "live"
+    return scope if scope in {"live", "full"} else "live"
+
 
 # Helper to configure the sync engine for a given user, with error handling and user feedback.
 def on_toggle_extra_cloud_wrap(self, *args, **kwargs):
@@ -138,6 +243,7 @@ def on_toggle_extra_cloud_wrap(self, *args, **kwargs):
 
     tmp_upload = None
     try:
+        _set_cloud_sync_scope(self, "full")
         _configure_sync_engine(self, username, "on_toggle_extra_cloud_wrap")
         eng = getattr(self, "sync_engine", None)
         if eng is None:
@@ -204,6 +310,7 @@ def on_toggle_extra_cloud_wrap(self, *args, **kwargs):
                 last_local_sha256="",
                 last_remote_sha256="",
                 last_remote_version="",
+                last_remote_revision="",
                 files_in_cloud=sc.get("files_in_cloud") or ("vault" if not eng._is_bundle_mode(sc) else ""),
             )
         except Exception:
@@ -237,8 +344,10 @@ def on_toggle_extra_cloud_wrap(self, *args, **kwargs):
             pass
         self._sync_guard = False
         try:
-            _watch_local_vault(self,)
-            _schedule_auto_sync(self,)
+            # Note: disable for now till fixed
+            log.info("[AUTO-SYNC] scheduling skipped (disabled)")
+            #_watch_local_vault(self,)
+            #_schedule_auto_sync(self,)
         except Exception:
             pass
 
@@ -426,7 +535,15 @@ def on_autosync_clicked(self, checked: bool) -> None:
         if not hasattr(self, "sync_engine") or self.sync_engine is None:
             _configure_sync_engine(self, username, "on_autosync_clicked")
         if self.sync_engine and self.sync_engine.configured() and checked:
-            self.sync_engine.sync_now(self.core_session_handle, interactive=False)
+            _set_cloud_sync_scope(self, "live")
+            #self.sync_engine.sync_now(self.core_session_handle, interactive=False)
+
+            _sync_now_safe(
+                self.sync_engine,
+                self.core_session_handle,
+                interactive=False,
+                prefer_local=False)
+
             _watch_local_vault(self,)
 
         elif not checked and hasattr(self, "_vault_watcher") and self._vault_watcher:
@@ -481,6 +598,7 @@ def on_button_sync_cloud(self):
             QMessageBox.information(self, self.tr("Cloud sync"), self.tr("Please log in first."))
             return
 
+        _set_cloud_sync_scope(self, "full")
         res = str(self.sync_engine.sync_now(key, interactive=True) or "")
         _update_cloudsync_label(self, username, last_result=res)
 
@@ -488,7 +606,7 @@ def on_button_sync_cloud(self):
 
         # If the result indicates a pull/merge, refresh integrity baseline
         _r = res.lower()
-        if _r.startswith("pulled") or ("conflict" in _r) or ("download" in _r):
+        if _r.startswith("pulled") or ("download" in _r):
             try:
                 update_baseline(username=username, verify_after=False, who=self.tr("OnCloud Sync Settings Changed")) 
             except Exception:
@@ -538,30 +656,33 @@ def on_stop_cloud_sync_keep_local(self, *args, **kwargs):
 
     elif os.path.isfile(cloud_path):
         src_file = cloud_path
-
+    skip_copy = False
     if not src_file or not os.path.isfile(src_file):
         QMessageBox.information(
             self,
             self.tr("Stop Cloud Sync"),
             self.tr("Cloud file not found in the configured location."),
         )
-        return
+        skip_copy = True
 
-    home = os.path.expanduser("~")
-    dst, _ = QFileDialog.getSaveFileName(
-        self, "Save a local copy of your vault",
-        os.path.join(home, os.path.basename(src_file)),
-        "Keyquorum Vault (*.kqvault);;All files (*.*)"
-    )
-    if not dst:
-        return
+    if not skip_copy:
+        home = os.path.expanduser("~")
+        dst, _ = QFileDialog.getSaveFileName(
+            self, "Save a local copy of your vault",
+            os.path.join(home, os.path.basename(src_file)),
+            "Keyquorum Vault (*.kqvault);;All files (*.*)"
+        )
+        if not dst:
+            return
 
+        try:
+            tmp_local = str(vault_file(username, ensure_parent=True))
+            _restore_local_from_remote(username, src_file)
+            copy2(tmp_local, dst)  # now copy the unwrapped working file to the user's chosen path
+            # disable cloud
+        except Exception:
+            pass
     try:
-
-        tmp_local = str(vault_file(username, ensure_parent=True))
-        _restore_local_from_remote(username, src_file)
-        copy2(tmp_local, dst)  # now copy the unwrapped working file to the user's chosen path
-        # disable cloud
         ok = stop_user_cloud(username)
         if not ok:
             QMessageBox.critical(
@@ -697,6 +818,7 @@ def on_copy_vault_to_cloud(self):
 
     # Reconfigure engine + do an initial sync so the remote is created in the correct format.
     try:
+        _set_cloud_sync_scope(self, "full")
         _configure_sync_engine(self, username, "on_copy_vault_to_cloud")
         initial = str(_cloud_sync_safe(self, self.core_session_handle, interactive=True) or "synced")
     except Exception as e:
@@ -757,10 +879,6 @@ def _configure_sync_engine(self, username=None, who="None"):
         }
 
         optional_files = {
-            "audit.kqad": str(audit_file(username, ensure_parent=True)),
-            "audit_slt.kqslt": str(audit_file_salt(username, ensure_parent=True)),
-            "audit_mir.kqadmr": str(audit_mirror_file(username, ensure_parent=True)),
-            "baseline.bsln": str(baseline_file(username, ensure_parent=True)),
             "vault_wrap": str(vault_wrapped_file(username, ensure_parent=True)),
             "trash.bin": str(trash_path(username, ensure_parent=True)),
             "pw_last.bin": str(pw_cache_file(username, ensure_parent=True)),
@@ -817,14 +935,28 @@ def _cloud_sync_safe(self, *args, **kwargs) -> str:
     - Logs the outcome and updates the status text
     - Returns: 'pushed', 'pulled', 'synced', 'noop', 'blocked-owner', 'no-engine', 'no-user', or 'error'
     """
+
+    interactive = bool(kwargs.get("interactive", False))
+    # manual-only mode # Note: remove to unblock auto sync
+    if not interactive:
+        log.info("[AUTO-SYNC] disabled (manual only mode)")
+        return "auto-disabled"
+
     def _status(msg: str):
         try:
             self.set_status_txt(self.tr(msg))
         except Exception:
             pass
 
+    if getattr(self, "_sync_in_progress", False):
+        log.info("[CLOUD] sync skipped — already running")
+        return "busy"
+
     try:
+        self._sync_in_progress = True
         interactive = bool(kwargs.get("interactive", False))
+        prefer_local = bool(kwargs.get("prefer_local", False))
+        _set_cloud_sync_scope(self, "full" if interactive else "live")
         username = self._active_username()
 
         if not username:
@@ -833,8 +965,10 @@ def _cloud_sync_safe(self, *args, **kwargs) -> str:
             return "no-user"
 
         # Ensure engine is created/bound for this user
-        if hasattr(self, "_configure_sync_engine"):
+        try:
             _configure_sync_engine(self, username, "_cloud_sync_safe")
+        except Exception:
+            pass
 
         eng = getattr(self, "sync_engine", None)
         if not eng or not hasattr(eng, "sync_now"):
@@ -849,7 +983,14 @@ def _cloud_sync_safe(self, *args, **kwargs) -> str:
             _status("Cloud sync: please unlock vault first")
             return "no-session"
 
-        result = str(eng.sync_now(session_handle, interactive=interactive) or "noop")
+        #result = str(eng.sync_now(session_handle, interactive=interactive, prefer_local=prefer_local) or "noop")
+
+        result = str(_sync_now_safe(
+            eng,
+            session_handle,
+            interactive=interactive,
+            prefer_local=prefer_local
+        ) or "noop")
 
         # Normalise 'synced' vs 'noop'
         if result == "synced":
@@ -858,6 +999,21 @@ def _cloud_sync_safe(self, *args, **kwargs) -> str:
             norm = "noop"
         else:
             norm = result
+
+        # rebuild baseline after pull / conflict / download
+        try:
+            _r = str(norm or "").lower()
+            if (
+                _r.startswith("pulled")
+                or "download" in _r
+            ):
+                update_baseline(
+                    username=username,
+                    verify_after=False,
+                    who=self.tr("Cloud Sync Pull Applied"),
+                )
+        except Exception as e:
+            log.debug(f"[CLOUD] baseline refresh skipped: {e}")
 
         # Log + status text (no popups)
         if norm == "pushed":
@@ -877,6 +1033,11 @@ def _cloud_sync_safe(self, *args, **kwargs) -> str:
             log.info(f"[CLOUD] sync result: {norm}")
             _status(f"Cloud sync: {norm}")
 
+        try:
+            import time as _time
+            self._last_sync_finished_ts = int(_time.time())
+        except Exception:
+            pass
         return norm
 
     except Exception as e:
@@ -888,6 +1049,8 @@ def _cloud_sync_safe(self, *args, **kwargs) -> str:
         except Exception:
             pass
         return "error"
+    finally:
+        self._sync_in_progress = False
 
 # Helper to determine the YubiKey Wrap/Gate status for a given user, including whether the necessary tooling is available on this machine. This is used to inform the user about their YubiKey 2FA configuration and whether they can enable extra cloud wrapping for enhanced security.
 def _yubi_wrap_status(username) -> dict:
@@ -1179,6 +1342,7 @@ def _seed_remote_from_local(self, *args, **kwargs):
     if not remote_file:
         return
 
+    _set_cloud_sync_scope(self, "full")
     _configure_sync_engine(self, username, "_seed_remote_from_local")
     eng = getattr(self, "sync_engine", None)
 
@@ -1273,6 +1437,7 @@ def _restore_local_from_remote(self, username: str | None = None, remote_file: s
         log.warning("[CLOUD-RESTORE] abort: remote file missing path=%r", remote_file)
         raise RuntimeError(f"Cloud file not found: {remote_file}")
 
+    _set_cloud_sync_scope(self, "full")
     _configure_sync_engine(self, username, "_restore_local_from_remote")
     eng = getattr(self, "sync_engine", None)
 
@@ -1351,8 +1516,16 @@ def _init_auto_sync(self, *args, **kwargs):
     self._auto_sync_timer.setInterval(2500)  # 2.5s debounce
     self._auto_sync_timer.timeout.connect(lambda: _run_auto_sync(self))
 
+    # Debounce raw filesystem watcher bursts separately from sync execution.
+    self._watch_change_timer = QTimer(self)
+    self._watch_change_timer.setSingleShot(True)
+    self._watch_change_timer.setInterval(900)
+    self._watch_change_timer.timeout.connect(lambda: _schedule_auto_sync(self))
+
     # Guards/state
     self._is_syncing_cloud = False
+    self._sync_guard = False
+    self._suppress_watch_events_until = 0.0
     self._vault_watcher = None
 
 # Method to schedule an auto-sync operation after a delay. This is triggered by file change events on the local vault, and it ensures that we don't immediately sync on every single file change (which could be noisy), but instead wait for a short period of inactivity before performing the sync. It includes comprehensive checks to ensure that the user is logged in, cloud sync is enabled, and the engine is configured before starting the timer for auto-sync.
@@ -1370,6 +1543,18 @@ def _schedule_auto_sync(self):
         except Exception:
             pass
         self._init_auto_sync()
+
+    try:
+        import time as _time
+        if float(getattr(self, "_suppress_watch_events_until", 0.0) or 0.0) > _time.monotonic():
+            log.info("[AUTO-SYNC] exit: watcher suppression window active")
+            return
+    except Exception:
+        pass
+
+    if getattr(self, "_sync_guard", False) or getattr(self, "_is_syncing_cloud", False):
+        log.info("[AUTO-SYNC] exit: sync guard active")
+        return
 
     username = self._active_username()
     try:
@@ -1410,9 +1595,11 @@ def _schedule_auto_sync(self):
         return
 
     try:
-        _configure_sync_engine(self, username, "_schedule_auto_sync")
+        log.info("[AUTO-SYNC] scheduling skipped (disabled)")
+        #_set_cloud_sync_scope(self, "live")
+        #_configure_sync_engine(self, username, "_schedule_auto_sync")
          
-        log.info("[AUTO-SYNC] configure_sync_engine ok")
+        #log.info("[AUTO-SYNC] configure_sync_engine ok")
     except Exception as e:
          
         log.error(f"[AUTO-SYNC] exit: configure failed: {e}")
@@ -1427,10 +1614,17 @@ def _schedule_auto_sync(self):
         log.warning(f"[AUTO-SYNC] exit: engine not configured: {e}")
         return
 
-    if getattr(self, "_is_syncing_cloud", False):
+    if getattr(self, "_is_syncing_cloud", False) or getattr(self, "_sync_in_progress", False):
          
         log.warning("[AUTO-SYNC] exit: already syncing")
         return
+
+    try:
+        if getattr(self, "_auto_sync_timer", None) is not None and self._auto_sync_timer.isActive():
+            log.info("[AUTO-SYNC] timer already active")
+            return
+    except Exception:
+        pass
 
     try:
          
@@ -1463,12 +1657,27 @@ def _run_auto_sync(self):
         return
 
     # prevent re-entrant loops when our own pull/write triggers fileChanged
-    if getattr(self, "_is_syncing_cloud", False):
+    if getattr(self, "_is_syncing_cloud", False) or getattr(self, "_sync_guard", False) or getattr(self, "_sync_in_progress", False):
         return
 
     try:
+        import time as _time
+        last_done = int(getattr(self, "_last_sync_finished_ts", 0) or 0)
+        if last_done and (_time.time() - last_done) < 5.0:
+            log.info("[AUTO-SYNC] skipped — cooldown active")
+            return
         self._is_syncing_cloud = True
-        res = str(self.sync_engine.sync_now(self.core_session_handle, interactive=False) or "")
+        self._sync_guard = True
+        # Suppress watcher-triggered reschedules while sync-generated writes settle.
+        self._suppress_watch_events_until = _time.monotonic() + 10.0
+        try:
+            t = getattr(self, "_watch_change_timer", None)
+            if t is not None:
+                t.stop()
+        except Exception:
+            pass
+        _set_cloud_sync_scope(self, "live")
+        res = str(_cloud_sync_safe(self, self.core_session_handle, interactive=False, prefer_local=True) or "")
          
         log.info(f"[AUTO-SYNC] result={res}")
         log.debug(self.tr("[AUTO-SYNC] {result}").format(result=res))
@@ -1478,15 +1687,8 @@ def _run_auto_sync(self):
         except Exception as e:
             log.warning(f"[AUTO-SYNC] label refresh failed: {e}")
 
-        # Refresh the Cloud Sync footer / timestamps
-        try:
-            _update_cloudsync_label(self, username, last_result=res)
-        except Exception as e:
-             
-            log.warning(f"[AUTO-SYNC] label refresh failed: {e}")
-
         _r = res.lower()
-        if _r.startswith("pulled") or ("conflict" in _r) or ("download" in _r):
+        if _r.startswith("pulled") or ("download" in _r):
             try:
                 update_baseline(username=username, verify_after=False, who=self.tr("Auto-Sync -> File Change"))
             except Exception:
@@ -1505,6 +1707,12 @@ def _run_auto_sync(self):
         log.warning(self.tr("[AUTO-SYNC] failed: {err}").format(err=e))
     finally:
         self._is_syncing_cloud = False
+        try:
+            from qtpy.QtCore import QTimer
+            # Leave a short tail window for follow-up file notifications from our own writes.
+            QTimer.singleShot(1500, lambda: setattr(self, "_sync_guard", False))
+        except Exception:
+            self._sync_guard = False
 
 # Method to cleanly remove the file watcher on the local vault. This is used when switching users or when the vault file is no longer relevant, ensuring that we don't keep watching old files or directories and that we free up resources associated with the QFileSystemWatcher.
 def _unwatch_local_vault(self):
@@ -1598,25 +1806,47 @@ def _watch_local_vault(self,):
             except Exception:
                 pass
 
+        def _watcher_blocked() -> bool:
+            try:
+                import time as _time
+                if float(getattr(self, "_suppress_watch_events_until", 0.0) or 0.0) > _time.monotonic():
+                    return True
+            except Exception:
+                pass
+            return bool(getattr(self, "_sync_guard", False) or getattr(self, "_is_syncing_cloud", False))
+
         def _trigger_sync():
-            if getattr(self, "_sync_guard", False):
+            if _watcher_blocked():
                 return
             try:
-                self._schedule_auto_sync()
+                log.info("[AUTO-SYNC] scheduling skipped (disabled)")
+                # Note: disable for now till fixed 
+                #self._schedule_auto_sync()
             except Exception:
                 pass
 
+        def _queue_sync():
+            try:
+                timer = getattr(self, "_watch_change_timer", None)
+                if timer is None:
+                    QTimer.singleShot(900, _trigger_sync)
+                    return
+                timer.stop()
+                timer.start()
+            except Exception:
+                QTimer.singleShot(900, _trigger_sync)
+
         def _on_file_changed(_):
-            if getattr(self, "_sync_guard", False):
+            if _watcher_blocked():
                 return
             _ensure_paths()
-            QTimer.singleShot(600, _trigger_sync)
+            _queue_sync()
 
         def _on_dir_changed(_):
-            if getattr(self, "_sync_guard", False):
+            if _watcher_blocked():
                 return
             _ensure_paths()
-            QTimer.singleShot(600, _trigger_sync)
+            _queue_sync()
 
         self._vault_watcher.fileChanged.connect(_on_file_changed)
         self._vault_watcher.directoryChanged.connect(_on_dir_changed)

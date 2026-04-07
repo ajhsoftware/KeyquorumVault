@@ -7150,6 +7150,37 @@ Enable cloud sync afterward (optional)</string>
         <number>1</number>
        </property>
        <item>
+        <widget class="QPushButton" name="on_sync_now_2">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>0</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>44</width>
+           <height>49</height>
+          </size>
+         </property>
+         <property name="toolTip">
+          <string>Push/pull the latest changes with the cloud immediately</string>
+         </property>
+         <property name="styleSheet">
+          <string notr="true"/>
+         </property>
+         <property name="text">
+          <string>🔄</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QLabel" name="cloudsync">
          <property name="text">
           <string/>

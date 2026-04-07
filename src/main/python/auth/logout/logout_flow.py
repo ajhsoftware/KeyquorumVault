@@ -191,11 +191,6 @@ def __init__default_values(w):
             adv.reset_change_counter(clear_snooze=True, clear_session_suppress=True)
     except Exception:
         pass
-    # Use the helper to tear down auto-sync and sync engine and reinitialise
-    try:
-        __init__default_values(w)
-    except Exception:
-        pass
 
 def _on_any_entry_changed(self):
     if getattr(self, "_backup_remind_mode", "both") in ("changes", "both"):
@@ -206,11 +201,14 @@ def _on_any_entry_changed(self):
     # This makes entry add/edit/delete reliable even if the filesystem watcher
     # misses an atomic replace or a non-vault bundle member changed.
     try:
-        from qtpy.QtCore import QTimer
-        QTimer.singleShot(900, self._schedule_auto_sync)
+        # Note: Disable for now till find sync fix
+        log.info("[AUTO-SYNC] scheduling skipped (disabled)")
+        #from qtpy.QtCore import QTimer
+        #QTimer.singleShot(900, self._schedule_auto_sync)
     except Exception:
         try:
-            self._schedule_auto_sync()
+            log.info("[AUTO-SYNC] scheduling skipped (disabled)")
+            #self._schedule_auto_sync()
         except Exception:
             pass
 
@@ -241,6 +239,7 @@ def logout_user(w, skip_backup=True):
 
     # --- Cloud sync pause and reset ---
     w.cloudsync.setText("")
+    w.on_sync_now_2.hide()
     try:
         if hasattr(w, "sync_engine") and w.sync_engine:
             w.set_status_txt(_tr("Pausing Cloud Sync"))
@@ -632,11 +631,21 @@ def logout_user(w, skip_backup=True):
         w.clipboard_clear_timeout_sec = None
         w.auto_logout_timeout_sec = None
         w.enable_breach_checker = None
+
         log.debug("%s [LOGOUT] %s Runtime flags reset", kql.i("ok"), kql.i("auth"))
 
         # UI cleanup
         try:
             w.set_status_txt(_tr("Clearing UI"))
+
+            # Clear Watchtower state before the next login/user switch.
+            try:
+                wt = getattr(w, "watchtower", None)
+                if wt and hasattr(wt, "clear_state"):
+                    wt.clear_state()
+            except Exception:
+                pass
+
             for name in ("currentUsername", "passwordField"):
                 fld = getattr(w, name, None)
                 if fld:

@@ -733,6 +733,67 @@ class WatchtowerPanel(QObject):
         self.threadpool.start(task)
 
 
+    def clear_state(self) -> None:
+        """Clear Watchtower UI + cached state when the user logs out or switches account."""
+        try:
+            self._last_issues = []
+        except Exception:
+            pass
+
+        try:
+            self._wt_active_rows = []
+        except Exception:
+            pass
+
+        try:
+            self._wt_ignored_rows = []
+        except Exception:
+            pass
+
+        try:
+            if hasattr(self, "_current_task"):
+                del self._current_task
+        except Exception:
+            pass
+
+        try:
+            if self.progress is not None:
+                self.progress.setValue(0)
+        except Exception:
+            pass
+
+        try:
+            self._set_summary(0, 0, 0, 0, 0, 0, 0, 0, 0, score=0)
+        except Exception:
+            pass
+
+        try:
+            if self.score_lbl is not None:
+                self.score_lbl.setText(_tr("Security Score: –"))
+        except Exception:
+            pass
+
+        for tbl in (getattr(self, "tbl", None), getattr(self, "tbl_ignored", None)):
+            if tbl is None:
+                continue
+            try:
+                tbl.blockSignals(True)
+                tbl.clearContents()
+                tbl.setRowCount(0)
+            except Exception:
+                pass
+            finally:
+                try:
+                    tbl.blockSignals(False)
+                except Exception:
+                    pass
+
+        try:
+            if self.export_btn is not None:
+                self.export_btn.setEnabled(False)
+        except Exception:
+            pass
+
     def _set_progress(self, value: int) -> None:
         try:
             if self.progress is not None:
@@ -752,6 +813,26 @@ class WatchtowerPanel(QObject):
             pass
 
     def _on_finished(self, issues: List[WTIssue]) -> None:
+        # Ignore late scan results after logout / account switch
+        try:
+            raw_name = ""
+            try:
+                raw_name = (self._mw.currentUsername.text() or "").strip()
+            except Exception:
+                raw_name = ""
+            if not raw_name:
+                try:
+                    del self._current_task
+                except Exception:
+                    pass
+                return
+        except Exception:
+            try:
+                del self._current_task
+            except Exception:
+                pass
+            return
+
         # Save last issues and rebuild tables
         try:
             self._last_issues = list(issues or [])

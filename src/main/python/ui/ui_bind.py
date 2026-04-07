@@ -311,14 +311,25 @@ def init_buttons(w):
     # -----------------------
     # - Cloud Sync
     # -----------------------
-    w.on_sync_now.clicked.connect(lambda: on_button_sync_cloud(w))                   
+    w.on_sync_now.clicked.connect(lambda: on_button_sync_cloud(w))
+
+    # ---
+    # Note: not working so replace with manual push and pull, untill fixed
+    # w.on_sync_now_2.clicked.connect(lambda: on_button_sync_cloud(w))
+    w.autosync_.clicked.connect(lambda c: on_autosync_clicked(w,c))
+    # ---
+
+    from features.sync.sync_ops import _manual_pull, _manual_push
+    w.pull_btn.clicked.connect(lambda: _manual_pull(w))
+    w.push_btn.clicked.connect(lambda: _manual_push(w))
+
     w.select_cloud.clicked.connect(lambda: on_select_cloud_vault(w))
     w.select_cloud_2.clicked.connect(lambda: on_select_cloud_vault(w))
     w.move_vault_to_cloud.clicked.connect(lambda: on_copy_vault_to_cloud(w))       
     w.extra_cloud_wrap.clicked.connect(lambda: on_toggle_extra_cloud_wrap(w))    
     w.stop_cloud_sync.clicked.connect(lambda: on_stop_cloud_sync_keep_local(w))    
     w.one_time_mobile_transfer_.clicked.connect(lambda: one_time_mobile_transfer(w))
-    w.autosync_.clicked.connect(lambda c: on_autosync_clicked(w,c))
+
 
     w.tuchmode_.toggled.connect(w.save_to_user_on_touch)
     w.tuchmode_2.toggled.connect(w.on_touch_mode_toggled_set)
@@ -736,6 +747,9 @@ def init__default(w):
     """Default UI/runtime values."""
     if not is_dev:
         w.mainTabs.setTabEnabled(2, False)
+
+    w.on_sync_now_2.hide()
+    w.autosync_.hide()
     # ----- default values / sets -----
     w._yk_gate_satisfied = False
     w.expiry_days = None
