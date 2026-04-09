@@ -238,7 +238,7 @@ def enable_debug_logging_change(self, checked: bool) -> None:
 # ==============================
 # Auto logout timeout (seconds, int) — 0 = OFF
 # ==============================
-def on_auto_logout_timeout_sec_change(self, value: int | float, *, flush: bool = False) -> None:
+def on_auto_logout_timeout_sec_change(self, value: int | float, flush: bool = False) -> None:
     v = int(round(value))
     if v < 0: v = 0
     log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('ok')} auto-logout -> {v}s")
@@ -271,7 +271,7 @@ def on_auto_logout_timeout_sec_change(self, value: int | float, *, flush: bool =
 # ==============================
 # Clipboard clear timeout (seconds, int)
 # ==============================
-def on_clipboard_clear_timeout_sec_change(self, value: int | float, *, flush: bool = False) -> None:
+def on_clipboard_clear_timeout_sec_change(self, value: int | float, flush: bool = False) -> None:
     self.set_status_txt(self.tr("Clipboard timeout changed"))
     v = int(round(value))
     if v < 0: v = 0
@@ -306,7 +306,7 @@ def on_clipboard_clear_timeout_sec_change(self, value: int | float, *, flush: bo
 # ==============================
 # Lockout threshold (int)
 # ==============================
-def on_lockout_threshold_changed(self, value: int | float, *, flush: bool = False) -> None:
+def on_lockout_threshold_changed(self, value: int | float, flush: bool = False) -> None:
     v = int(round(value))
     if v < 0: v = 0
     log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('ok')} lockout threshold -> {v}")
@@ -333,7 +333,7 @@ def on_lockout_threshold_changed(self, value: int | float, *, flush: bool = Fals
 # ==============================
 # --- Password expiry days (int)
 # ==============================
-def on_password_expiry_days_change(self, value: int | float, *, flush: bool = False) -> None:
+def on_password_expiry_days_change(self, value: int | float, flush: bool = False) -> None:
     self.set_status_txt(self.tr("Saving Password Expiry Change"))
     v = int(round(value))
     log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('ok')} on_password_expiry_days_change -> {v}")

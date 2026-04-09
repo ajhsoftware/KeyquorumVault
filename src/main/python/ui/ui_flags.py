@@ -36,6 +36,7 @@ try:
 except Exception:  # pragma: no cover
     set_user_setting = None
 
+from security.preflight import save_security_prefs, load_security_prefs 
 
 # ==============================
 # --- pre warn message box
@@ -184,17 +185,18 @@ def _maybe_show_autofill_tip(w):
 # ==============================
 # --- new = show app whats new
 # ==============================
+
 def _maybe_show_release_notes(w):
     """
-    Startup 'What's New' popup for the 01/04/2026 update.
+    Startup 'What's New' popup for the 09/04/2026 update.
     User can tick 'Don't show again' to hide it for this update.
 
     To reset later:
-        QSettings("AJHSoftware", "KeyquorumVault").remove("hide_release_notes_01-04-2026")
+        QSettings("AJHSoftware", "KeyquorumVault").remove("hide_release_notes_09-04-2026")
     """
     try:
         settings = QSettings("AJHSoftware", "KeyquorumVault")
-        key = "hide_release_notes_01-04-2026"  # change on every release
+        key = "hide_release_notes_09-04-2026"  # change on every release
 
         # Already dismissed for this update?
         if settings.value(key, False, type=bool):
@@ -203,11 +205,11 @@ def _maybe_show_release_notes(w):
         # -------------------------------
         # Translatable HTML content
         # -------------------------------
-        t_date = "<b>" + w.tr("Date") + ":</b> 01 Apr 2026<br><br>"
+        t_date = "<b>" + w.tr("Date") + ":</b> 09 Apr 2026<br><br>"
 
         t_header_whatsnew = (
             "<b>" + w.tr("What’s New") + "</b> ("
-            + w.tr("new features may contain bugs — please report anything unexpected")
+            + w.tr("new features and recent fixes may still contain bugs — please report anything unexpected")
             + ")<br><br>"
         )
 
@@ -225,7 +227,71 @@ def _maybe_show_release_notes(w):
         t_update = (
             "<li><b>" + w.tr("Update") + ":</b> "
             + w.tr(
-                "This update includes new features, security improvements, performance work, and bug fixes."
+                "This update continues the recent stability work with a strong focus on sync reliability, conflict handling, refresh behaviour, and general bug fixing."
+            )
+            + "</li>"
+        )
+
+        t_sync_logic = (
+            "<li><b>" + w.tr("Sync decision logic") + ":</b> "
+            + w.tr(
+                "Sync now makes better decisions about when to push, when to pull, and when no transfer is needed. This helps prevent cases where local changes were treated as cloud changes, or cloud restores were treated as local updates."
+            )
+            + "</li>"
+        )
+
+        t_sync_timestamps = (
+            "<li><b>" + w.tr("Timestamp-based sync fixes") + ":</b> "
+            + w.tr(
+                "Timestamp handling has been improved so the app can more reliably tell whether the local vault or the synced copy is newer. This reduces wrong-direction sync actions and improves restore behaviour."
+            )
+            + "</li>"
+        )
+
+        t_manual_sync = (
+            "<li><b>" + w.tr("Manual Push and Pull") + ":</b> "
+            + w.tr(
+                "Manual sync actions now behave more clearly. Manual Pull is less likely to incorrectly push data, and Manual Push is more consistent about sending the correct latest local data."
+            )
+            + "</li>"
+        )
+
+        t_sync_refresh = (
+            "<li><b>" + w.tr("Refresh after pull") + ":</b> "
+            + w.tr(
+                "After pulling newer data, the app now refreshes vault views more reliably so restored or incoming changes appear properly without needing extra steps."
+            )
+            + "</li>"
+        )
+
+        t_autosync_refresh = (
+            "<li><b>" + w.tr("Auto-sync refresh") + ":</b> "
+            + w.tr(
+                "Auto-sync behaviour has been improved so UI data refresh is more reliable after sync activity. This helps reduce cases where the sync completed but the table or visible data did not immediately update."
+            )
+            + "</li>"
+        )
+
+        t_conflict = (
+            "<li><b>" + w.tr("Sync conflict handling") + ":</b> "
+            + w.tr(
+                "Conflict handling has been tightened up to reduce false or confusing conflict states when switching between local backups, cloud copies, and recently changed vault data."
+            )
+            + "</li>"
+        )
+
+        t_sync_logging = (
+            "<li><b>" + w.tr("Sync troubleshooting logs") + ":</b> "
+            + w.tr(
+                "Additional sync logging and decision tracking have been improved to make troubleshooting easier when checking why the app chose to push, pull, or report a conflict."
+            )
+            + "</li>"
+        )
+
+        t_sync_bundle = (
+            "<li><b>" + w.tr("Sync bundle safety") + ":</b> "
+            + w.tr(
+                "Sync handling continues to better protect related vault files and companion metadata so they stay together more safely during backup, restore, device moves, and cloud-backed syncing."
             )
             + "</li>"
         )
@@ -298,22 +364,6 @@ def _maybe_show_release_notes(w):
             "<li><b>" + w.tr("Vault security upgrade") + ":</b> "
             + w.tr(
                 "Support for stronger Argon2-based vault settings has been improved, including better handling for newer KDF profiles and stricter DLL-only security paths."
-            )
-            + "</li>"
-        )
-
-        t_sync = (
-            "<li><b>" + w.tr("Sync improvements") + ":</b> "
-            + w.tr(
-                "Sync is now more reliable. It better handles important companion data, shows clearer sync state, and improves restoring user data between devices, folders, NAS locations, and cloud-backed folders chosen by the user."
-            )
-            + "</li>"
-        )
-
-        t_sync_bundle = (
-            "<li><b>" + w.tr("Sync bundle safety") + ":</b> "
-            + w.tr(
-                "Sync handling has been improved so vault data and related metadata stay together more safely, helping reduce problems caused by partial or mismatched syncs across devices."
             )
             + "</li>"
         )
@@ -517,6 +567,14 @@ def _maybe_show_release_notes(w):
             + t_feedback_link
             + "<ul>"
             + t_update
+            + t_sync_logic
+            + t_sync_timestamps
+            + t_manual_sync
+            + t_sync_refresh
+            + t_autosync_refresh
+            + t_conflict
+            + t_sync_logging
+            + t_sync_bundle
             + t_windows_notify
             + t_watchtower_perf
             + t_watchtower_breach
@@ -526,8 +584,6 @@ def _maybe_show_release_notes(w):
             + t_auth
             + t_yubi
             + t_kdf
-            + t_sync
-            + t_sync_bundle
             + t_csv
             + t_salt
             + t_logging
@@ -604,6 +660,7 @@ def _maybe_show_release_notes(w):
             log.debug(f"[WHATSNEW] Popup failed: {e}")
         except Exception:
             pass
+
 # ==============================
 # --- user running from usb
 # ==============================
@@ -747,6 +804,7 @@ def open_vendor_url(self, url: str, builtins_url: str | None = None) -> None:
         QMessageBox.warning(self, self.tr("URL missing"), self.tr("There is no URL configured for this item."))
         return
     try:
+        from urllib.parse import urlparse
         p = urlparse(u)
         if p.scheme not in ("https", "http"):
             QMessageBox.warning(self, self.tr("Blocked URL"), self.tr("Only http/https links are allowed."))

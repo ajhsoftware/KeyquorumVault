@@ -4552,7 +4552,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         from app.on_setting_change_ops import _debounce_setting as _impl
         return _impl(self, *args, **kwargs)
 
-    def _queue_setting_save(self, key: str, value: float, commit_fn, *, delay_ms: int = 700, flush: bool = False):
+    def _queue_setting_save(self, key: str, value: float, commit_fn, delay_ms: int = 700, flush: bool = False):
         from app.on_setting_change_ops import _queue_setting_save as _impl
         return _impl(self, key, value, commit_fn, delay_ms, flush)
 
@@ -4572,19 +4572,19 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         from security.security_ops import on_run_preflight_now_clicked as _impl
         return _impl(self, *args, **kwargs)
 
-    def on_password_expiry_days_change(self, value: int | float, *, flush: bool = False) -> None:
+    def on_password_expiry_days_change(self, value: int | float, flush: bool = False) -> None:
         from app.on_setting_change_ops import on_password_expiry_days_change as _impl
         return _impl(self, value, flush)
 
-    def on_lockout_threshold_changed(self, value: int | float, *, flush: bool = False) -> None:
+    def on_lockout_threshold_changed(self, value: int | float, flush: bool = False) -> None:
         from app.on_setting_change_ops import on_lockout_threshold_changed as _impl
         return _impl(self, value, flush)
 
-    def on_clipboard_clear_timeout_sec_change(self, value: int | float, *, flush: bool = False) -> None:
+    def on_clipboard_clear_timeout_sec_change(self, value: int | float, flush: bool = False) -> None:
         from app.on_setting_change_ops import on_clipboard_clear_timeout_sec_change as _impl
         return _impl(self, value, flush)
       
-    def on_auto_logout_timeout_sec_change(self, value: int | float, *, flush: bool = False) -> None:
+    def on_auto_logout_timeout_sec_change(self, value: int | float, flush: bool = False) -> None:
         from app.on_setting_change_ops import on_auto_logout_timeout_sec_change as _impl
         return _impl(self, value, flush)
 

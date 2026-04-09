@@ -21,6 +21,21 @@ to PyInstaller, and because of this exception, PyInstaller's license does not
 impose any restrictions on fbs. PyInstaller is merely mentioned here for
 completeness.
 
+
+YubiKey Manager (ykman)
+=======================
+This application bundles the YubiKey Manager CLI tool.
+
+Copyright (c) Yubico
+
+Licensed under the BSD 2-Clause License.
+
+Source:
+https://github.com/Yubico/yubikey-manager
+
+A copy of the license is included in this distribution.
+
+
 boto3
 =====
 URL: https://aws.amazon.com/sdk-for-python/
