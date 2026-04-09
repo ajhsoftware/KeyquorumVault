@@ -610,7 +610,7 @@ def _load_vault_salt_for(user: str) -> bytes:
     Preferred: identity store header (user .kq_id).
     Fallback: legacy .slt file.
 
-    NOTE: We only *read* here. Any migration/cleanup should happen after a
+    We only *read* here. Any migration/cleanup should happen after a
     successful login, not inside baseline code.
     """
     u = (user or "").strip()
@@ -1374,7 +1374,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
   
     def _sc_on_finished(self, data: dict | None = None, error: object | None = None) -> None:
         """Security Center worker completion handler.
-        NOTE: the background worker emits (results, error)."""
+        The background worker emits (results, error)."""
 
         from features.security_center.security_center_ui import _sc_on_finished as __sc_on_finished
         return __sc_on_finished(self, data, error)
@@ -2674,7 +2674,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         return _impl(self, *args, **kwargs)
 
 
-
     def _is_risky_category(self, category_name: str) -> bool:
         """
         Define categories you don’t want to share by default (safety).
@@ -2955,7 +2954,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def _preview_full_entry(self, *args, **kwargs):
         from  features.share.share_ops import _preview_full_entry as _impl
         return _impl(self, *args, **kwargs)
-
 
     def _selected_entries_dicts(self, username: str) -> list[dict]:
         """Return minimalized dict(s) for selected row(s). Falls back to currentRow if single selection."""

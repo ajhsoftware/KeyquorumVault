@@ -811,13 +811,12 @@ def create_or_update_user(
         recovery_key: str | None = None
 
         if (regenerate_keys or False) and user_rec.get("recovery_mode"):
-            login_codes_plain = gen_backup_codes(
-                username,
-                b_type="login",
-                n=10,
-                L=12,
-                password_for_identity=password,
-            )
+            # IMPORTANT:
+            # Do NOT regenerate login backup codes here during password change.
+            # They depend on the Identity Store password wrapper, which is still
+            # bound to the OLD password until the caller rewraps identity.
+            # The dialog regenerates them AFTER identity rewrap succeeds.
+            login_codes_plain = []
 
         if regenerate_recovery_key and user_rec.get("recovery_mode"):
             mk = os.urandom(32)
@@ -862,4 +861,9 @@ def create_or_update_user(
             "backup_codes": login_codes_plain,
         }
     except Exception as e:
-        log.error(f"creact account error {e}")
+        log.error("[ACCOUNT] create_or_update_user failed: %r", e, exc_info=True)
+        return {
+            "status": "error",
+            "success": False,
+            "message": str(e),
+        }

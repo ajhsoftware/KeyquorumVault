@@ -201,15 +201,16 @@ def _on_any_entry_changed(self):
     # This makes entry add/edit/delete reliable even if the filesystem watcher
     # misses an atomic replace or a non-vault bundle member changed.
     try:
-        # Note: Disable for now till find sync fix
-        log.info("[AUTO-SYNC] scheduling skipped (disabled)")
-        #from qtpy.QtCore import QTimer
-        #QTimer.singleShot(900, self._schedule_auto_sync)
+        # Note sync: Disable for now till find sync fix
+        log.info("[AUTO-SYNC] scheduling Not skipped (disabled) for fix test")
+        from qtpy.QtCore import QTimer
+        QTimer.singleShot(900, self._schedule_auto_sync)
     except Exception:
         try:
-            log.info("[AUTO-SYNC] scheduling skipped (disabled)")
-            #self._schedule_auto_sync()
-        except Exception:
+            log.info("[AUTO-SYNC] scheduling Not skipped (disabled) for fix test")
+            self._schedule_auto_sync()
+        except Exception as e:
+            log.info(f"[AUTO-SYNC] Error {e}")
             pass
 
 def logout_user(w, skip_backup=True):
@@ -239,12 +240,20 @@ def logout_user(w, skip_backup=True):
 
     # --- Cloud sync pause and reset ---
     w.cloudsync.setText("")
-    w.on_sync_now_2.hide()
+    w.cloud_widget.hide()
     try:
         if hasattr(w, "sync_engine") and w.sync_engine:
             w.set_status_txt(_tr("Pausing Cloud Sync"))
-            w.sync_engine.pause()
-            w.sync_engine.reset_state()
+            if hasattr(w.sync_engine, "pause"):
+                try:
+                    w.sync_engine.pause()
+                except Exception:
+                    pass
+            if hasattr(w.sync_engine, "reset_state"):
+                try:
+                    w.sync_engine.reset_state()
+                except Exception:
+                    pass
             if hasattr(w.sync_engine, "stop_all_threads"):
                 try:
                     w.sync_engine.stop_all_threads()

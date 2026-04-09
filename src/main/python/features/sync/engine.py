@@ -656,7 +656,7 @@ class SyncEngine:
 
     # --- core sync ---
     
-    def sync_now(self, session_handle: int, interactive: bool = False) -> str:
+    def sync_now(self, session_handle: int, interactive: bool = False, prefer_local: bool | None = None) -> str:
         """
         Stable sync policy for desktop + Android bundle sync.
 
@@ -773,6 +773,55 @@ class SyncEngine:
             0,
         )
 
+        def _path_mtime(path: str) -> float:
+            try:
+                return float(os.path.getmtime(path))
+            except Exception:
+                return 0.0
+
+        local_mtime = _path_mtime(local_path)
+        remote_mtime = 0.0
+        try:
+            remote_path_for_mtime = str(sc.get("remote_path") or "")
+            if remote_path_for_mtime:
+                remote_mtime = _path_mtime(remote_path_for_mtime)
+        except Exception:
+            remote_mtime = 0.0
+
+        def _timestamp_pref() -> bool | None:
+            """
+            True  -> local newer
+            False -> remote newer
+            None  -> cannot decide safely
+            """
+            tol = 2.0
+            if local_mtime and remote_mtime:
+                if local_mtime > (remote_mtime + tol):
+                    return True
+                if remote_mtime > (local_mtime + tol):
+                    return False
+            return None
+
+        def _log_timestamp_decision(reason: str) -> None:
+            try:
+                log.info(
+                    "[SYNC-TIME] %s local_mtime=%s remote_mtime=%s local_sha=%s remote_sha=%s prefer_local=%s",
+                    reason,
+                    int(local_mtime) if local_mtime else 0,
+                    int(remote_mtime) if remote_mtime else 0,
+                    (local_sha[:12] if local_sha else "-"),
+                    (remote_sha[:12] if remote_sha else "-"),
+                    prefer_local,
+                )
+            except Exception:
+                pass
+
+        def _decide_by_timestamp(default_remote: bool = True) -> bool:
+            pref = _timestamp_pref()
+            if pref is None:
+                return False if default_remote else True
+            return bool(pref)
+
         def _mark_files_cloud(files: list[str]) -> None:
             try:
                 self._state_mark(str(cu or ""), "files_in_cloud", ",".join(files) if bundle_mode else "vault")
@@ -856,19 +905,64 @@ class SyncEngine:
         if not remote_exists:
             return _push_local(push_base_revision=max(last_remote_revision, 0))
 
-        # Stable first-pair rule:
-        # If this device has no recorded sync lineage yet, prefer seeding the cloud
-        # from the current local state instead of blindly pulling and overwriting
-        # a freshly-added local entry.
+        # Timestamp-first rule for existing remotes.
+        # Never blindly push local just because this device has no prior lineage.
+        local_mtime = 0.0
+        remote_mtime = 0.0
+        try:
+            if os.path.exists(local_vault_path):
+                local_mtime = float(os.path.getmtime(local_vault_path))
+        except Exception:
+            local_mtime = 0.0
+        try:
+            rp = str(sc.get("remote_path") or "").strip()
+            if rp and os.path.exists(rp):
+                remote_mtime = float(os.path.getmtime(rp))
+        except Exception:
+            remote_mtime = 0.0
+        try:
+            log.warning("[SYNC-TIME] local=%s remote=%s prefer_local=%r", local_mtime, remote_mtime, prefer_local)
+        except Exception:
+            pass
+
         if not last_local_sha and not last_remote_sha:
-            log.info("[SYNC-FIX] First pair detected → prefer LOCAL push")
-            if remote_exists:
+            if prefer_local is True:
+                log.info("[SYNC-FIX] First pair + forced LOCAL → push")
                 try:
                     self._backup_remote_for_live_sync(p, sc)
-                    log.info("[SYNC-FIX] Remote backup created before first push")
                 except Exception as e:
                     log.warning(f"[SYNC-FIX] Remote backup failed: {e}")
-            return _push_local(push_base_revision=max(last_remote_revision, remote_revision, 0))
+                return _push_local(push_base_revision=max(last_remote_revision, remote_revision, 0))
+            if prefer_local is False:
+                log.info("[SYNC-FIX] First pair + forced REMOTE → pull")
+                try:
+                    self._backup_local_for_pull(local_path, label="before_first_pair_pull")
+                except Exception as e:
+                    log.warning(f"[SYNC-FIX] Local backup before first-pair pull failed: {e}")
+                return _pull_remote()
+            if remote_mtime > local_mtime:
+                log.info("[SYNC-FIX] First pair timestamp → REMOTE newer → pull")
+                try:
+                    self._backup_local_for_pull(local_path, label="before_first_pair_pull")
+                except Exception as e:
+                    log.warning(f"[SYNC-FIX] Local backup before first-pair pull failed: {e}")
+                return _pull_remote()
+            if local_mtime > remote_mtime:
+                log.info("[SYNC-FIX] First pair timestamp → LOCAL newer → push")
+                try:
+                    self._backup_remote_for_live_sync(p, sc)
+                except Exception as e:
+                    log.warning(f"[SYNC-FIX] Remote backup failed: {e}")
+                return _push_local(push_base_revision=max(last_remote_revision, remote_revision, 0))
+            if interactive:
+                log.info("[SYNC-FIX] First pair timestamp inconclusive → conflict")
+                return _tr("conflict")
+            log.info("[SYNC-FIX] First pair timestamp inconclusive → safe REMOTE pull")
+            try:
+                self._backup_local_for_pull(local_path, label="before_first_pair_pull")
+            except Exception as e:
+                log.warning(f"[SYNC-FIX] Local backup before first-pair pull failed: {e}")
+            return _pull_remote()
 
         local_changed = (local_sha != last_local_sha)
         remote_changed = (remote_sha != last_remote_sha)

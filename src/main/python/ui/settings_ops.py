@@ -359,9 +359,15 @@ def load_setting(self, *args, **kwargs):
         log.error(f"{kql.i('tool')} [ERROR] Cloud UI toggle failed: {e}")
 
     # --- Cloud engine init after successful login ---
-    # Always build/configure the engine when cloud sync is enabled.
-    # Only arm watcher/timer when auto-sync is enabled.
+    # DEBUG PATCH: configure only here. Do NOT arm watcher/timer from load_setting.
     try:
+        log.warning("### DEBUG PATCH settings_ops.load_setting entered ###")
+        log.warning(
+            "### DEBUG PATCH settings_ops flags user=%r cloud_enabled=%r auto=%r ###",
+            user,
+            bool(getattr(self, "cloud_enabled", False)),
+            bool(getattr(self, "auto", False)),
+        )
         if bool(getattr(self, "cloud_enabled", False)):
             from features.sync.sync_ops import _configure_sync_engine
 
@@ -369,15 +375,13 @@ def load_setting(self, *args, **kwargs):
             if user:
                 self.set_status_txt(self.tr("Loading set: Cloud Engine"))
                 _configure_sync_engine(self, user, "load_setting")
-                log.info("[CLOUD] sync engine configured after load_setting")
-
-                if bool(getattr(self, "auto", False)):
-                    from features.sync.sync_ops import _watch_local_vault, _init_auto_sync
-                    _watch_local_vault(self)
-                    _init_auto_sync(self)
-                    log.info("[AUTO-SYNC] watcher/poll armed after load_setting")
-                else:
-                    log.info("[AUTO-SYNC] auto-sync disabled; engine only")
+                log.warning("### DEBUG PATCH settings_ops configured engine only after load_setting ###")
+                log.info("[CLOUD] sync engine configured after load_setting (engine-only debug patch)")
+                log.info("[AUTO-SYNC] load_setting intentionally did NOT arm watcher/timer")
+            else:
+                log.warning("### DEBUG PATCH settings_ops no active user during load_setting cloud init ###")
+        else:
+            log.info("[CLOUD] load_setting skipped cloud engine init (cloud disabled)")
     except Exception as e:
         log.error(f"[AUTO-SYNC] load_setting init failed: {e}")
 

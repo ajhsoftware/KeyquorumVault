@@ -319,7 +319,7 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
 
     # --- Core flow ----------------
 
-    def reset_password(self) -> None:
+    def reset_password_backup_code(self) -> None:
         log.info("[ForgotPassword] ENTER reset_password()")
         stage = "start"
 
@@ -501,82 +501,460 @@ class ForgotPasswordDialog(QDialog, Ui_ForgotPasswordDialog):
                     salt = _load_master_salt_strict(username)
                     new_vk = _derive_key_native_for_user(new1, salt, username)
 
-                    # 5c-4b: Recover authenticator data only (main recovery target)
-                    # Recover authenticator data only (main recovery target)
+                    # 5c-4b: Migrate Authenticator field secrets (secret_enc_b64) from old vk -> new_vk
+                    # These secrets are additionally wrapped using AES-GCM(user_key) inside the decrypted vault.
                     try:
-                        from features.auth_store.authenticator_store import (
-                            migrate_authenticator_entries_in_loaded_vault_with_sessions,
-                        )
+                        from features.auth_store.authenticator_store import rewrap_authenticator_entries
 
-                        auth_old_session = None
-                        auth_new_session = None
-                        try:
-                            auth_old_session = _open_native_session_from_key(vk)
-                            auth_new_session = _open_native_session_from_key(new_vk)
+                        # 'data' may be dict(vault) or list(entries). Try to get an entries list safely.
+                        entries_obj = data
+                        if isinstance(entries_obj, dict):
+                            entries_list = entries_obj.get("entries") or entries_obj.get("vault") or []
+                        else:
+                            entries_list = list(entries_obj or [])
 
-                            auth_ok, auth_msg, auth_changed, auth_failed = (
-                                migrate_authenticator_entries_in_loaded_vault_with_sessions(
-                                    data,
-                                    auth_old_session,
-                                    auth_new_session,
-                                )
-                            )
+                        auth_ok, auth_msg, auth_changed, auth_failed = rewrap_authenticator_entries(entries_list, vk, new_vk)
+                        log.info("[ForgotPassword] authenticator migrate ok=%s changed=%s failed=%s msg=%s", auth_ok, auth_changed, auth_failed, auth_msg)
+                    except Exception as e_auth:
+                        # Never fail the whole reset for authenticator migration – just log.
+                        log.warning("[ForgotPassword] authenticator migration skipped/failed: %r", e_auth)
 
-                            log.info(
-                                "[ForgotPassword] authenticator migrate ok=%s changed=%s failed=%s msg=%s",
-                                auth_ok, auth_changed, auth_failed, auth_msg
-                            )
-
-                        finally:
-                            try:
-                                if isinstance(auth_old_session, int) and auth_old_session > 0:
-                                    get_core().close_session(auth_old_session)
-                            except Exception:
-                                pass
-                            try:
-                                if isinstance(auth_new_session, int) and auth_new_session > 0:
-                                    get_core().close_session(auth_new_session)
-                            except Exception:
-                                pass
-
-                    except Exception as e_auth_store:
-                        log.warning("[ForgotPassword] authenticator migration failed: %r", e_auth_store)
-
-
-                    # 2) Migrate dedicated authenticator store with native sessions.
+                    
+                    # 5c-4b: Migrate/repair auxiliary stores tied to the vault key
+                    # - Password history: fingerprints are keyed to the vault key, so they cannot be
+                    #   verified after a key change. We clear pw_hist so future history works cleanly.
                     try:
-                        from features.auth_store.authenticator_store import migrate_authenticator_store_with_sessions
+                        def _iter_entries(obj):
+                            if isinstance(obj, list):
+                                return obj
+                            if isinstance(obj, dict):
+                                # common shapes: {"entries":[...]} or {"vault":[...]}
+                                for k in ("entries", "vault", "items", "rows"):
+                                    v = obj.get(k)
+                                    if isinstance(v, list):
+                                        return v
+                            return None
 
-                        auth_old_session = None
-                        auth_new_session = None
+                        entries_for_hist = _iter_entries(data)
+                        if entries_for_hist:
+                            cleared = 0
+                            for e in entries_for_hist:
+                                if isinstance(e, dict) and "pw_hist" in e:
+                                    e["pw_hist"] = []
+                                    cleared += 1
+                            if cleared:
+                                log.info("[ForgotPassword] cleared pw_hist for %s entry/entries", cleared)
+                    except Exception as e_hist:
+                        log.warning("[ForgotPassword] pw_hist clear skipped: %r", e_hist)
+
+                    # - Trash (soft delete): encrypted under HKDF(user_key,'trash'), so must be rewrapped.
+                    try:
+                        import os, json
+                        from pathlib import Path
+                        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+                        from app.paths import trash_path, vault_dir
+
+
+                        # trash file = {vault_dir}/{username}_trash.bin, JSON encrypted via sync.engine if present
+                        tpath = Path(trash_path(username))
+                        if tpath.exists():
+                            old_tk = _hkdf_subkey(vk, b"trash")
+                            new_tk = _hkdf_subkey(new_vk, b"trash")
+
+                            # Prefer the same encrypt/decrypt helpers as the app (sync.engine).
+                            moved = False
+                            try:
+                                from features.sync.engine import decrypt_json_file, encrypt_json_file
+                                trash_rows = decrypt_json_file(str(tpath), old_tk) or []
+                                encrypt_json_file(str(tpath), new_tk, trash_rows)
+                                moved = True
+                            except Exception:
+                                # Fallback: if file is already plain JSON for any reason.
+                                try:
+                                    trash_rows = json.loads(tpath.read_text(encoding="utf-8") or "[]")
+                                    tpath.write_text(json.dumps(trash_rows, ensure_ascii=False), encoding="utf-8")
+                                    moved = True  # "moved" in the sense that it's readable; key migration not possible here.
+                                except Exception:
+                                    moved = False
+
+                            if moved:
+                                log.info("[ForgotPassword] trash migrated (soft delete preserved)")
+                            else:
+                                log.warning("[ForgotPassword] trash migration failed; soft delete may appear empty")
+                        else:
+                            # no trash yet
+                            pass
+                    except Exception as e_trash:
+                        log.warning("[ForgotPassword] trash migration skipped/failed: %r", e_trash)
+
+                    # - Passkeys store: encrypted blob passkeys_store.json with AES-GCM subkey
+                    try:
+                        import os
+                        from pathlib import Path
+                        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+                        from app.paths import vault_dir
+
+                        pdir = Path(vault_dir(username))
+                        pk_path = pdir / "passkeys_store.json"
+                        if pk_path.exists():
+                            old_sk = _hkdf_subkey(vk, b"passkeys-store:aesgcm-32")
+                            new_sk = _hkdf_subkey(new_vk, b"passkeys-store:aesgcm-32")
+                            raw = pk_path.read_bytes()
+                            if raw and len(raw) > 12:
+                                nonce, ct = raw[:12], raw[12:]
+                                pt = AESGCM(old_sk).decrypt(nonce, ct, None)
+                                new_nonce = os.urandom(12)
+                                new_ct = AESGCM(new_sk).encrypt(new_nonce, pt, None)
+                                pk_path.write_bytes(new_nonce + new_ct)
+                                log.info("[ForgotPassword] passkeys store migrated")
+                    except Exception as e_pk:
+                        log.warning("[ForgotPassword] passkeys store migration skipped/failed: %r", e_pk)
+
+# 5c-5: Re-encrypt vault under new_vk and store DMK wrapper
+                    save_encrypted(data, vault_path, new_vk)
+                    wrap_vault_key_dmk(username, dmk_after, new_vk)
+
+            except Exception as e:
+                return fail(
+                    _tr("Identity was updated, but the vault key could not be rewrapped."),
+                    e,
+                )
+
+            # --- 6) Update per-user DB password hash -----------------------
+            stage = "update_user_db"
+            try:
+                rec["password"] = _store_password_hash(hash_password(new1))
+                set_user_record(username, rec)
+            except Exception as e:
+                return fail(_tr("Identity updated, but user record could not be saved."), e)
+
+            # --- 7) Success -------
+            
+            # --- 6b) Force Identity Store refresh (fix stale header / soft-state) ----
+            stage = "identity_refresh"
+            try:
+                from auth.identity_store import create_or_open_with_password
+                # Re-open forces header + wrapper coherence under the new password
+                create_or_open_with_password(username, new1)
+            except Exception as e:
+                log.warning("[ForgotPassword] identity_refresh failed but continuing: %r", e)
+
+            stage = "success"
+            try:
+                # Identity header repair after successful reset:
+                # Re-bind the recovery wrapper under the NEW password so future header_check passes.
+                try:
+                    from auth.identity_store import bind_recovery_wrapper
+                    bind_recovery_wrapper(username, new1, MK)
+                except Exception as e:
+                    log.info("[ForgotPassword] identity recovery re-bind skipped: %r", e)
+
+                QMessageBox.information(
+                    self,
+                    _tr("Password Reset"),
+                    _tr("✅ Your password was reset.\n\n"
+                    "You can now log in using the new password."),
+                )
+            except Exception:
+                pass
+            self.accept()
+
+        except Exception as e:
+            fail("Unhandled error", e)
+
+
+    def reset_password(self) -> None:
+        log.info("[ForgotPassword] ENTER reset_password_backup_code()")
+        stage = "start"
+
+
+        # --- Recovery warning confirmation ----------------------------
+        if not self._confirm_recovery_warning():
+            log.info("[ForgotPassword] user cancelled recovery after warning")
+            return
+
+        def fail(msg: str, e: Exception | None = None) -> None:
+            """Centralised error handler with logging."""
+            nonlocal stage
+            if e is not None:
+                log.error(
+                    "[ForgotPassword] %s -> %s | %r\n%s",
+                    stage,
+                    msg,
+                    e,
+                    traceback.format_exc(),
+                )
+                try:
+                    QMessageBox.critical(
+                        self,
+                        _tr("Reset Failed"),
+                        _tr("Password reset failed at step") + f" '{stage}':\n\n{msg}\n\n{e}",
+                    )
+                except Exception:
+                    pass
+            else:
+                log.error("[ForgotPassword] %s -> %s", stage, msg)
+                try:
+                    QMessageBox.critical(
+                        self,
+                        _tr("Reset Failed"),
+                        _tr("Password reset failed at step") + f" '{stage}':\n\n{msg}",
+                    )
+                except Exception:
+                    pass
+
+        try:
+            # --- 1) Read + basic validate inputs ----------------------------
+            stage = "read_inputs"
+            u = (self.usernameField.text() if hasattr(self, "usernameField") else "").strip()
+            rk_in = (self.recoveryKeyField.text() if hasattr(self, "recoveryKeyField") else "").strip()
+            new1 = self.newPasswordField.text().strip() if hasattr(self, "newPasswordField") else ""
+            new2 = self.confirmPasswordField.text().strip() if hasattr(self, "confirmPasswordField") else ""
+
+            # backup codes are NO longer required here (login-only)
+            if not all([u, rk_in, new1, new2]):
+                return fail(_tr("All fields are required."))
+            if new1 != new2:
+                return fail(_tr("Passwords do not match."))
+
+            # --- 2) Password policy ----------------------------------------
+            stage = "policy"
+            ok, level_text, policy_msg = get_password_strength(new1)
+            if not ok:
+                return fail(_tr("Password does not meet the security policy."))
+
+            # --- 3) Normalise username -------------------------------------
+            stage = "normalize"
+            username = _canonical_username_ci(u) or u
+            log.info("[ForgotPassword] user=%s", username)
+
+            # Check user exists (per-user DB)
+            stage = "load_user_record"
+            rec = get_user_record(username) or {}
+            if not isinstance(rec, dict) or not rec:
+                return fail(_tr("Username not found."))
+
+            # --- 4) Recovery Key → MK (supports legacy + new formats) ------
+            stage = "rk_to_mk"
+            MK = _derive_mk_from_any_recovery_key(username, rk_in.replace(" ",""))
+            # soft header check via mk_hash_b64 mirror
+            header_mismatch = False
+            header_mismatch_want = ""
+            header_mismatch_have = ""
+
+
+            # soft header check via mk_hash_b64 mirror -------------
+            stage = "header_check"
+            try:
+                hdr = get_public_header(username) or {}
+                want = ((hdr.get("meta") or {}).get("mk_hash_b64") or "").strip()
+                have = mk_hash_b64(MK)
+                log.debug("[ForgotPassword] mk_hash want=%s have=%s", want, have)
+                if want and have != want:
+                    header_mismatch = True
+                    header_mismatch_want = want
+                    header_mismatch_have = have
+                    log.warning("[ForgotPassword] header_check mismatch for %s (want=%s have=%s) — continuing", username, want, have)
+
+                # If 'want' is blank (very old identities), we allow and rely on
+                # the rewrap step to fail if MK is wrong.
+            except Exception as e:
+                log.debug("[ForgotPassword] header check skipped: %r", e)
+
+            # --- 5) Rewrap identity password/recovery wrappers -------------
+            stage = "rewrap_identity"
+            ok_rw, msg_rw = rewrap_with_new_password(username, MK, new1)
+            if not ok_rw:
+                return fail(_tr("Could not update identity") + f": {msg_rw}")
+
+            # --- 5b) Reload identity with NEW password to get DMK ----------
+            stage = "reload_identity"
+            try:
+                from auth.identity_store import create_or_open_with_password
+                dmk_after, inner_after, hdr_after = create_or_open_with_password(username, new1)
+            except Exception as e:
+                return fail(
+                    _tr("Identity was updated, but it could not be reopened with the new password."),
+                    e,
+                )
+
+            # --- 5c) Rewrap vault key, keep vault data ----------------------
+            stage = "rewrap_vault"
+            try:
+                from pathlib import Path
+                from vault_store.vault_store import (
+                    get_vault_path,
+                    get_wrapped_key_path,
+                    load_encrypted,
+                    save_encrypted,
+                    unwrap_vault_key_dmk,
+                    wrap_vault_key_dmk,
+                )
+
+                # 5c-1: Work out the current vault key (vk)
+                vk = None
+
+                # Try DMK-based wrapper first (new format)
+                try:
+                    vk = unwrap_vault_key_dmk(username, dmk_after)
+                    log.debug("[ForgotPassword] DMK-based vault wrapper OK for %s", username)
+                except Exception as e_dmk:
+                    log.debug("[ForgotPassword] DMK unwrap failed, trying legacy Recovery-Key wrapper: %r", e_dmk)
+
+                    # Legacy Recovery-Key-based .kq_wrap (text, encrypt_key())
+                    from vault_store.key_utils import decrypt_key as _decrypt_key
+
+                    wpath = Path(get_wrapped_key_path(username))
+                    if not wpath.exists():
+                        raise FileNotFoundError(_tr("Wrapped vault key not found at") + f" {wpath}")
+
+                    # Old file is a base64 string written by encrypt_key()
+                    ct_b64 = wpath.read_text(encoding="utf-8").strip()
+                    salt = _load_master_salt_strict(username)
+                    # KEK derived from Recovery Key string + identity-header salt
+                    kek = _derive_key_native(rk_in, salt)
+                    vk = _decrypt_key(ct_b64, kek)
+                    log.info("[ForgotPassword] migrated legacy Recovery-Key wrapped vault key for %s", username)
+
+                if vk is None:
+                    raise RuntimeError(_tr("Vault key could not be obtained from any wrapper."))
+
+                # 5c-2: If there is no vault file yet, just create a new DMK wrapper
+                vault_path = get_vault_path(username)
+                vpath = Path(vault_path)
+                if not vpath.exists():
+                    log.info("[ForgotPassword] no existing vault for %s; creating DMK wrapper only", username)
+                    salt = _load_master_salt_strict(username)
+                    new_vk = _derive_key_native_for_user(new1, salt, username)
+                    wrap_vault_key_dmk(username, dmk_after, new_vk)
+                else:
+                    # 5c-3: Decrypt existing vault with old vk via strict native session
+                    old_session = None
+                    try:
+                        old_session = _open_native_session_from_key(vk)
+                        data = load_encrypted(vault_path, old_session)
+                    except Exception as e_dec:
+                        raise RuntimeError(
+                            _tr("Existing vault could not be decrypted with recovered key") + f": {e_dec}. This usually means the stored wrapped vault key does not match the real vault session key for this account\'s KDF/profile."
+                        ) from e_dec
+                    finally:
                         try:
-                            auth_old_session = _open_native_session_from_key(vk)
-                            auth_new_session = _open_native_session_from_key(new_vk)
+                            get_core().close_session(old_session)
+                        except Exception:
+                            pass
 
-                            auth_res = migrate_authenticator_store_with_sessions(
-                                username,
-                                auth_old_session,
-                                auth_new_session,
-                            )
-                            log.info("[ForgotPassword] authenticator store migration result=%r", auth_res)
-                        finally:
-                            try:
-                                if isinstance(auth_old_session, int) and auth_old_session > 0:
-                                    get_core().close_session(auth_old_session)
-                            except Exception:
-                                pass
-                            try:
-                                if isinstance(auth_new_session, int) and auth_new_session > 0:
-                                    get_core().close_session(auth_new_session)
-                            except Exception:
-                                pass
-                    except Exception as e_auth_store:
-                        log.warning("[ForgotPassword] authenticator store migration failed: %r", e_auth_store)
+                    # 5c-4: Derive new vault key from NEW password + existing salt
+                    salt = _load_master_salt_strict(username)
+                    new_vk = _derive_key_native_for_user(new1, salt, username)
 
-                    # Note:
-                    # Password history, trash, catalog overlay, and other extras are intentionally
-                    # not migrated in forgot-password mode. The goal here is to recover the main
-                    # items users rely on most: vault data plus authenticator/2FA data.
+                    # 5c-4b: Migrate Authenticator field secrets (secret_enc_b64) from old vk -> new_vk
+                    # These secrets are additionally wrapped using AES-GCM(user_key) inside the decrypted vault.
+                    try:
+                        from features.auth_store.authenticator_store import rewrap_authenticator_entries
+
+                        # 'data' may be dict(vault) or list(entries). Try to get an entries list safely.
+                        entries_obj = data
+                        if isinstance(entries_obj, dict):
+                            entries_list = entries_obj.get("entries") or entries_obj.get("vault") or []
+                        else:
+                            entries_list = list(entries_obj or [])
+
+                        auth_ok, auth_msg, auth_changed, auth_failed = rewrap_authenticator_entries(entries_list, vk, new_vk)
+                        log.info("[ForgotPassword] authenticator migrate ok=%s changed=%s failed=%s msg=%s", auth_ok, auth_changed, auth_failed, auth_msg)
+                    except Exception as e_auth:
+                        # Never fail the whole reset for authenticator migration – just log.
+                        log.warning("[ForgotPassword] authenticator migration skipped/failed: %r", e_auth)
+
+                    # 5c-4b: Migrate/repair auxiliary stores tied to the vault key
+                    
+                    # - Password history: fingerprints are keyed to the vault key, so they cannot be
+                    #   verified after a key change. We clear pw_hist so future history works cleanly.
+                    try:
+                        def _iter_entries(obj):
+                            if isinstance(obj, list):
+                                return obj
+                            if isinstance(obj, dict):
+                                # common shapes: {"entries":[...]} or {"vault":[...]}
+                                for k in ("entries", "vault", "items", "rows"):
+                                    v = obj.get(k)
+                                    if isinstance(v, list):
+                                        return v
+                            return None
+                    
+                        entries_for_hist = _iter_entries(data)
+                        if entries_for_hist:
+                            cleared = 0
+                            for e in entries_for_hist:
+                                if isinstance(e, dict) and "pw_hist" in e:
+                                    e["pw_hist"] = []
+                                    cleared += 1
+                            if cleared:
+                                log.info("[ForgotPassword] cleared pw_hist for %s entry/entries", cleared)
+                    except Exception as e_hist:
+                        log.warning("[ForgotPassword] pw_hist clear skipped: %r", e_hist)
+                    
+                    # - Trash (soft delete): encrypted under HKDF(vault_key,'trash'), so must be rewrapped.
+                    try:
+                        import os, json
+                        from pathlib import Path
+                        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+                        from app.paths import trash_path, vault_dir
+                    
+                        # trash file = {vault_dir}/{username}_trash.bin, JSON encrypted via sync.engine if present
+                        tpath = Path(trash_path(username))
+                        if tpath.exists():
+                            old_tk = _hkdf_subkey(vk, b"trash")
+                            new_tk = _hkdf_subkey(new_vk, b"trash")
+                    
+                            # Prefer the same encrypt/decrypt helpers as the app (sync.engine).
+                            moved = False
+                            try:
+                                from features.sync.engine import decrypt_json_file, encrypt_json_file
+                                trash_rows = decrypt_json_file(str(tpath), old_tk) or []
+                                encrypt_json_file(str(tpath), new_tk, trash_rows)
+                                moved = True
+                            except Exception:
+                                # Fallback: if file is already plain JSON for any reason.
+                                try:
+                                    trash_rows = json.loads(tpath.read_text(encoding="utf-8") or "[]")
+                                    tpath.write_text(json.dumps(trash_rows, ensure_ascii=False), encoding="utf-8")
+                                    moved = True  # "moved" in the sense that it's readable; key migration not possible here.
+                                except Exception:
+                                    moved = False
+                    
+                            if moved:
+                                log.info("[ForgotPassword] trash migrated (soft delete preserved)")
+                            else:
+                                log.warning("[ForgotPassword] trash migration failed; soft delete may appear empty")
+                        else:
+                            # no trash yet
+                            pass
+                    except Exception as e_trash:
+                        log.warning("[ForgotPassword] trash migration skipped/failed: %r", e_trash)
+                    
+                    # - Passkeys store: encrypted blob passkeys_store.json with AES-GCM subkey
+                    try:
+                        import os
+                        from pathlib import Path
+                        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+                        from app.paths import vault_dir
+                    
+                        pdir = Path(vault_dir(username))
+                        pk_path = pdir / "passkeys_store.json"
+                        if pk_path.exists():
+                            old_sk = _hkdf_subkey(vk, b"passkeys-store:aesgcm-32")
+                            new_sk = _hkdf_subkey(new_vk, b"passkeys-store:aesgcm-32")
+                            raw = pk_path.read_bytes()
+                            if raw and len(raw) > 12:
+                                nonce, ct = raw[:12], raw[12:]
+                                pt = AESGCM(old_sk).decrypt(nonce, ct, None)
+                                new_nonce = os.urandom(12)
+                                new_ct = AESGCM(new_sk).encrypt(new_nonce, pt, None)
+                                pk_path.write_bytes(new_nonce + new_ct)
+                                log.info("[ForgotPassword] passkeys store migrated")
+                    except Exception as e_pk:
+                        log.warning("[ForgotPassword] passkeys store migration skipped/failed: %r", e_pk)
+
 
                     # 5c-5: Re-encrypt vault under new_vk and store DMK wrapper
                     new_session = None

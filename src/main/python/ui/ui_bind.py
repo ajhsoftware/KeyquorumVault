@@ -311,11 +311,11 @@ def init_buttons(w):
     # -----------------------
     # - Cloud Sync
     # -----------------------
+    w.cloud_widget.hide()
     w.on_sync_now.clicked.connect(lambda: on_button_sync_cloud(w))
 
     # ---
-    # Note: not working so replace with manual push and pull, untill fixed
-    # w.on_sync_now_2.clicked.connect(lambda: on_button_sync_cloud(w))
+    w.on_sync_now_2.clicked.connect(lambda: on_button_sync_cloud(w))
     w.autosync_.clicked.connect(lambda c: on_autosync_clicked(w,c))
     # ---
 
@@ -748,8 +748,6 @@ def init__default(w):
     if not is_dev:
         w.mainTabs.setTabEnabled(2, False)
 
-    w.on_sync_now_2.hide()
-    w.autosync_.hide()
     # ----- default values / sets -----
     w._yk_gate_satisfied = False
     w.expiry_days = None

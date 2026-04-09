@@ -524,7 +524,7 @@ border-radius: 40px;</string>
        <enum>QTabWidget::North</enum>
       </property>
       <property name="currentIndex">
-       <number>5</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="vaultTab">
        <attribute name="title">
@@ -626,6 +626,89 @@ border-radius: 40px;</string>
                  <property name="bottomMargin">
                   <number>1</number>
                  </property>
+                 <item>
+                  <widget class="QToolButton" name="reminder_btn">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                     <horstretch>0</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>0</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                   <property name="acceptDrops">
+                    <bool>false</bool>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">padding:2;</string>
+                   </property>
+                   <property name="inputMethodHints">
+                    <set>Qt::ImhNone</set>
+                   </property>
+                   <property name="text">
+                    <string>🔔 Reminders</string>
+                   </property>
+                   <property name="popupMode">
+                    <enum>QToolButton::DelayedPopup</enum>
+                   </property>
+                   <property name="toolButtonStyle">
+                    <enum>Qt::ToolButtonIconOnly</enum>
+                   </property>
+                   <property name="autoRaise">
+                    <bool>false</bool>
+                   </property>
+                   <property name="arrowType">
+                    <enum>Qt::NoArrow</enum>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QToolButton" name="recheck_btn">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                     <horstretch>0</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>0</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                   <property name="acceptDrops">
+                    <bool>false</bool>
+                   </property>
+                   <property name="toolTip">
+                    <string>Recheck Reminders and Watchtower</string>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">padding:2;</string>
+                   </property>
+                   <property name="inputMethodHints">
+                    <set>Qt::ImhNone</set>
+                   </property>
+                   <property name="text">
+                    <string>🔔Recheck</string>
+                   </property>
+                   <property name="popupMode">
+                    <enum>QToolButton::DelayedPopup</enum>
+                   </property>
+                   <property name="toolButtonStyle">
+                    <enum>Qt::ToolButtonIconOnly</enum>
+                   </property>
+                   <property name="autoRaise">
+                    <bool>false</bool>
+                   </property>
+                   <property name="arrowType">
+                    <enum>Qt::NoArrow</enum>
+                   </property>
+                  </widget>
+                 </item>
                  <item>
                   <widget class="QPushButton" name="password_generator">
                    <property name="sizePolicy">
@@ -884,7 +967,7 @@ border-radius: 40px;</string>
                   </widget>
                  </item>
                  <item>
-                  <widget class="QToolButton" name="reminder_btn">
+                  <widget class="QPushButton" name="on_sync_now_2">
                    <property name="sizePolicy">
                     <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
                      <horstretch>0</horstretch>
@@ -894,37 +977,28 @@ border-radius: 40px;</string>
                    <property name="minimumSize">
                     <size>
                      <width>0</width>
-                     <height>20</height>
+                     <height>0</height>
                     </size>
                    </property>
-                   <property name="acceptDrops">
-                    <bool>false</bool>
+                   <property name="maximumSize">
+                    <size>
+                     <width>44</width>
+                     <height>49</height>
+                    </size>
+                   </property>
+                   <property name="toolTip">
+                    <string>Push/pull the latest changes with the cloud immediately</string>
                    </property>
                    <property name="styleSheet">
-                    <string notr="true">padding:2;</string>
-                   </property>
-                   <property name="inputMethodHints">
-                    <set>Qt::ImhNone</set>
+                    <string notr="true"/>
                    </property>
                    <property name="text">
-                    <string>🔔 Reminders</string>
-                   </property>
-                   <property name="popupMode">
-                    <enum>QToolButton::DelayedPopup</enum>
-                   </property>
-                   <property name="toolButtonStyle">
-                    <enum>Qt::ToolButtonIconOnly</enum>
-                   </property>
-                   <property name="autoRaise">
-                    <bool>false</bool>
-                   </property>
-                   <property name="arrowType">
-                    <enum>Qt::NoArrow</enum>
+                    <string>🔄</string>
                    </property>
                   </widget>
                  </item>
                  <item>
-                  <widget class="QToolButton" name="recheck_btn">
+                  <widget class="QPushButton" name="push_btn">
                    <property name="sizePolicy">
                     <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
                      <horstretch>0</horstretch>
@@ -934,35 +1008,54 @@ border-radius: 40px;</string>
                    <property name="minimumSize">
                     <size>
                      <width>0</width>
-                     <height>20</height>
+                     <height>0</height>
                     </size>
                    </property>
-                   <property name="acceptDrops">
-                    <bool>false</bool>
+                   <property name="maximumSize">
+                    <size>
+                     <width>127</width>
+                     <height>49</height>
+                    </size>
                    </property>
                    <property name="toolTip">
-                    <string>Recheck Reminders and Watchtower</string>
+                    <string>Push/pull the latest changes with the cloud immediately</string>
                    </property>
                    <property name="styleSheet">
-                    <string notr="true">padding:2;</string>
-                   </property>
-                   <property name="inputMethodHints">
-                    <set>Qt::ImhNone</set>
+                    <string notr="true"/>
                    </property>
                    <property name="text">
-                    <string>🔔Recheck</string>
+                    <string>🔄 Push to Cloud</string>
                    </property>
-                   <property name="popupMode">
-                    <enum>QToolButton::DelayedPopup</enum>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="pull_btn">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                     <horstretch>0</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
                    </property>
-                   <property name="toolButtonStyle">
-                    <enum>Qt::ToolButtonIconOnly</enum>
+                   <property name="minimumSize">
+                    <size>
+                     <width>0</width>
+                     <height>0</height>
+                    </size>
                    </property>
-                   <property name="autoRaise">
-                    <bool>false</bool>
+                   <property name="maximumSize">
+                    <size>
+                     <width>155</width>
+                     <height>57</height>
+                    </size>
                    </property>
-                   <property name="arrowType">
-                    <enum>Qt::NoArrow</enum>
+                   <property name="toolTip">
+                    <string>Push/pull the latest changes with the cloud immediately</string>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true"/>
+                   </property>
+                   <property name="text">
+                    <string>🔄 Pull from Cloud</string>
                    </property>
                   </widget>
                  </item>
@@ -3380,7 +3473,7 @@ Always manually confirm that your OS, antivirus, drivers, and browsers are up to
            <item>
             <widget class="QStackedWidget" name="stackedWidget">
              <property name="currentIndex">
-              <number>0</number>
+              <number>7</number>
              </property>
              <widget class="QWidget" name="page_3">
               <layout class="QVBoxLayout" name="verticalLayout_17">
@@ -6067,7 +6160,7 @@ Restore: Lets you bring that folder back into your vault environment from a prev
                       <rect>
                        <x>0</x>
                        <y>0</y>
-                       <width>85</width>
+                       <width>66</width>
                        <height>66</height>
                       </rect>
                      </property>
@@ -6139,7 +6232,7 @@ Restore: Lets you bring that folder back into your vault environment from a prev
                    <rect>
                     <x>0</x>
                     <y>0</y>
-                    <width>85</width>
+                    <width>73</width>
                     <height>66</height>
                    </rect>
                   </property>
@@ -6169,8 +6262,8 @@ Restore: Lets you bring that folder back into your vault environment from a prev
                        <rect>
                         <x>0</x>
                         <y>0</y>
-                        <width>71</width>
-                        <height>574</height>
+                        <width>46</width>
+                        <height>604</height>
                        </rect>
                       </property>
                       <layout class="QVBoxLayout" name="verticalLayout_46">
@@ -7149,37 +7242,6 @@ Enable cloud sync afterward (optional)</string>
        <property name="bottomMargin">
         <number>1</number>
        </property>
-       <item>
-        <widget class="QPushButton" name="on_sync_now_2">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="minimumSize">
-          <size>
-           <width>0</width>
-           <height>0</height>
-          </size>
-         </property>
-         <property name="maximumSize">
-          <size>
-           <width>44</width>
-           <height>49</height>
-          </size>
-         </property>
-         <property name="toolTip">
-          <string>Push/pull the latest changes with the cloud immediately</string>
-         </property>
-         <property name="styleSheet">
-          <string notr="true"/>
-         </property>
-         <property name="text">
-          <string>🔄</string>
-         </property>
-        </widget>
-       </item>
        <item>
         <widget class="QLabel" name="cloudsync">
          <property name="text">

@@ -116,12 +116,15 @@ def migrate_post_rekey_side_stores(*, w, username: str, old_session_handle=None,
             except Exception as e:
                 _warn(f"User catalog overlay migration failed: {e}")
 
+
             # 5) Refresh Remember Device token against the new live session.
             try:
-                log.info("Step 5 - 5 Clear Remember Device toke")
-                from auth.login.auth_flow_ops import clear_passwordless_unlock_on_this_device
-                clear_passwordless_unlock_on_this_device(w, False)   # - clear passwordless
-
+                log.info("Step 5 - 5 Clear Remember Device token")
+                if refresh_device_unlock and w is not None:
+                    from auth.login.auth_flow_ops import clear_passwordless_unlock_on_this_device
+                    clear_passwordless_unlock_on_this_device(w, False)   # clear passwordless
+                else:
+                    log.info("[REKEY-MIGRATE] skipping Remember Device refresh (no UI context)")
             except Exception as e:
                 _warn(f"Remember Device refresh failed: {e}")
 

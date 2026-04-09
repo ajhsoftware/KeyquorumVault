@@ -96,6 +96,8 @@ def _manual_pull(self):
         except Exception:
             pass
 
+        _refresh_vault_ui_after_pull(self)
+
     except Exception as e:
         log.error(f"[SYNC] Manual pull error: {e}")
 
@@ -131,9 +133,18 @@ def _manual_push(self):
 # These functions are used by the cloud sync UI (buttons, labels) to get/set user cloud profiles and sync state.
 def _cloud_profile(username: str) -> dict:
     try:
-        return get_user_cloud(username) or {}
+        prof = get_user_cloud(username) or {}
+        if "sync_enable" not in prof and "sync_enabled" in prof:
+            prof["sync_enable"] = bool(prof.get("sync_enabled"))
+        prof["enabled"] = bool(
+            prof.get("enabled")
+            or prof.get("sync_enable")
+            or prof.get("sync_enabled")
+        )
+        return prof
     except Exception:
         return {}
+
 
 # Sync state is kept separate from the user_db.json profile (which is baseline-tracked) to avoid polluting the baseline with frequently changing timestamps and hashes. Instead, we use QSettings for device-local sync state persistence.
 def _kq_sync_state_get(username: str) -> dict:
@@ -186,6 +197,63 @@ def _fmt_ts(ts: int) -> str:
         return datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
         return "Never"
+
+
+
+
+def _refresh_vault_ui_after_pull(self) -> None:
+    """Refresh vault/category UI after a pull so new rows appear immediately."""
+    try:
+        if hasattr(self, "refresh_category_dependent_ui"):
+            QTimer.singleShot(0, self.refresh_category_dependent_ui)
+        elif hasattr(self, "load_vault_table"):
+            QTimer.singleShot(0, self.load_vault_table)
+    except Exception:
+        try:
+            if hasattr(self, "refresh_category_dependent_ui"):
+                self.refresh_category_dependent_ui()
+            elif hasattr(self, "load_vault_table"):
+                self.load_vault_table()
+        except Exception as refresh_err:
+            log.warning(f"[SYNC] Pull refresh failed: {refresh_err}")
+
+def _show_autosync_time_warning(self) -> bool:
+    """
+    Warn users that timestamp-based autosync depends on device clocks being correct.
+    Returns True if autosync should continue.
+    """
+    try:
+        mb = QMessageBox(self)
+        mb.setIcon(QMessageBox.Warning)
+        mb.setWindowTitle(self.tr("Enable Auto Sync"))
+        mb.setText(
+            self.tr(
+                "Auto Sync uses file timestamps to decide whether Local or Cloud is newer."
+            )
+        )
+        mb.setInformativeText(
+            self.tr(
+                "Please make sure the date and time are correct on all synced devices.\n\n"
+                "If device clocks are wrong, the app may choose the wrong side.\n\n"
+                "If you are unsure, leave Auto Sync off and use Manual Push / Pull."
+            )
+        )
+        cb = QCheckBox(self.tr("Don't show this warning again"))
+        mb.setCheckBox(cb)
+        btn_enable = mb.addButton(self.tr("Enable Auto Sync"), QMessageBox.AcceptRole)
+        mb.addButton(self.tr("Cancel"), QMessageBox.RejectRole)
+        mb.exec()
+        accepted = (mb.clickedButton() is btn_enable)
+        if accepted and cb.isChecked():
+            try:
+                username = self._active_username()
+                if username:
+                    set_user_setting(username, "autosync_time_warning_ack", True)
+            except Exception:
+                pass
+        return bool(accepted)
+    except Exception:
+        return True
 
 # Sync scope helpers
 def _set_cloud_sync_scope(self, scope: str) -> None:
@@ -344,10 +412,10 @@ def on_toggle_extra_cloud_wrap(self, *args, **kwargs):
             pass
         self._sync_guard = False
         try:
-            # Note: disable for now till fixed
-            log.info("[AUTO-SYNC] scheduling skipped (disabled)")
-            #_watch_local_vault(self,)
-            #_schedule_auto_sync(self,)
+            # Keep wrap-toggle from silently re-arming auto-sync.
+            log.info("[AUTO-SYNC] wrap toggle did not re-arm watcher/timer")
+            # _watch_local_vault(self,)
+            # _schedule_auto_sync(self,)
         except Exception:
             pass
 
@@ -478,6 +546,7 @@ def _update_cloudsync_label(self, username: str, *, last_result: str | None = No
 # Helper to enable/disable the cloud sync buttons in the UI based on whether cloud sync is active. This is called after enabling/disabling cloud sync to reflect the current state in the UI and prevent invalid actions.
 def enable_buttons(self):
     """Enable cloud buttons"""
+    self.cloud_widget.show()
     self.autosync_.setChecked(True)
     self.autosync_.setEnabled(True)
     self.move_vault_to_cloud.setEnabled(False)
@@ -489,6 +558,7 @@ def enable_buttons(self):
 # Helper to disable the cloud sync buttons in the UI when cloud sync is turned off. This prevents the user from trying to sync or configure cloud settings when cloud sync is not active.
 def disable_buttons(self):
     """Disable cloud buttons"""
+    self.cloud_widget.hide()
     self.autosync_.setChecked(False)
     self.autosync_.setEnabled(False)
     self.move_vault_to_cloud.setEnabled(True)
@@ -530,25 +600,66 @@ def on_autosync_clicked(self, checked: bool) -> None:
     except Exception:
         pass
 
-    # Ensure engine exists & configured, then optionally kick a silent sync
+    # Ensure engine exists & configured, then arm/disarm watcher.
     try:
         if not hasattr(self, "sync_engine") or self.sync_engine is None:
             _configure_sync_engine(self, username, "on_autosync_clicked")
+
         if self.sync_engine and self.sync_engine.configured() and checked:
+            try:
+                if not bool(get_user_setting(username, "autosync_time_warning_ack", False)):
+                    if not _show_autosync_time_warning(self):
+                        try:
+                            self.autosync_.blockSignals(True)
+                            self.autosync_.setChecked(False)
+                            self.autosync_.blockSignals(False)
+                        except Exception:
+                            pass
+                        set_user_cloud(
+                            username=username,
+                            enable=bool(prof.get("enabled")),
+                            provider=(prof.get("provider") or "localpath"),
+                            path=(prof.get("remote_path") or ""),
+                            wrap=bool(prof.get("cloud_wrap")),
+                            sync_enable=False,
+                        )
+                        self.set_status_txt(self.tr("Done"))
+                        return
+            except Exception:
+                pass
+
             _set_cloud_sync_scope(self, "live")
-            #self.sync_engine.sync_now(self.core_session_handle, interactive=False)
+            _init_auto_sync(self)
 
-            _sync_now_safe(
-                self.sync_engine,
-                self.core_session_handle,
-                interactive=False,
-                prefer_local=False)
+            # Avoid an immediate push caused by startup-style watcher noise.
+            try:
+                import time as _time
+                self._suppress_watch_events_until = _time.monotonic() + 8.0
+            except Exception:
+                pass
 
-            _watch_local_vault(self,)
+            _watch_local_vault(self)
+            log.info("[AUTO-SYNC] enabled: watcher armed (timestamp mode, no immediate sync)")
 
-        elif not checked and hasattr(self, "_vault_watcher") and self._vault_watcher:
-            self._vault_watcher.deleteLater()
-            self._vault_watcher = None
+        else:
+            try:
+                if getattr(self, "_auto_sync_timer", None):
+                    self._auto_sync_timer.stop()
+            except Exception:
+                pass
+            try:
+                if getattr(self, "_watch_change_timer", None):
+                    self._watch_change_timer.stop()
+            except Exception:
+                pass
+            if hasattr(self, "_vault_watcher") and self._vault_watcher:
+                try:
+                    self._vault_watcher.deleteLater()
+                except Exception:
+                    pass
+                self._vault_watcher = None
+            log.info("[AUTO-SYNC] disabled: watcher stopped")
+
         update_baseline(username=username, verify_after=False, who=self.tr("Cloud Sync Settings Changed"))
 
     except Exception as e:
@@ -572,7 +683,12 @@ def on_button_sync_cloud(self):
             return
 
         prof = _cloud_profile(username)
-        _cloud_on_from_profile = prof.get("enabled", False)
+        _cloud_on_from_profile = bool(
+            prof.get("enabled")
+            or prof.get("sync_enable")
+            or prof.get("sync_enabled")
+        )
+
         if not _cloud_on_from_profile:
             QMessageBox.information(self, self.tr("Cloud sync"), self.tr("Cloud Sync is not enabled."))
             _update_cloudsync_label(self, username, last_result="disabled")
@@ -611,6 +727,7 @@ def on_button_sync_cloud(self):
                 update_baseline(username=username, verify_after=False, who=self.tr("OnCloud Sync Settings Changed")) 
             except Exception:
                 pass  # keep UX smooth even if baseline refresh throws
+            _refresh_vault_ui_after_pull(self)
         msg = self.tr("Result: ") + f"{res}"
         QMessageBox.information(self, self.tr("Cloud sync"), msg)
 
@@ -937,10 +1054,10 @@ def _cloud_sync_safe(self, *args, **kwargs) -> str:
     """
 
     interactive = bool(kwargs.get("interactive", False))
-    # manual-only mode # Note: remove to unblock auto sync
-    if not interactive:
-        log.info("[AUTO-SYNC] disabled (manual only mode)")
-        return "auto-disabled"
+    # manual-only mode # Note sync: remove to unblock auto sync
+    #if not interactive:
+    #    log.info("[AUTO-SYNC] disabled (manual only mode)")
+    #   return "auto-disabled"
 
     def _status(msg: str):
         try:
@@ -1012,6 +1129,7 @@ def _cloud_sync_safe(self, *args, **kwargs) -> str:
                     verify_after=False,
                     who=self.tr("Cloud Sync Pull Applied"),
                 )
+                _refresh_vault_ui_after_pull(self)
         except Exception as e:
             log.debug(f"[CLOUD] baseline refresh skipped: {e}")
 
@@ -1511,22 +1629,26 @@ def _init_auto_sync(self, *args, **kwargs):
     except Exception:
         pass
 
-    self._auto_sync_timer = QTimer(self)
-    self._auto_sync_timer.setSingleShot(True)
-    self._auto_sync_timer.setInterval(2500)  # 2.5s debounce
-    self._auto_sync_timer.timeout.connect(lambda: _run_auto_sync(self))
+    if getattr(self, "_auto_sync_timer", None) is None:
+        self._auto_sync_timer = QTimer(self)
+        self._auto_sync_timer.setSingleShot(True)
+        self._auto_sync_timer.setInterval(2500)  # 2.5s debounce
+        self._auto_sync_timer.timeout.connect(lambda: _run_auto_sync(self))
 
     # Debounce raw filesystem watcher bursts separately from sync execution.
-    self._watch_change_timer = QTimer(self)
-    self._watch_change_timer.setSingleShot(True)
-    self._watch_change_timer.setInterval(900)
-    self._watch_change_timer.timeout.connect(lambda: _schedule_auto_sync(self))
+    if getattr(self, "_watch_change_timer", None) is None:
+        self._watch_change_timer = QTimer(self)
+        self._watch_change_timer.setSingleShot(True)
+        self._watch_change_timer.setInterval(900)
+        self._watch_change_timer.timeout.connect(lambda: _schedule_auto_sync(self))
 
-    # Guards/state
-    self._is_syncing_cloud = False
-    self._sync_guard = False
-    self._suppress_watch_events_until = 0.0
-    self._vault_watcher = None
+    # Guards/state (preserve any existing watcher/timers)
+    if not hasattr(self, "_is_syncing_cloud"):
+        self._is_syncing_cloud = False
+    if not hasattr(self, "_sync_guard"):
+        self._sync_guard = False
+    if not hasattr(self, "_suppress_watch_events_until"):
+        self._suppress_watch_events_until = 0.0
 
 # Method to schedule an auto-sync operation after a delay. This is triggered by file change events on the local vault, and it ensures that we don't immediately sync on every single file change (which could be noisy), but instead wait for a short period of inactivity before performing the sync. It includes comprehensive checks to ensure that the user is logged in, cloud sync is enabled, and the engine is configured before starting the timer for auto-sync.
 def _schedule_auto_sync(self):
@@ -1820,8 +1942,8 @@ def _watch_local_vault(self,):
                 return
             try:
                 log.info("[AUTO-SYNC] scheduling skipped (disabled)")
-                # Note: disable for now till fixed 
-                #self._schedule_auto_sync()
+                # Note sync: disable for now till fixed 
+                self._schedule_auto_sync()
             except Exception:
                 pass
 

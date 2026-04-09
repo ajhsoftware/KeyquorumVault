@@ -554,3 +554,48 @@ def import_otpauth_from_qr_image(image_path: str) -> Optional[str]:
             log.warning("QR decode error: %s", e)
 
     return None
+
+
+# forgot password flow: if user can provide old password, we can rewrap secrets with new key
+
+def migrate_authenticator_entries_in_loaded_vault_with_sessions(
+    vault_obj,
+    old_session: int,
+    new_session: int,
+):
+    """
+    Forgot-password safe authenticator migration.
+
+    Unlike migrate_authenticator_store_with_sessions(), this does NOT load the
+    vault from disk again. It operates on an already-decrypted vault/list that
+    the caller has in memory.
+
+    Returns:
+        (ok: bool, msg: str, changed: int, failed: int)
+    """
+    try:
+        entries = _entries_list(vault_obj)
+
+        auths = [
+            e for e in entries
+            if isinstance(e, dict) and (
+                e.get("_type") == "authenticator" or
+                (e.get("Category") == AUTH_CATEGORY_NAME) or
+                (str(e.get("category", "")).lower() == "authenticator")
+            )
+        ]
+
+        try:
+            log.info(
+                "[AUTH-MIGRATE][LOADED] total_entries=%s auth_entries=%s",
+                len(entries or []), len(auths)
+            )
+        except Exception:
+            pass
+
+        return rewrap_authenticator_entries_with_sessions(
+            auths, old_session, new_session
+        )
+
+    except Exception as e:
+        return False, _tr("Authenticator migration error: {err}").format(err=e), 0, 0

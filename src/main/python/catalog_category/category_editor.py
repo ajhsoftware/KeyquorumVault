@@ -627,7 +627,6 @@ class CategoryEditor(QWidget):
         right.addWidget(self.catReminderChk)
 
         self.fields = QTableWidget(0, 5)
-        # note: add box remineder that once vault opens alarts will be made (shuld be data box)
         self.fields.setHorizontalHeaderLabels([self.tr("Label"), self.tr("Sensitive"), self.tr("URL"), self.tr("File Load"), self.tr("Required")])  
         self.fields.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.fields.setEditTriggers(

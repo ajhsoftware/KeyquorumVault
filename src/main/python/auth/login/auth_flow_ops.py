@@ -3834,7 +3834,7 @@ def successful_login(self, *args, **kwargs):
         pass
 
     # Note: Sync Not Working remove for now stop show
-    #self.on_sync_now_2.show()
+    self.cloud_widget.show()
 
     if not already_finalized:
         # WRAP accounts must NOT unlock vault until YubiKey completes
@@ -3985,31 +3985,23 @@ def successful_login(self, *args, **kwargs):
     except Exception:
         log.exception(f"{kql.i('sign')} -> {kql.i('err')} [S-LOGIN] Bridge Failed to start")
 
-    # 🔧 Ensure sync engine is ready BEFORE any sync attempt
+    # 🔧 Ensure sync engine is ready AFTER login, but DEBUG PATCH: do NOT sync here.
     try:
         from features.sync.sync_ops import _configure_sync_engine
 
         username = self._active_username()
+        log.warning("### DEBUG PATCH auth_flow post-login init username=%r ###", username)
         if username:
             _configure_sync_engine(self, username, "post-login-init")
+            log.info("[CLOUD] engine init completed at login (debug patch, no sync)")
     except Exception as e:
         log.debug(f"[CLOUD] engine init failed at login: {e}")
 
-    try:  # Sync engine (key-aware)
-        from features.sync.sync_ops import _cloud_sync_safe
-        res = _cloud_sync_safe(self, self.core_session_handle, interactive=True)
-
-        log.info(f"{kql.i('sign')} ->  [S-LOGIN] Cloud sync")
-        if res != "noop":
-            title = "Cloud sync"
-            msg = f"Cloud sync: {res}"
-            try:
-                from features.systemtray.systemtry_ops import notify_other
-                notify_other(self, title, msg)
-            except Exception:
-                pass
-    except Exception as e:
-        log.exception(f"{kql.i('sign')} -> {kql.i('err')} [S-LOGIN] Cloud sync {e}")
+    try:
+        log.warning("### DEBUG PATCH auth_flow intentionally skipped login cloud sync ###")
+        log.info(f"{kql.i('sign')} ->  [S-LOGIN] Cloud sync skipped (debug patch)")
+    except Exception:
+        pass
     
     try:  # Windows clipboard risk warning (once)
         maybe_warn_windows_clipboard(self, username)

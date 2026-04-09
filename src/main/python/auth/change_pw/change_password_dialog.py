@@ -281,6 +281,21 @@ class ChangePasswordDialog(QDialog, Ui_SecurePasswordChangeDialog):
                 rotate_salt=rotate_salt,
             )
 
+            if not isinstance(result, dict):
+                log.error(
+                    "[CHANGE-PW] create_or_update_user returned invalid result: %r",
+                    result,
+                )
+                QMessageBox.critical(
+                    self,
+                    self.tr("Password Update Failed"),
+                    self.tr(
+                        "Password change did not return a valid result. "
+                        "This usually means the update path failed before backup codes could be generated."
+                    ),
+                )
+                return
+
             ok_flag = (result.get("status") == "SUCCESS") or (result.get("success") is True)
             if not ok_flag:
                 QMessageBox.critical(
@@ -320,6 +335,40 @@ class ChangePasswordDialog(QDialog, Ui_SecurePasswordChangeDialog):
             # Backup codes + Recovery Key from account_creator
             new_codes = result.get("backup_codes") or result.get("backup_codes_plain") or []
             new_recovery_key = result.get("recovery_key")
+
+            # IMPORTANT:
+            # Login backup codes depend on the Identity Store password wrapper.
+            # During password change, the identity wrapper is still on the OLD password
+            # until rewrap_identity_password(...) succeeds above. So regenerate the
+            # login backup codes only AFTER identity rewrap, using the NEW password.
+            if update_backup and recovery_mode:
+                try:
+                    from auth.identity_store import gen_backup_codes
+
+                    log.debug("[SEC] Regenerating backup codes AFTER identity rewrap for %s", canonical)
+                    new_codes = gen_backup_codes(
+                        canonical,
+                        b_type="login",
+                        n=10,
+                        L=12,
+                        password_for_identity=new_pw,
+                    )
+                except Exception as e:
+                    log.error(
+                        "[SEC] Backup code regeneration failed AFTER identity rewrap for %s: %r",
+                        canonical,
+                        e,
+                        exc_info=True,
+                    )
+                    QMessageBox.warning(
+                        self,
+                        self.tr("Backup Codes"),
+                        self.tr(
+                            "Your password was changed, but new backup codes could not be generated.\n\n"
+                            "Please log in again and regenerate them from Settings."
+                        ),
+                    )
+                    new_codes = []
 
             # If Recovery Key rotation was requested, ensure we actually got a new key.
             # (If not, the old Emergency Kit key will correctly fail Forgot Password.)
@@ -490,14 +539,17 @@ class ChangePasswordDialog(QDialog, Ui_SecurePasswordChangeDialog):
                 log.warning("[BASELINE] update_baseline failed: %s", e)
             title = self.tr("Password Updated")
             msg = self.tr(
-                    "Your password has been updated successfully.\n\n"
-                    "Keyquorum now needs a quick re-login to refresh your encryption keys "
-                    "Click OK, then log in again using your new password."),
+                "Your password has been updated successfully.\n\n"
+                "Keyquorum now needs a quick re-login to refresh your encryption keys.\n\n"
+                "If you use cloud sync, it is recommended to run a manual Push once you log back in.\n\n"
+                "Click OK, then log in again using your new password."
+            )
             # Single, clear message (no double popups)
             QMessageBox.information(
                 self,
                 title,
-                msg,)
+                msg,
+            )
             
             try:
                 from features.systemtray.systemtry_ops import notify_other
