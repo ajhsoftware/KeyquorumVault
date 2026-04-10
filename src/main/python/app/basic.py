@@ -48,7 +48,7 @@ def get_app_version():
         log.debug(f"{kql.i('build')} [APP] VERSION {APP_VERSION}")
         return APP_VERSION
     except Exception:
-        APP_VERSION = "1.8.9"
+        APP_VERSION = "1.9.0"
         log.debug(f"{kql.i('build')} [APP] VERSION {APP_VERSION}")
         return APP_VERSION
 

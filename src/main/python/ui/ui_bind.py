@@ -746,7 +746,8 @@ def _wire_spin(spin, handler, cast=float):
 def init__default(w):
     """Default UI/runtime values."""
     if not is_dev:
-        w.mainTabs.setTabEnabled(2, False)
+        w.mainTabs.setTabEnabled(1, False)
+        w.mainTabs.setTabEnabled(3, False)
 
     # ----- default values / sets -----
     w._yk_gate_satisfied = False

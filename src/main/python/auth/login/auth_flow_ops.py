@@ -1834,10 +1834,10 @@ def _sync_remember_device_checkbox_for_username(self, typed_username: str):
         # Unknown user -> disable
         try:
             self.passwordField.setPlaceholderText("Password")
-            self.passwordField.setToolTip(
+            self.rememberDeviceCheckbox.setToolTip(
                 "Enable 'Remember this device' to unlock without entering your password on this Windows device."
             )
-            self.rememberDeviceCheckbox.setToolTip("Stores an encrypted unlock token on this Windows account (DPAPI). Not portable and not synced.")
+            self.passwordField.setToolTip("Stores an encrypted unlock token on this Windows account (DPAPI). Not portable, and Not Yubi_key Wrap")
             was = cb.blockSignals(True)
             cb.setChecked(False)
             cb.setEnabled(False)
@@ -1848,29 +1848,30 @@ def _sync_remember_device_checkbox_for_username(self, typed_username: str):
                 pass
         return
 
-    enabled = False
-    try:
-        from auth.windows_hello.session import has_device_unlock
-        enabled = bool(has_device_unlock(rec))
-    except Exception:
-        du = (rec.get("device_unlock") or {})
-        enabled = bool(du.get("wrapped_b64") and du.get("entropy_b64")) or bool(du.get("enabled", False))
-
-    # Set UI without triggering toggled handler
-    try:
-        self.passwordField.setPlaceholderText("Press Enter or click Unlock")
-        self.passwordField.setToolTip(
-            "This device can unlock the vault without your password. "
-            "You can still enter your password if you prefer.")
-        self.rememberDeviceCheckbox.setToolTip("Uncheck to disable passwordless unlock on this device.")
-        was = cb.blockSignals(True)
-        cb.setEnabled(True)
-        cb.setChecked(bool(enabled))
-    finally:
+    else:
+        enabled = False
         try:
-            cb.blockSignals(was)
+            from auth.windows_hello.session import has_device_unlock
+            enabled = bool(has_device_unlock(rec))
         except Exception:
-            pass
+            du = (rec.get("device_unlock") or {})
+            enabled = bool(du.get("wrapped_b64") and du.get("entropy_b64")) or bool(du.get("enabled", False))
+
+        # Set UI without triggering toggled handler
+        try:
+            self.passwordField.setPlaceholderText("Press Enter or click Unlock")
+            self.passwordField.setToolTip(
+                "This device can unlock the vault without your password. "
+                "You can still enter your password if you prefer.")
+            self.rememberDeviceCheckbox.setToolTip("Uncheck to disable passwordless unlock on this device.")
+            was = cb.blockSignals(True)
+            cb.setEnabled(True)
+            cb.setChecked(bool(enabled))
+        finally:
+            try:
+                cb.blockSignals(was)
+            except Exception:
+                pass
 
 # Show a clear security warning about the risks of enabling passwordless DPAPI unlock on a device, and ask for confirmation. 
 # Returns (allowed: bool, dont_ask_again: bool).

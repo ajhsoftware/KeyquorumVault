@@ -1,6 +1,7 @@
 import os
 import sys
 
+
 class ApplicationContext:
     """
     Minimal compatibility shim for fbs_runtime.application_context.qtpy.ApplicationContext
@@ -8,7 +9,7 @@ class ApplicationContext:
 
     def __init__(self):
         self.build_settings = {
-            "version": "v1.8.9"
+            "version": "1.9.0"
         }
 
     def get_resource(self, relative_path: str) -> str:

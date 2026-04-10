@@ -563,7 +563,7 @@ class InlineOnboardingWizard(QWizard):
 
         # --- numeric controls ----------
         self._sp_lockout = QSpinBox()
-        self._sp_lockout.setRange(3, 15)
+        self._sp_lockout.setRange(0, 15)
         self._sp_lockout.setValue(lockout_threshold)
         self._sp_lockout.setToolTip(self.tr("Number of failed logins before temporary lockout."))
 
@@ -580,8 +580,8 @@ class InlineOnboardingWizard(QWizard):
         self._sp_clip.setToolTip(self.tr("How long secrets stay in the clipboard before auto-clear."))
 
         self._sp_logout = QSpinBox()
-        self._sp_logout.setRange(60, 7200)
-        self._sp_logout.setSingleStep(30)
+        self._sp_logout.setRange(0, 7200)
+        self._sp_logout.setSingleStep(0)
         self._sp_logout.setValue(auto_logout_timeout_sec)
         self._sp_logout.setSuffix(" sec")
         self._sp_logout.setToolTip(self.tr("Idle time before the app auto-locks."))
