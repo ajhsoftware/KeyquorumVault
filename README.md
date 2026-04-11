@@ -2,8 +2,10 @@
 
 Offline-first password manager by **AJH Software**.
 
-> ⚠️ Note: The project is currently being refactored and modularised.  
-> Folder structure and internal modules may change while this stabilises.
+⚠️ **Important:** This project is currently experimental and under active development.  
+   It has not been security audited and is **not recommended for storing real or sensitive passwords** at this stage.
+
+  The codebase is also being actively refactored and modularised, so folder structure and internal modules may change while this stabilises.
 
 ---
 
