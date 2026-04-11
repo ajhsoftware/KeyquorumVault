@@ -207,6 +207,9 @@ All future changes will:
 - Prioritise user control and transparency
 
 ---
+## 🌐 site
+https://ajhsoftware.uk
+---
 
 ## 🌐 Browser Extension
 
@@ -248,5 +251,5 @@ See `SECURITY.md`.
 
 ## 🧠 Author
 
-Developed by **AJH Software**  
+Developed by **AJH Software** 
 Solo developer project focused on privacy, security, and local-first design.
