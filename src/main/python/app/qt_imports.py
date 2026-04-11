@@ -64,6 +64,5 @@ from qtpy import QtWidgets  # noqa: F401
 from qtpy import *
 
 # dev
-
 from app.dev import dev_ops
-dev_set = dev_ops.dev_set
+is_dev = dev_ops.dev_set

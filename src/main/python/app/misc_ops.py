@@ -23,10 +23,7 @@ from pathlib import Path
 from app.paths import user_lock_flag_path, LICENSES_DIR, SPDX_DIR
 from vault_store.vault_store import (
       add_vault_entry, load_vault, save_vault, update_vault_entry,)
-import app.kq_logging as kql
-from security.preflight import (
-    load_security_prefs, run_preflight_for_user, scan_for_suspicious_processes, _any_av_present,)
-from app.paths import tamper_log_file
+
 from auth.login.login_handler import validate_login
 from security.baseline_signer import update_baseline
 

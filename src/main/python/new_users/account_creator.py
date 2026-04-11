@@ -484,7 +484,7 @@ def create_or_update_user(
         }
 
     except Exception as e:
-        log.error(f"[users] failed to read {p}: {e}")
+        log.error(f"[users] failed to read : {e}")
         return {}
 
 def _atomic_write_json(path: Path, obj: dict) -> None:

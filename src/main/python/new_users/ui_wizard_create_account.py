@@ -18,23 +18,10 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 binding creact account ui
 """
 # --- log ---
-import logging
-log = logging.getLogger("keyquorum")
-import app.kq_logging as kql
-
-# ---  pysider backend QtWidgets ---
-from qtpy.QtWidgets import (
-    QApplication, QWidget, QLabel, QLineEdit, QPushButton,
-    QMessageBox, QVBoxLayout, QTextEdit, QFormLayout, QFrame, QGraphicsDropShadowEffect,
-    QHBoxLayout, QCheckBox, QWizard, QWizardPage, QRadioButton, QSizePolicy, QSpinBox)    
-# --- pysider backend QtGui ---
-from qtpy.QtGui import QColor, QPalette
-# --- pysider backend QtCore ---
-from qtpy.QtCore import Qt 
+from app.qt_imports import *
 
 # --- helpers ---
 import sys
-from pathlib import Path  
 from native.native_core import get_core
 import hashlib
 import secrets
@@ -52,13 +39,12 @@ from app.basic import get_app_version
 from ui.ui_helpers import center_on_screen
 from security.baseline_signer import update_baseline
 from app.paths import APP_ROOT 
-
 LICENSES_DIR    = APP_ROOT / "licenses"
+
 
 # ==============================
 # --- ui load create account
-# ==============================
-    
+# ==============================    
 def create_account(w):
     """
     Start the Create Account flow.
@@ -77,10 +63,10 @@ def create_account(w):
 
     wiz.exec()
 
+
 def _mask_secret(s: str | None) -> str | None:
     if not s: return None
     return (s[:4] + ("*" * max(0, len(s) - 6)) + s[-2:]) if len(s) > 6 else "***"
-
 
 
 def _derive_current_mk_native(username: str, password: str) -> bytes:
@@ -291,7 +277,21 @@ class InlineOnboardingWizard(QWizard):
 
         # start with Next disabled
         self._set_next_enabled(False)
+        # set autologin dev values if dev mode
+        self.dev_set()
         return p
+
+    def dev_set(self):
+        if not is_dev:    # note: username change back to if dev = usered for Making video and testing :) 
+            try:
+                log.info("Setting username/Passsword Turn OFF wizard create account") 
+                from app.owner import dev_password, dev_username
+                self._create_username.setText(dev_username)
+                self._create_password.setText(dev_password)
+                self._create_confirm.setText(dev_password)
+            except Exception as e:
+                print(f"Error {e}")
+                pass
 
     def _update_pw_feedback(self):
         try:

@@ -166,3 +166,9 @@ def message_vault_missing(self, who, vpath):
 def message_read_decrypt_vault(self, who, e):
     QMessageBox.warning(self, who, f"Could not read/decrypt your vault:\n{e}")
 
+
+
+
+
+
+

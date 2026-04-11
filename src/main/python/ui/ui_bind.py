@@ -105,6 +105,7 @@ def bind_all(w):
     init_login_remember_username(w)
     setup_tray(w)
     setup_update_button(w)
+    dev_set(w)
 
 
 def init_login_remember_username(w):
@@ -174,21 +175,18 @@ def init_buttons(w):
     # ==============================
     # --- settings menu buttons
     # ==============================
-
     w.mainTabs.currentChanged.connect(w.on_tab_changed)
-
     getattr(w, 'restHidden', None) and w.restHidden.clicked.connect(lambda: on_reset_hide_flags_clicked(w))   # - reset all hiden flages (must update when adding new ones)
-    w.newBug.clicked.connect(lambda: _maybe_show_release_notes(w))                # - show whats new/bug
-    w.general_.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(0))        # - change widget
-    w.audit_log_.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(4))      # - change widget
-    w.profile_.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(2))        # - change widget
-    w.portable_.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(1))       # - change widget
-    w.backup_retore_.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(3))  # - change widget
-    w.pre_security_.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(5))   # - change widget
-    w.categoryeditor_.clicked.connect(w.categury_load_schema)                     # - load schema
-    w.sync_button.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(7))     # - cloud sync 
-    w.clear_passwordless.clicked.connect(lambda: clear_passwordless_unlock_on_this_device(w))    # - clear passwordless
-    w.deleteAccountButton.clicked.connect(lambda: w.open_delete_account_dialog(w.currentUsername.text() or "").strip())    # - delete user
+    w.newBug.clicked.connect(lambda: _maybe_show_release_notes(w))               
+    w.general_.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(0))
+    w.audit_log_.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(4))
+    w.profile_.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(2))
+    w.portable_.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(1))
+    w.backup_retore_.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(3))
+    w.categoryeditor_.clicked.connect(w.categury_load_schema)
+    w.sync_button.clicked.connect(lambda: w.stackedWidget.setCurrentIndex(7))
+    w.clear_passwordless.clicked.connect(lambda: clear_passwordless_unlock_on_this_device(w))
+    w.deleteAccountButton.clicked.connect(lambda: w.open_delete_account_dialog(w.currentUsername.text() or "").strip())
     w.clear_username.clicked.connect(lambda: clear_remembered_username(w))    
     
     try:
@@ -234,41 +232,15 @@ def init_buttons(w):
     # ==============================
     # --- Portable
     # ==============================
-    w.btnMoveToUSB.clicked.connect(w.action_move_user_to_usb)                     # - move user to usb
-    w.btnMoveBack.clicked.connect(w.action_move_user_from_usb)                    # - move user back from usb
-    try:
-        # Prefer non-blocking rebuild if available
-        if hasattr(w, 'on_rebuild_portable_clicked2'):
-            w.btnCreatePortable.clicked.connect(w.on_rebuild_portable_clicked2)
-        else:
-            w.btnCreatePortable.clicked.connect(w.on_rebuild_portable_clicked)
-    except Exception:
-        try:
-            w.btnCreatePortable.clicked.connect(w.on_rebuild_portable_clicked)
-        except Exception:
-            pass            # - create porable (build/rebuild)
+    w.btnMoveToUSB.clicked.connect(w.action_move_user_to_usb) 
+    w.btnMoveBack.clicked.connect(w.action_move_user_from_usb)
+    w.btnCreatePortable.clicked.connect(w.on_rebuild_portable_clicked)
 
-    # ==============================
-    # --- security/prefs
-    # ==============================
-    # --- Login (per-user) controls ---
-    w.preflight_config.clicked.connect(w.open_security_prefs)
-    w.enableWinDefCheckbox_.toggled.connect(w.on_enable_WinDefCheckbox_toggled)
-    w.DefenderQuickScan_.toggled.connect(w.on_enable_DefenderQuickScan_toggled)
-    w.preflight_check_now.clicked.connect(w.on_run_preflight_now_clicked)
-    w.enablePreflightCheckbox.toggled.connect(w.on_enable_preflight_toggled)
-    # --- Startup (global/default) controls (newer UI names end with _2). Guard so older .ui still works. ---
-    w.preflight_config_2.clicked.connect(w.open_security_prefs_startup)
-    w.enableWinDefCheckbox_2.toggled.connect(w.on_enable_WinDefCheckbox_toggled)
-    w.DefenderQuickScan_2.toggled.connect(w.on_enable_DefenderQuickScan_toggled)
-    w.enablePreflightCheckbox_2.toggled.connect(w.on_enable_preflight_toggled)   
-    w.preflight_check_now_2.clicked.connect(w.run_preflight_now_startup)
     # --- password breach checker ---
     w.enable_breach_checker_.toggled.connect(w.enable_breach_checker_change)    
     # --- baseline check ---
-    w.updatebaseline_2.clicked.connect(lambda: update_baseline(username=w.currentUsername.text(), verify_after=False, who=w.tr("Setting Updated Basline Button Clicked"), show_message=True, parent=w))
+    w.updatebaseline.clicked.connect(lambda: update_baseline(username=w.currentUsername.text(), verify_after=False, who=w.tr("Setting Updated Basline Button Clicked"), show_message=True, parent=w))
     w.check_baseline.clicked.connect(lambda: w.integrity_check_and_prompt(w.currentUsername.text()))
-    w.check_baseline_2.clicked.connect(lambda: w.integrity_check_and_prompt(w.currentUsername.text()))
     # --- backup code regen login/yubi & tfa ---
     w.regen_key_1.clicked.connect(lambda: on_generate_recovery_key_clicked(w, "login"))
     w.regen_key_2fa_2.clicked.connect(lambda: on_generate_recovery_key_clicked(w, "2fa"))
@@ -370,7 +342,7 @@ def init_buttons(w):
     # -----------------------
     w.securityRefreshButton.clicked.connect(lambda: _run_security_center_scan(w))        
     w.securityOpenIntegrityButton.clicked.connect(lambda: on_security_open_integrity_clicked(w))
-    w.securityPreflightConfigButton.clicked.connect(w.open_security_prefs)
+
     w.changePasswordButton_2.clicked.connect(w.open_change_password_dialog)  
     w.btnDeviceUnlock_2.clicked.connect(lambda: on_yk_setup_clicked(w))
     w.exportWithPasswordButton_2.clicked.connect(lambda: w.export_vault_with_password(skip_ask=False)) 
@@ -637,6 +609,17 @@ def init_setText(w):
             d9=w.tr("9"),
         )
         w.auth_tran_halp.setText(msg1)
+
+
+def dev_set(w):
+    if not is_dev:    # note change back to if dev = usered for Making video and testing :) 
+        try:
+            log.info("Setting username/Passsword Turn OFF UI Bind") 
+            from app.owner import dev_password, dev_username
+            w.usernameField.setText(dev_username)
+            w.passwordField.setText(dev_password)
+        except Exception:
+            pass
 
 
 def init_spin_box(w):

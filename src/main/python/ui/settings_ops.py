@@ -18,14 +18,11 @@ from __future__ import annotations
 # This module contains methods extracted from main.py to reduce file size.
 # We intentionally "inherit" main module globals so the moved code can run unchanged.
 import sys as _sys
-from tkinter import E
 from auth.login.login_handler import set_user_setting, get_user_setting, get_user_record
 from new_users.tour import maybe_show_quick_tour
-from features.backup_advisor.backup_advisor import BackupAdvisor
 from ui.ui_flags import _maybe_show_release_notes
 from security.secure_audit import log_event_encrypted
 from auth.identity_store import get_login_backup_count_quick, get_2fa_backup_count_quick
-from security.preflight import load_security_prefs 
 from device.utils_device import get_device_fingerprint
 from app.dev import dev_ops
 
@@ -49,42 +46,48 @@ except Exception:
     pass
 
 
-def load_setting(self, *args, **kwargs):
-    log.debug(f"{kql.i('tool')} [SETTINGS] loading settings")
+def load_setting(self, first_load: bool = True):
+
+    log.info(f"{kql.i('tool')} [SETTINGS] loading settings")
     self.set_status_txt(self.tr("Loading Settings"))
-    self._init_language_from_file()
+
     user = self._active_username()
 
-    # --- Device fingerprint → encrypted audit log (best-effort) ---
-    try:
-        fp, ctx = get_device_fingerprint()
-        self.set_status_txt(self.tr("Loading Settings: System Finger"))
+    if first_load:
+        log.info(f"{kql.i('tool')} [SETTINGS] First Load On")
+        self._init_language_from_file()
+        # --- Device fingerprint → encrypted audit log (best-effort) ---
+        try:
+            fp, ctx = get_device_fingerprint()
+            self.set_status_txt(self.tr("Loading Settings: System Finger"))
 
-        # Hide fingerprint & identifiers if running in dev mode
-        if is_dev:
-            safe_fp = "****"
-            safe_device = "DEV-DEVICE"
-            safe_os = ctx.get("os", "") or "dev_os"
-            safe_release = ctx.get("release", "") or ""
-            safe_arch = ctx.get("arch", "") or ""
-        else:
-            safe_fp = fp
-            safe_device = ctx.get("deviceName", "")
-            safe_os = ctx.get("os", "")
-            safe_release = ctx.get("release", "")
-            safe_arch = ctx.get("arch", "")
+            # Hide fingerprint & identifiers if running in dev mode
+            if is_dev:
+                safe_fp = "****"
+                safe_device = "DEV-DEVICE"
+                safe_os = ctx.get("os", "") or "dev_os"
+                safe_release = ctx.get("release", "") or ""
+                safe_arch = ctx.get("arch", "") or ""
+            else:
+                safe_fp = fp
+                safe_device = ctx.get("deviceName", "")
+                safe_os = ctx.get("os", "")
+                safe_release = ctx.get("release", "")
+                safe_arch = ctx.get("arch", "")
 
-        # Compose final message
-        msg = (
-            f"login: device_fp={safe_fp} "
-            f"device={safe_device} "
-            f"os={safe_os} {safe_release} {safe_arch}"
-        )
+            # Compose final message
+            msg = (
+                f"login: device_fp={safe_fp} "
+                f"device={safe_device} "
+                f"os={safe_os} {safe_release} {safe_arch}"
+            )
 
-        log_event_encrypted(user, "login", msg)
-    except Exception as e:
-        log.debug(f"[audit] device finger error {e}")
+            log_event_encrypted(user, "login", msg)
+        except Exception as e:
+            log.debug(f"[audit] device finger error {e}")
 
+    else:
+        log.info(f"{kql.i('tool')} [SETTINGS] First Load Off")
     # --- Defaults (code-side fallbacks) ---
     threshold = 5
     self.expiry_days = 60
@@ -161,14 +164,14 @@ def load_setting(self, *args, **kwargs):
             log.info(f"{kql.i('debug')} [DEBUG] Debug forced ON in dev mode")
         else:
             self.debug_set = bool(settings.get("debug_set", False))
-
-        try:
-            self.enable_debug_logging_change(bool(self.debug_set))
-        except Exception as e:
-            log.error(
-                f"{kql.i('tool')} [ERROR] {kql.i('err')} "
-                f"Failed to apply logging prefs: {e}"
-            )
+        if first_load:
+            try:
+                self.enable_debug_logging_change(bool(self.debug_set))
+            except Exception as e:
+                log.error(
+                    f"{kql.i('tool')} [ERROR] {kql.i('err')} "
+                    f"Failed to apply logging prefs: {e}"
+                )
 
         # --- Recovery mode label (best-effort) ---
         recovery_mode = None
@@ -233,46 +236,9 @@ def load_setting(self, *args, **kwargs):
     # We have two independent preflight modes:
     #  - Startup (global, before a user is selected)
     #  - Login   (per-user, after username is entered, before unlocking)
-    global_prefs = load_security_prefs(None)  # resolves to shared "default" file
-    user_prefs = load_security_prefs(user) if user else {}
 
-    enable_preflight_startup = bool(
-        global_prefs.get("enable_preflight_startup", global_prefs.get("enable_preflight", False))
-    )
-    enable_preflight_login = bool(
-        user_prefs.get("enable_preflight_login", user_prefs.get("enable_preflight", False))
-    )
-
-    check_av_startup = bool(global_prefs.get("check_av_startup", global_prefs.get("check_av", False)))
-    check_av_login = bool(user_prefs.get("check_av_login", user_prefs.get("check_av", False)))
-
-    defender_qs_startup = bool(
-        global_prefs.get("defender_quick_scan_startup", global_prefs.get("defender_quick_scan", False))
-    )
-    defender_qs_login = bool(
-        user_prefs.get("defender_quick_scan_login", user_prefs.get("defender_quick_scan", False))
-    )
     self.set_status_txt(self.tr("Set Settings"))
-
     _set("ontop_", "setChecked", bool(self.ontop))
-
-    # Login controls
-    _set("enablePreflightCheckbox", "setChecked", enable_preflight_login)
-    _set("enablePreflightCheckbox_", "setChecked", enable_preflight_login)   # legacy/back-compat
-    _set("enablePreflightCheckbox_1", "setChecked", enable_preflight_login)  # newer UI (explicit login)
-
-    _set("enableWinDefCheckbox_", "setChecked", check_av_login)
-    _set("enableWinDefCheckbox_1", "setChecked", check_av_login)
-
-    _set("DefenderQuickScan_", "setChecked", defender_qs_login)
-    _set("DefenderQuickScan_1", "setChecked", defender_qs_login)
-
-    _set("preflight_check_now_1", "setEnabled", True)
-
-    # Startup controls
-    _set("enablePreflightCheckbox_2", "setChecked", enable_preflight_startup)
-    _set("enableWinDefCheckbox_2", "setChecked", check_av_startup)
-    _set("DefenderQuickScan_2", "setChecked", defender_qs_startup)
     _set("lockoutSpinBox", "setValue", int(threshold))
     _set("password_expiry_days", "setValue", int(self.expiry_days))
     _set("clipboard_clear_timeout_", "setValue", int(self.clipboard_clear_timeout_sec))
@@ -294,33 +260,36 @@ def load_setting(self, *args, **kwargs):
             autostart = False
 
         _set("autoStartBridgeCheck", "setChecked", bool(autostart))
+        if first_load:
+            if hasattr(self, "autoStartBridgeCheck") and self.autoStartBridgeCheck is not None:
+            
+                try:
+                    self.autoStartBridgeCheck.toggled.disconnect()
+                except Exception:
+                    pass
+                from bridge.bridge_ops import on_toggle_autostart_bridge
+                self.autoStartBridgeCheck.toggled.connect(lambda t: on_toggle_autostart_bridge(self, t))
+        
 
-        if hasattr(self, "autoStartBridgeCheck") and self.autoStartBridgeCheck is not None:
-            try:
-                self.autoStartBridgeCheck.toggled.disconnect()
-            except Exception:
-                pass
-            from bridge.bridge_ops import on_toggle_autostart_bridge
-            self.autoStartBridgeCheck.toggled.connect(lambda t: on_toggle_autostart_bridge(self, t))
-
-        # Conservative: do not auto-start unless explicitly checked by user
-        if autostart:
-            try:
-                from bridge.bridge_helpers import ensure_bridge_token
-                from bridge.bridge_ops import start_bridge_server, start_bridge_monitoring
-                tok = ensure_bridge_token(user, new=False)
-                if tok:
-                    start_bridge_server(self, strict=None)
-                    start_bridge_monitoring(self)
-                    log.info("[BRIDGE] Autostart enabled by user; server started on 127.0.0.1")
-            except Exception as e:
-                log.error(f"[BRIDGE] Autostart failed: {e}")
+                # Conservative: do not auto-start unless explicitly checked by user
+                if autostart:
+                    try:
+                        from bridge.bridge_helpers import ensure_bridge_token
+                        from bridge.bridge_ops import start_bridge_server, start_bridge_monitoring
+                        tok = ensure_bridge_token(user, new=False)
+                        if tok:
+                            start_bridge_server(self, strict=None)
+                            start_bridge_monitoring(self)
+                            log.info("[BRIDGE] Autostart enabled by user; server started on 127.0.0.1")
+                    except Exception as e:
+                        log.error(f"[BRIDGE] Autostart failed: {e}")
     except Exception as e:
         log.error(f"[SETTINGS] Bridge autostart section failed: {e}")
 
     # --- Touch mode ---
-    if self.set_touch is not None:
-        self._enable_touch_mode(force=self.set_touch)
+    if first_load:
+        if self.set_touch is not None:
+            self._enable_touch_mode(force=self.set_touch)
 
     # --- Timers ---
     self.set_status_txt(self.tr("Loading set: Timers"))
@@ -344,8 +313,9 @@ def load_setting(self, *args, **kwargs):
 
     # --- Auto-logout + topmost ---
     self.set_status_txt(self.tr("Loading set: Auto-logout"))
-    self.setup_auto_logout()
-    self.set_topmost_no_flash(self.ontop)
+    if first_load:
+        self.setup_auto_logout()
+        self.set_topmost_no_flash(self.ontop)
 
     # --- Cloud UI enablement ---
     try:
@@ -370,8 +340,6 @@ def load_setting(self, *args, **kwargs):
         )
         if bool(getattr(self, "cloud_enabled", False)):
             from features.sync.sync_ops import _configure_sync_engine
-
-            user = self._active_username()
             if user:
                 self.set_status_txt(self.tr("Loading set: Cloud Engine"))
                 _configure_sync_engine(self, user, "load_setting")
@@ -385,30 +353,32 @@ def load_setting(self, *args, **kwargs):
     except Exception as e:
         log.error(f"[AUTO-SYNC] load_setting init failed: {e}")
 
-    # --- Refresh tables/UI ---
-    try:
+    if first_load:
+        # --- Refresh tables/UI ---
         try:
-            self.refresh_category_selector()
+            try:
+                self.refresh_category_selector()
+            except Exception:
+                pass
+            try:
+                self.refresh_category_dependent_ui()
+            except Exception:
+                pass
+        except Exception as e:
+            log.error(f"{kql.i('tool')} [ERROR] Vault table load failed: {e}")
+
+        # --- One-time 'What's New' popup ---
+
+        try:
+            # Slight delay so it appears after the main window is stable
+            QTimer.singleShot(500, _maybe_show_release_notes(self))
         except Exception:
             pass
+
         try:
-            self.refresh_category_dependent_ui()
-        except Exception:
-            pass
-    except Exception as e:
-        log.error(f"{kql.i('tool')} [ERROR] Vault table load failed: {e}")
-
-    # --- One-time 'What's New' popup ---
-    try:
-        # Slight delay so it appears after the main window is stable
-        QTimer.singleShot(500, self._maybe_show_release_notes)
-    except Exception:
-        pass
-
-    try:
-        self.load_audit_table()
-    except Exception as e:
-        log.error(f"{kql.i('tool')} [ERROR] {kql.i('user')} Failed to load audit table: {e}")
+            self.load_audit_table()
+        except Exception as e:
+            log.error(f"{kql.i('tool')} [ERROR] {kql.i('user')} Failed to load audit table: {e}")
 
     # --- Backup reminder prefs (per-user via QSettings) ---
     try:
@@ -450,22 +420,21 @@ def load_setting(self, *args, **kwargs):
         # reflect UI WITHOUT emitting signals
         _set("launchBeforeAutofillCheck", "setChecked", launch_first)
 
-        if (
-            hasattr(self, "launchBeforeAutofillCheck")
-            and self.launchBeforeAutofillCheck is not None
-        ):
-            # Connect exactly once; no disconnect = no RuntimeWarning
-            if not getattr(self, "_wired_launch_autofill", False):
-                try:
-                    self.launchBeforeAutofillCheck.toggled.connect(
-                        self.on_toggle_launch_before_autofill,
-                        Qt.ConnectionType.UniqueConnection,
-                    )
-                except (TypeError, AttributeError):
-                    self.launchBeforeAutofillCheck.toggled.connect(
-                        self.on_toggle_launch_before_autofill
-                    )
-                self._wired_launch_autofill = True
+        if first_load:
+            if (hasattr(self, "launchBeforeAutofillCheck")
+                and self.launchBeforeAutofillCheck is not None):
+                # Connect exactly once; no disconnect = no RuntimeWarning
+                if not getattr(self, "_wired_launch_autofill", False):
+                    try:
+                        self.launchBeforeAutofillCheck.toggled.connect(
+                            self.on_toggle_launch_before_autofill,
+                            Qt.ConnectionType.UniqueConnection,
+                        )
+                    except (TypeError, AttributeError):
+                        self.launchBeforeAutofillCheck.toggled.connect(
+                            self.on_toggle_launch_before_autofill
+                        )
+                    self._wired_launch_autofill = True
     except Exception as e:
         log.error(f"{kql.i('tool')} [ERROR] Autofill launch-first init failed: {e}")
 

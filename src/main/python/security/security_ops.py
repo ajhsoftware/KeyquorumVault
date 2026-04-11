@@ -16,95 +16,9 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 from __future__ import annotations
 from app.qt_imports import *
-from security.preflight import load_security_prefs
-from security.preflight import run_preflight_for_user
 from auth.login.login_handler import get_user_setting
-from security.preflight import _any_av_present, scan_for_suspicious_processes
 from security.secure_audit import (get_audit_file_path, audit_file, audit_mirror_file, user_lock_flag_path,
                                    log_event_encrypted, tamper_log_file, read_audit_log,)
-
-
-# ===============
-# = preflight =
-# ===============
-
-# prefight check: AV presence, suspicious processes, per-user prefs. Shows a summary dialog and runs the full preflight for the user.
-def on_run_preflight_now_clicked(self, *args, **kwargs):
-    self.set_status_txt(self.tr("Checking Preflight"))
-    log.debug(str(f"{kql.i('tool')} [TOOLS] {kql.i('ok')} run preflight now clicked"))
-
-    username = self._active_username()
-    if not username:
-        QMessageBox.information(self, self.tr("Preflight"), self.tr("Please enter or select a user first."))
-        return
-
-    # Gentle heads-up about clipboard etc.
-    try:
-        if hasattr(self, "maybe_warn_windows_clipboard"):
-            self.maybe_warn_windows_clipboard(self, username, False)
-    except Exception as e:
-        log.error(str(f"{kql.i('tool')} [ERROR] {kql.i('err')} clipboard warn error: {e}"))
-
-    # Per-user security prefs (login mode)
-    try:
-        prefs = load_security_prefs(username) or {}
-    except Exception as e:
-        prefs = {}
-        log.error(str(f"{kql.i('tool')} [ERROR] {kql.i('err')} load_security_prefs error: {e}"))
-
-    # AV check is now stored in the per-user *.sp file so it can be honored pre-login.
-    if "check_av_login" in prefs:
-        check_av = bool(prefs.get("check_av_login", False))
-    else:
-        # Back-compat: older builds stored this in user_db
-        try:
-            check_av = bool(get_user_setting(username, "WinDefCheckbox"))
-            log.debug(str(f"{kql.i('tool')} [TOOLS] {kql.i('info')} get_user_setting: {username}/WinDefCheckbox -> {check_av}"))
-        except Exception as e:
-            check_av = False
-            log.error(str(f"{kql.i('tool')} [ERROR] {kql.i('err')} get_user_setting error: {e}"))
-
-    preflight_enabled = bool(prefs.get("enable_preflight_login", prefs.get("enable_preflight", True)))
-    av_present = None
-    av_names = []
-    av_source = "n/a"
-    if check_av:
-        try:
-            ok_av, names, source = _any_av_present(debug=True)
-            av_present, av_names, av_source = ok_av, names, source
-        except Exception as e:
-            log.error(str(f"{kql.i('tool')} [ERROR] {kql.i('err')} any av present error: {e}"))
-
-    # Suspicious processes (uses per-user prefs list)
-    try:
-        flagged = scan_for_suspicious_processes(prefs)
-    except Exception as e:
-        flagged = []
-        log.error(str(f"{kql.i('tool')} [ERROR] {kql.i('err')} scan suspicious processes failed: {e}"))
-
-    # Quick status
-    lines = [
-        f"Preflight enabled (per-user): {preflight_enabled}",
-        f"Per-user AV check (WinDefCheckbox): {check_av}",
-    ]
-    if check_av:
-        lines.append(f"AV detected: {av_present} via {av_source} {av_names}")
-    lines.append("Suspicious processes: " + (", ".join(flagged) if flagged else "None"))
-    QMessageBox.information(self, self.tr("Preflight status"), self.tr("\n").join(lines))
-
-    # Run full preflight for this user
-    try:
-        from app.dev import dev_ops
-        is_dev = dev_ops.dev_set
-        ok = run_preflight_for_user(
-            username=username,
-            user_prefs_loader=self._load_user_preflight_overrides,  # if you have overrides; else lambda u: {}
-            is_dev=is_dev,
-            parent=self
-        )
-        log.debug(f"{kql.i('tool')} [TOOLS] {kql.i('info')} run preflight for user returned: {ok}")
-    except Exception as e:
-        log.error(str(f"{kql.i('tool')} [ERROR] {kql.i('info')} run preflight for user error: {e}"))
 
 # ================
 # = audit log management: load and delete =
@@ -203,7 +117,6 @@ def delete_audit_logs(self, *args, **kwargs) -> None:
             msg
         )
 
-
 # Load the audit log entries for the current user and populate the audit table. This includes merging pre-auth and post-auth events, handling secure entries, and detecting tampering.
 def load_audit_table(self, *args, **kwargs) -> None:
     self.set_status_txt(self.tr("Loading Audit to Table"))
@@ -290,7 +203,6 @@ def load_audit_table(self, *args, **kwargs) -> None:
         self.auditTable.setItem(row, 1, QTableWidgetItem(entry.get("event", "")))
         self.auditTable.setItem(row, 2, QTableWidgetItem(entry.get("description", "")))
 
-
 # Export the user's audit log to a UTF-8 .txt file, with a simple tab-separated format.
 #  Reads directly from the source to include all entries.
 def on_export_audit_clicked(self, *args, **kwargs):
@@ -349,57 +261,3 @@ def on_export_audit_clicked(self, *args, **kwargs):
     except Exception as e:
         msg = self.tr("Failed to export:") + f"\n{e}"
         QMessageBox.critical(self, self.tr("Export Audit"), msg)
-
-
-# ==============================
-# --- preflight popup to user
-# ==============================
-
-def _load_user_preflight_overrides(self, username: str) -> dict:
-    user = username
-    # Login-time prefs are stored per-user in the *.sp file.
-    user_sp = load_security_prefs(user) or {}
-    enable_preflight = bool(
-        user_sp.get("enable_preflight_login",
-                    user_sp.get("enable_preflight", True))
-    )
-    # Master AV toggle (login)
-    if "check_av_login" in user_sp:
-        av_enabled = bool(user_sp.get("check_av_login", False))
-    elif "check_av" in user_sp:
-        av_enabled = bool(user_sp.get("check_av", False))
-    else:
-        try:
-            av_enabled = bool(get_user_setting(user, "WinDefCheckbox", False))
-        except TypeError:
-            av_enabled = bool(get_user_setting(user, "WinDefCheckbox"))
-
-    # quick-scan (login)
-    if "defender_quick_scan_login" in user_sp:
-        quick_scan = bool(user_sp.get("defender_quick_scan_login", False))
-    elif "defender_quick_scan" in user_sp:
-        quick_scan = bool(user_sp.get("defender_quick_scan", False))
-    else:
-        try:
-            quick_scan = bool(get_user_setting(user, "DefenderQuickScan", False))
-        except TypeError:
-            quick_scan = bool(get_user_setting(user, "DefenderQuickScan"))
-    try:
-        vendor_prompt = bool(get_user_setting(user, "av_prompt_on_login", True))
-    except TypeError:
-        vendor_prompt = bool(get_user_setting(user, "av_prompt_on_login"))
-
-    # If master is off, force all AV prompts off
-    if not av_enabled:
-        quick_scan = False
-        vendor_prompt = False
-
-    return {
-        "enable_preflight": enable_preflight,
-        "check_av": av_enabled,
-        "defender_quick_scan": quick_scan,
-        "offer_vendor_ui_on_login": vendor_prompt,
-        "block_on_av_absent": True,
-        "block_on_scan_issue": True,
-        "debug": True,
-    }

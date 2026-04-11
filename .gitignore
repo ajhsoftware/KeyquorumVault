@@ -5,7 +5,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+*.pdf
 # C extensions
 *.so
 
@@ -17,6 +17,7 @@ __pycache__/
 tools/*.tar.gz
 tools/*.zip
 *.tar.gz
+**/src/main/python/tools/
 
 # Python
 __pycache__/
@@ -28,6 +29,8 @@ tools/check_manifest_portable.py
 tools/collect_licenses.py
 tools/make_portable_blob.py
 tools/random_secrat.py
+tools/demo_seed.py
+
 
 # Env / secrets (VERY important)
 .env
@@ -47,6 +50,7 @@ msix/
 
 app/owner.py
 **/app/owner.py
+
 # Packaged portable vault / exports (never commit)
 *.kqpkg
 

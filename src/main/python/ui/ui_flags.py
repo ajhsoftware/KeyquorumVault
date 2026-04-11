@@ -36,8 +36,6 @@ try:
 except Exception:  # pragma: no cover
     set_user_setting = None
 
-from security.preflight import save_security_prefs, load_security_prefs 
-
 # ==============================
 # --- pre warn message box
 # ==============================
@@ -766,32 +764,6 @@ def maybe_warn_windows_clipboard(w, copy=True) -> None:
             settings.setValue("suppress_clipboard_warn", True)
         except Exception:
             pass
-
-
-# ==============================
-# --- preflight 
-# ==============================
-def maybe_prompt_enable_preflight(self, parent=None):
-    prefs = load_security_prefs()
-    if prefs.get("preflight_prompted", False):
-        return
-
-    box = QMessageBox(parent or self)
-    box.setWindowTitle(self.tr("Security Preflight"))
-    box.setIcon(QMessageBox.Icon.Question)
-    box.setText(self.tr("Enable Security Preflight checks?"))
-    box.setInformativeText(
-        "Preflight can warn you about packet sniffers, debuggers, and other tools "
-        "that increase risk. You can change this later in Settings."
-    )
-    enable_btn = box.addButton(self.tr("Enable (Recommended)"), QMessageBox.ButtonRole.AcceptRole)
-    later_btn  = box.addButton(self.tr("Not Now"), QMessageBox.ButtonRole.RejectRole)
-    box.setDefaultButton(enable_btn)
-    box.exec()
-
-    prefs["preflight_prompted"] = True
-    prefs["enable_preflight"] = (box.clickedButton() is enable_btn)
-    save_security_prefs(prefs)
 
 
 # ==============================

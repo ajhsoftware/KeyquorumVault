@@ -2,6 +2,7 @@ import os
 
 # set using powershell: [System.Environment]::SetEnvironmentVariable("KEYQUORUM_DEV", "1", "User")
 # check: echo $env:KEYQUORUM_DEV
+
 dev_set = False
 STRICT_NATIVE_CORE = True
 DEBUG_ON = False
@@ -21,7 +22,7 @@ def set_dev_values() -> bool:
     global DEBUG_ON, STRICT_NATIVE_CORE
     dev_enabled = is_dev_mode()
     DEBUG_ON = bool(dev_enabled)
-    # Public builds stay strict native even in dev unless changed manually for testing.
+    # builds stay strict native even in dev Testing
     STRICT_NATIVE_CORE = True
     if dev_enabled:
         os.environ["KQ_CONSOLE"] = "1"
@@ -31,5 +32,5 @@ def is_dev() -> bool:
     """Convenience helper for code that wants a function call."""
     return bool(dev_set)
 
-# Initialise once on import so every module sees a consistent value.
+
 set_dev_values()

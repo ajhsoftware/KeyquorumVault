@@ -293,15 +293,16 @@ def load_encrypted(path: str, key_or_session):
                   len(iv) if iv else 0,
                   len(ct) if ct else 0,
                   len(tag) if tag else 0)
-        pt_buf = core.session_decrypt(int(key_or_session), iv, ct, tag)
-        try:
-            pt = bytes(pt_buf)
-        finally:
+
+            pt_buf = core.session_decrypt(int(key_or_session), iv, ct, tag)
             try:
-                core.secure_wipe(pt_buf)
-            except Exception:
-                pass
-        return json.loads(pt.decode("utf-8"))
+                return json.loads(pt_buf)
+            finally:
+                try:
+                    # Best-effort wipe of temporary decrypted buffer.
+                    core.secure_wipe(pt_buf)
+                except Exception as e:
+                    log.warning("secure_wipe failed in load_encrypted: %r", e)
 
     # ---- A) JSON envelope
     if blob[:1] in (b"{", b"["):
@@ -616,6 +617,7 @@ def import_vault_with_password(username: str, password: str, vault_export_path: 
             log.error("[vault_store] import: file not found: %s", src)
             return False
 
+        data = json.loads(src.read_text(encoding="utf-8"))
         data = json.loads(src.read_text(encoding="utf-8"))
 
         # --- identity linkage check (if backup contains fingerprint) ---

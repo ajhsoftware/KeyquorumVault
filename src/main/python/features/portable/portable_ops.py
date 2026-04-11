@@ -273,6 +273,7 @@ def action_move_user_from_usb(self, *args, **kwargs):
 
     # --- clear portable flags ---
     try:
+        from auth.login.login_handler import set_user_setting
         set_user_setting(username, "portable_enforced", False)
         set_user_setting(username, "portable_root", "")
         log.info(f"[MOVE_FROM_USB] Cleared portable flags for {username}")
@@ -360,9 +361,7 @@ def action_move_user_to_usb(self, *args, **kwargs):
         # Bind installed app to USB paths (best-effort)
         if install_binding_overrides:
             try:
-                # NOTE: correct signature is (username, user_dir: Path)
                 install_binding_overrides(username, user_dir)
-
                 log.info(f"[UI] install_binding_overrides succeeded for user={username} at {user_dir}")
             except Exception as e:
                 log.error(f"[UI] install_binding_overrides failed: {e}")

@@ -140,12 +140,8 @@ def per_user_root(username: str, *, ensure_parent: bool = False):
 from features.portable.portable_user_usb import install_binding_overrides
 from workers.worker_status import Worker 
 from ui.frameless_window import FramelessWindowMixin
-from security.preflight import (
-    load_security_prefs, save_security_prefs, add_process_to_watch, add_allowlist_process,
-    run_preflight_checks, ensure_preflight_defaults,)
 from security.secure_audit import is_locked_out, log_event_encrypted
 from auth.change_pw.change_password_dialog import ChangePasswordDialog
-from security.security_prefs_dialog import SecurityPrefsDialog
 
 from catalog_category.category_editor import patch_mainwindow_class
 # --- passkey ---
@@ -1409,14 +1405,10 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         *,
         baseline_ok: bool,
         manifest_ok: bool,
-        preflight_ok: bool,
-        av_ok: bool,
         twofa_on: bool,
         yubikey_on: bool,
         backups_ok: bool,
         strong_password: bool,
-        system_ok: bool,
-        updates_ok: bool,
         clipboard_ok: bool,
         vault_ok: bool,
     ) -> None:
@@ -1425,14 +1417,10 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         return __update_security_score(self,
         baseline_ok=baseline_ok,
         manifest_ok=manifest_ok,
-        preflight_ok=preflight_ok,
-        av_ok=av_ok,
         twofa_on=twofa_on,
         yubikey_on=yubikey_on,
         backups_ok=backups_ok,
         strong_password=strong_password,
-        system_ok=system_ok,
-        updates_ok=updates_ok,
         clipboard_ok=clipboard_ok,
         vault_ok=vault_ok,)
 
@@ -3266,7 +3254,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def on_tab_changed(self, index):
         widget = self.mainTabs.widget(index)
         if widget.objectName() == "settingsTab":
-            self.load_setting()
+            self.load_setting(first_load=False)
 
     # --- force logout (timer hit 0 or safety check)
     def force_logout(self):
@@ -3417,7 +3405,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         from auth.delete_account_dialog import open_delete_account_dialog as _impl
         return _impl(self, username)
 
-    # --- open change password window
     def open_change_password_dialog(self):
         self.reset_logout_timer()
         who =  self.tr("Change Password")
@@ -3442,7 +3429,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
         self._track_window(dialog)
         dialog.exec()
 
-    # --- open reminders window ---
     def open_reminders_dialog(self):
         """Open the Reminders panel (in-app list of due/overdue reminders)."""
         try:
@@ -3472,54 +3458,7 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def open_add_entry_dialog(self, *args, **kwargs):
         from vault_store.vault_ui_ops import open_add_entry_dialog as _impl
         return _impl(self, *args, **kwargs)
-
-    def open_security_prefs(self, username: str | None = None):
-        """Open security prefs. If username is None, use active user."""
-        self.set_status_txt(self.tr("Opening security prefs"))
-        self.reset_logout_timer()
-        username = (username or self._active_username() or "").strip()
-        if not username:
-            who = self.tr("Security Preferences")
-            show_message_user_login(self, who)
-            #return
-
-        try:
-            dlg = SecurityPrefsDialog(username=username, parent=self)
-        except TypeError:
-            # - back-compat fallback
-            dlg = SecurityPrefsDialog(parent=self)
-            if hasattr(dlg, "setUsername"):
-                dlg.setUsername(username)
-
-        self._track_window(dlg)
-
-        result = dlg.exec_() if hasattr(dlg, "exec_") else dlg.exec()
-        if result:
-            try:
-                if hasattr(self, "preflight_reload_security_cache"):
-                    self.preflight_reload_security_cache(username)
-            except Exception:
-                pass
-
-    def open_security_prefs_startup(self):
-        """Open GLOBAL (default) preflight prefs (startup settings)."""
-        self.open_security_prefs("default")
-
-    def run_preflight_now_startup(self):
-        """Run preflight using GLOBAL default prefs (startup settings)."""
-        try:
-            from security.preflight import load_security_prefs, run_preflight_checks
-            prefs = load_security_prefs(None)  # None -> "default" via _prefs_path :contentReference[oaicite:1]{index=1}
-            ok = run_preflight_checks(parent=self, prefs=prefs)
-            return ok
-        except Exception as e:
-            try:
-                from qtpy.QtWidgets import QMessageBox
-                QMessageBox.critical(self, "Preflight failed", f"Startup preflight failed:\n\n{e}")
-            except Exception:
-                pass
-            return False
-
+   
     # --- open password generator window
     def show_password_generator_dialog_1(self, target_field=None, confirm_field=None):
         show_password_generator_dialog(target_field=target_field, confirm_field=confirm_field)
@@ -3532,8 +3471,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def load_vault_table(self, *args, **kwargs):
         from vault_store.vault_ui_ops import load_vault_table as _impl
         return _impl(self, *args, **kwargs)
-
-
 
     def update_table(self, category):
         log.debug(str(f"{kql.i('vault')} [UPDATE TABLE] Update table called with category: {category}"))
@@ -3554,7 +3491,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
             except Exception as e:
                 log.error(str(f"{kql.i('vault')} [REFRESH EDIT] Category editor refresh failed: {e}"))
 
-    # --- new
     def _install_vault_reload_debouncer(self):
         if getattr(self, "_vault_reload_timer", None) is None:
             self._vault_reload_timer = QTimer(self)
@@ -4155,9 +4091,9 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     # --- sets and load all settings (called after successful_login)
     # ==============================
     
-    def load_setting(self, *args, **kwargs):
+    def load_setting(self, first_load=True):
         from ui.settings_ops import load_setting as _impl
-        return _impl(self, *args, **kwargs)
+        return _impl(self, first_load=first_load)
 
     def _wire_spin(self, spin, handler, cast=float):
         from app.on_setting_change_ops import _wire_spin as _impl
@@ -5603,9 +5539,8 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
 
 
     # ==============================
-    # --- serecty ---
-    # ==============================
     # --- Basline check
+    # ==============================
     def _shorten_path(self, p: str) -> str:
         """Make long absolute paths easier to read by replacing known roots."""
         try:
@@ -5641,29 +5576,6 @@ class KeyquorumApp(QMainWindow, FramelessWindowMixin,):
     def integrity_check_and_prompt(self, *args, **kwargs):
         from features.security_center.security_center_ops import integrity_check_and_prompt as _impl
         return _impl(self, *args, **kwargs)
-
-    def action_add_suspect(self):
-        self.reset_logout_timer()
-        name, ok = QInputDialog.getText(self, self.tr("Add Watch Process"), self.tr("Process name to watch (e.g., wireshark.exe):"))
-        if ok and name.strip():
-            add_process_to_watch(name.strip())
-
-    def action_add_allow(self):
-        self.reset_logout_timer()
-        name, ok = QInputDialog.getText(self, self.tr("Add Allowlisted Process"), self.tr("Allowlist process name (exact match):"))
-        if ok and name.strip():
-            add_allowlist_process(name.strip())
-
-    # ==============================
-    # --- preflight
-    # ==============================
-    def maybe_prompt_enable_preflight(self, parent=None):
-        from ui.ui_flags import maybe_prompt_enable_preflight as _impl
-        return _impl(self, parent)
-
-    def _load_user_preflight_overrides(self, username: str) -> dict:
-        from security.security_ops import _load_user_preflight_overrides as _impl
-        return _impl(self, username)
 
 
     # ==============================
@@ -6155,15 +6067,6 @@ def main() -> int:
             QCoreApplication.quit()
             return
 
-        # Deferred preflight
-        try:
-            ensure_preflight_defaults()
-            if not run_preflight_checks(is_dev=False, parent=w):
-                QCoreApplication.quit()
-                return
-        except Exception as e:
-            log.exception("Deferred preflight crashed")
-            QMessageBox.warning(w, w.tr("Preflight"), f"Preflight crashed:\n{e}\nContinuing…")
 
     # Run the heavy checks right after first event loop tick
     QTimer.singleShot(0, _run_post_show_checks)

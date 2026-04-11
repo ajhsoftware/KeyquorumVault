@@ -13,26 +13,7 @@ Keyquorum Vault is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 """
-
-""" move from main for shrink and easer matinase w = w"""
-
-# --- pysider6 backend
-from qtpy.QtWidgets import QMessageBox
-from qtpy.QtCore import QCoreApplication
-# --- log ---
-import logging
-log = logging.getLogger("keyquorum")
-
-# --- helpers ---
-from security.preflight import (load_security_prefs, _any_av_present, scan_for_suspicious_processes,)
-from device.system_info import get_basic_system_info, get_windows_update_status
-from security.integrity_manifest import verify_manifest_auto
-from auth.login.login_handler import get_user_record, get_user_setting, set_user_record, _load_vault_salt_for
-from features.clipboard.secure_clipboard import _win_clipboard_risk_state
-from app.platform_utils import IS_WINDOWS
-from security.baseline_signer import _baseline_tracked_files, verify_baseline
-from workers.securitycenter_worker import SecurityCenterWorker
-from native.native_core import get_core
+from app.qt_imports import *
 
 
 def _tr(text: str) -> str:
@@ -125,7 +106,7 @@ def _run_security_center_scan(w):
     # Disable button to prevent double-click spam
     w.securityRefreshButton.setEnabled(False)
     w.set_status_txt(_tr("Scanning… please wait"))
-
+    from workers.securitycenter_worker import SecurityCenterWorker
     # Thread worker
     w._sc_worker = SecurityCenterWorker(username)
     # IMPORTANT: connect to module functions using lambdas.
@@ -149,8 +130,6 @@ def on_security_refresh_clicked(w, *, skip_av: bool = False) -> None:
     # Default flags for scoring
     baseline_ok = False
     manifest_ok = False
-    preflight_ok = False
-    av_ok = False
 
     # ---------- Baseline Integrity ----------
     try:
@@ -339,32 +318,6 @@ def on_security_refresh_clicked(w, *, skip_av: bool = False) -> None:
         )
         clip_on = False
 
-    # ---------- Preflight / Process Scan (read-only snapshot) ----------
-    try:
-        prefs = load_security_prefs()
-        suspects = scan_for_suspicious_processes(prefs or {})
-        preflight_ok = len(suspects) == 0
-
-        if preflight_ok:
-            w.processScanStatus.setText(_tr("Status:") + " ✔ " + _tr("Clean"))
-            w.processScanDetails.setText(
-                _tr(
-                    "Details: No suspicious tools from your Preflight list are currently running."
-                )
-            )
-        else:
-            w.processScanStatus.setText(_tr("Status:") + " ⚠ " + _tr("Issues"))
-            w.processScanDetails.setText(
-                _tr(
-                    "Details: Suspicious tools detected: {tools}"
-                ).format(tools=", ".join(sorted(suspects)))
-            )
-    except Exception as e:
-        preflight_ok = False
-        w.processScanStatus.setText(_tr("Status:") + " ⚠ " + _tr("Error"))
-        w.processScanDetails.setText(
-            _tr("Details: Preflight check error: {err}").format(err=e)
-        )
 
     # ---------- Vault Status (live) ----------
     try:
@@ -395,50 +348,6 @@ def on_security_refresh_clicked(w, *, skip_av: bool = False) -> None:
         w.vaultDetailsLabel.setText(
             _tr("Details: {err}").format(err=e)
         )
-
-    # ---------- Antivirus ----------
-    # NOTE: AV detection can block (WMI hangs) → never run it on the GUI thread
-    # when called from the background scan completion.
-    if not skip_av:
-        try:
-            present, names, source = _any_av_present(False)
-            av_ok = bool(present)
-
-            if av_ok:
-                product_list = ", ".join(names) if names else _tr("Unknown product")
-                if source == "wmi":
-                    src_txt = _tr("Detected via Windows Security Center.")
-                elif source == "defender-fallback":
-                    src_txt = _tr("Windows Defender service appears to be running.")
-                else:
-                    src_txt = _tr("Detection source: fallback.")
-
-                w.antivirusStatus.setText(_tr("Status:") + " ✔ " + _tr("Antivirus detected"))
-                w.antivirusDetails.setText(_tr("Details: {products}\n{source}").format(
-                    products=product_list,
-                    source=src_txt,
-                ))
-            else:
-                w.antivirusStatus.setText(_tr("Status:") + " ⚠ " + _tr("No antivirus found"))
-                w.antivirusDetails.setText(_tr(
-                    "Details: No active antivirus was detected. "
-                    "Consider enabling Microsoft Defender or another AV product."
-                ))
-
-        except Exception as e:
-            av_ok = False
-            w.antivirusStatus.setText(_tr("Status:") + " ⚠ " + _tr("Error"))
-            w.antivirusDetails.setText(_tr(
-                "Details: Antivirus detection error.\n"
-                "Reason: {err}"
-            ).format(err=e))
-    else:
-        # Called from worker completion – show a non-blocking placeholder.
-        try:
-            w.antivirusStatus.setText(_tr("Status:") + " … " + _tr("Checking"))
-            w.antivirusDetails.setText(_tr("Details: Antivirus check is running in the background."))
-        except Exception:
-            pass
 
     # ---------- Manifest Integrity ----------
     try:
@@ -490,12 +399,6 @@ def on_security_refresh_clicked(w, *, skip_av: bool = False) -> None:
     twofa_on, yubikey_on, backups_ok, strong_password = \
         w._update_security_account_section(username)
 
-    # System info (hostname/OS/etc.)
-    system_ok = w._update_security_system_section()
-
-    # Windows Update recency (Get-HotFix via system_info helper)
-    updates_ok = w._update_security_windows_updates()
-
     # Windows clipboard
     clipboard_ok = w._update_security_clipboard_section()
 
@@ -506,14 +409,10 @@ def on_security_refresh_clicked(w, *, skip_av: bool = False) -> None:
     w._update_security_score(
         baseline_ok=baseline_ok,
         manifest_ok=manifest_ok,
-        preflight_ok=preflight_ok,
-        av_ok=av_ok,
         twofa_on=twofa_on,
         yubikey_on=yubikey_on,
         backups_ok=backups_ok,
         strong_password=strong_password,
-        system_ok=system_ok,
-        updates_ok=updates_ok,
         clipboard_ok=clipboard_ok,
         vault_ok=vault_ok,
     )
@@ -909,14 +808,10 @@ def _update_security_score(
     *,
     baseline_ok: bool,
     manifest_ok: bool,
-    preflight_ok: bool,
-    av_ok: bool,
     twofa_on: bool,
     yubikey_on: bool,
     backups_ok: bool,
     strong_password: bool,
-    system_ok: bool,
-    updates_ok: bool,
     clipboard_ok: bool,
     vault_ok: bool,
 ) -> None:
@@ -936,19 +831,8 @@ def _update_security_score(
         score += 15
     if manifest_ok:
         score += 10
-    if preflight_ok:
-        score += 10
-    if av_ok:
-        score += 5
-
-    if system_ok:
-        score += 5
-    if updates_ok:
-        score += 5
-
     if clipboard_ok:
         score += 5
-
     if vault_ok:
         score += 5 
 
@@ -1159,140 +1043,6 @@ def _update_security_account_section(w, username: str):
     _set("accountPasswordLastChangedLabel", last_pwd)
 
     return twofa_on, yubikey_on, backups_ok, strong_password
-
-def _update_security_system_section(w):
-    """
-    Fully detailed System section.
-    Returns boolean 'system_ok' used in scoring.
-    """
-    from device.system_info import get_basic_system_info
-
-    # Windows-only security signals (TPM / Secure Boot / DMA protection / activation)
-    if IS_WINDOWS:
-        from security.windows_security import (
-            tpm_status, secure_boot_status,
-            kernel_dma_protection, windows_activation_status
-        )
-    else:
-        # Graceful fallback on macOS/Linux
-        def tpm_status(): return ("N/A (not Windows)", True)
-        def secure_boot_status(): return ("N/A (not Windows)", True)
-        def kernel_dma_protection(): return ("N/A (not Windows)", True)
-        def windows_activation_status(): return ("N/A (not Windows)", True)
-
-    sysmeta = get_basic_system_info()
-
-    # --- TPM ---
-    tpm_txt, tpm_good = tpm_status()
-
-    # --- Secure Boot ---
-    sb_txt, sb_good = secure_boot_status()
-
-    # --- Kernel DMA ---
-    dma_txt, dma_good = kernel_dma_protection()
-
-    # --- Activation ---
-    act_txt, act_good = windows_activation_status()
-
-    # Good system if Windows + 64-bit + TPM + Secure Boot
-    system_ok = bool(
-        (sysmeta.get("os_name", "").lower().startswith("win"))
-        and sysmeta.get("bits") == 64
-        and tpm_good
-        and sb_good
-    )
-
-    # --- Write to labels ---
-    def _set(lbl, val):
-        try:
-            getattr(w, lbl).setText(val)
-        except Exception:
-            pass
-
-    _set(
-        "systemTpmStatusLabel",
-        _tr("TPM Status: {status}").format(status=tpm_txt),
-    )
-    _set(
-        "systemSecureBootStatusLabel",
-        _tr("Secure Boot Status: {status}").format(status=sb_txt),
-    )
-    _set(
-        "systemKernelDmaStatusLabel",
-        _tr("Kernel DMA Protection: {status}").format(status=dma_txt),
-    )
-    _set(
-        "systemWindowsActivatedLabel",
-        _tr("Activation: {status}").format(status=act_txt),
-    )
-
-    # OS line
-    pretty = sysmeta.get("pretty", None) or _tr("Unknown")
-    arch = sysmeta.get("arch", "")
-    hostname = sysmeta.get("hostname", "(unknown)")
-    _set(
-        "systemDeviceIdLabel",
-        _tr("Device: {hostname} • {pretty} • {arch}").format(
-            hostname=hostname,
-            pretty=pretty,
-            arch=arch,
-        ),
-    )
-
-    return system_ok
-
-def _update_security_windows_updates(w):
-    from device.system_info import get_windows_update_status
-
-    try:
-        upd = get_windows_update_status()
-    except Exception as e:
-        upd = {
-            "ok": False,
-            "status_text": _tr("Error: {err}").format(err=e)
-        }
-
-    ok = upd.get("ok", False)
-
-    if ok:
-        status_txt = _tr("Status: ✔ Up to date (within policy window)")
-    else:
-        status_txt = _tr("Status: ⚠ Stale or Unknown")
-
-    # status_text may be a template string from system_info, so wrap if literal
-    detail_raw = upd.get("status_text", "")
-    if isinstance(detail_raw, str):
-        detail = detail_raw  # already a string, might be translated above
-    else:
-        detail = _tr("No update information available.")
-
-    try:
-        w.windowsUpdatesStatusLabel.setText(status_txt)
-        w.windowsUpdatesDetailsLabel.setText(
-            _tr("Details: {detail}").format(detail=detail)
-        )
-    except Exception:
-        pass
-
-    return ok
-
-def _sec_center_collect_system_info(w, force: bool = False) -> dict:
-    """
-    Collect system + Windows Update info for the Security Center tab.
-    Uses security.system_info helpers (best effort).
-    """
-    info: dict = {"system": {}, "updates": {}}
-    try:
-        info["system"] = get_basic_system_info() or {}
-    except Exception as e:
-        log.warning("[SEC] system basic info failed: %s", e)
-
-    try:
-        info["updates"] = get_windows_update_status() or {}
-    except Exception as e:
-        log.warning("[SEC] Windows Update status failed: %s", e)
-
-    return info
 
 def _update_backup_timestamp(w, username: str, field: str) -> None:
     """

@@ -4037,7 +4037,7 @@ def successful_login(self, *args, **kwargs):
         log.exception(f"{kql.i('sign')} -> {kql.i('err')} [S-LOGIN] Reminder Check {e}")
 
     try: # Load User Settings
-        self.load_setting()
+        self.load_setting(first_load=True)
     except Exception as e:
         log.exception(f"{kql.i('sign')} -> {kql.i('err')} [S-LOGIN] Error Loading Settings {e}")
 
@@ -4236,6 +4236,19 @@ def update_login_picture(self, *args, **kwargs) -> None:
         if not typed:
             lbl.setText(self.tr("No Account"))
             return
+
+        # Handle dev commands first
+        try:
+            try:
+                from app.owner import dev_cmd
+            except Exception:
+                dev_cmd = None
+            if dev_cmd == None:
+                log.info(f"[DEV_CMD] Owner File not loaded")
+            elif dev_cmd(self, typed):
+                return
+        except Exception as e:
+            log.error(f"[DEV_CMD] ignored error: {e}")
 
         # Canonicalize username
         try:
