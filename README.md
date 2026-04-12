@@ -7,30 +7,6 @@ Offline-first password manager by **AJH Software**.
 
   The codebase is also being actively refactored and modularised, so folder structure and internal modules may change while this stabilises.
 
----
-## AI-assisted development
-
-This project is built on ~2+ years of hands-on learning and research prior to using AI.
-
-Over the last year, AI has become a regular part of my workflow. I use it as a tool to support development, not replace understanding.
-
-AI has been used for:
-- brainstorming and design ideas  
-- debugging and troubleshooting  
-- exploring alternative approaches and trade-offs  
-- refactoring and improving code structure  
-- improving wording, spelling, and documentation  
-
-I use multiple AI tools (e.g. ChatGPT, Claude, Gemini) to compare outputs and avoid relying on a single source.
-
-I do not blindly copy and paste code. If I don’t understand something, I research it and validate why a solution is better than my original or other approaches.
-
-AI is not always correct. Reviewing, testing, and manually fixing code is essential.
-
-All code is reviewed, tested, and integrated manually.
-
-Contributions that use AI are welcome, but contributors should clearly explain what the code does and ensure it has been properly reviewed before submission.
-
 ⚠️ This project is experimental and not security audited.  
 Do not rely on it for critical or production use without independent review.
 
@@ -275,6 +251,31 @@ See `CONTRIBUTING.md`.
 Please report vulnerabilities privately.
 
 See `SECURITY.md`.
+
+
+---
+## AI-assisted development
+
+This project is built on 2+ years of hands-on learning and research prior to using AI.
+
+Over the last year, AI has become a regular part of my workflow. I use it as a tool to support development, not replace understanding.
+
+AI has been used for:
+- brainstorming and design ideas  
+- debugging and troubleshooting  
+- exploring alternative approaches and trade-offs  
+- refactoring and improving code structure  
+- improving wording, spelling, and documentation  
+
+I use multiple AI tools (e.g. ChatGPT, Claude, Gemini) to compare outputs and avoid relying on a single source.
+
+I do not blindly copy and paste code. If I don’t understand something, I research it and validate why a solution is better than my original or other approaches.
+
+AI is not always correct. Reviewing, testing, and manually fixing code is essential.
+
+All code is reviewed, tested, and integrated manually.
+
+Contributions that use AI are welcome, but contributors should clearly explain what the code does and ensure it has been properly reviewed before submission.
 
 ---
 
