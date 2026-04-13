@@ -2,13 +2,16 @@
 
 Offline-first password manager by AJH Software not a company, a solo dev learning.
 
-⚠️ Status: Experimental and under active development.
+⚠️ Status: Experimental and under active development, 
+ 
 
 🔒 Security Notice:
 This project has not undergone an independent security audit.
 While security is a core focus, it may contain bugs or weaknesses.
 
-Use at your own risk, and always maintain secure backups of your data.
+Use at your own risk, and always maintain secure backups of your data
+
+Backup functionality is available in the UI under settings > backup
 
 
 ---
