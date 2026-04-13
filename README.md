@@ -1,14 +1,22 @@
 # Keyquorum Vault
 
-Offline-first password manager by **AJH Software**.
+Offline-first password manager by AJH Software not a company, a solo dev learning.
 
-⚠️ **Important:** This project is currently experimental and under active development.  
-   It has not been security audited and is **not recommended for storing real or sensitive passwords** at this stage.
+⚠️ Status: Experimental and under active development.
 
-  The codebase is also being actively refactored and modularised, so folder structure and internal modules may change while this stabilises.
+🔒 Security Notice:
+This project has not undergone an independent security audit.
+While security is a core focus, it may contain bugs or weaknesses.
 
-⚠️ This project is experimental and not security audited.  
-Do not rely on it for critical or production use without independent review.
+Use at your own risk, and always maintain secure backups of your data.
+
+
+---
+
+The codebase is actively evolving, including ongoing refactoring and modularisation.
+Folder structure and internal modules may change as the project stabilises.
+
+⚠️ This project is not recommended for critical or production use without independent review.
 
 ---
 
