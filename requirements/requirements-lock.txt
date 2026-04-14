@@ -3,7 +3,17 @@
 
 # LOCKED dependencies for reproducible builds
 # Install with:
-#   python -m pip install -r requirements/requirements-lock.txt
+# python -m pip install -r requirements/requirements-lock.txt
+
+# Removed Pillow dependency (pillow 11.3.0)
+# Reason: GHSA-whj4-6x5x-4v2j (FITS decompression bomb vulnerability)
+# Impact: Denial of service via malicious FITS image files
+#
+# This Project does not process FITS or untrusted image inputs.
+# Pillow was previously included but is no longer used by the application.
+# It has been removed from project dependencies, and will be fully removed
+# from the build environment in v1.9.1 to reduce attack surface
+# and eliminate unnecessary dependencies.
 
 PySide6==6.9.2
 PySide6_Addons==6.9.2
@@ -16,7 +26,7 @@ urllib3==2.5.0
 charset-normalizer==3.4.3
 idna==3.10
 certifi==2025.8.3
-pillow==11.3.0
+
 psutil==7.2.2
 pyotp==2.9.0
 qasync==0.28.0
