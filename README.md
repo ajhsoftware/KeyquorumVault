@@ -19,19 +19,15 @@ Backup functionality is available in the UI under settings > backup
 The codebase is actively evolving, including ongoing refactoring and modularisation.
 Folder structure and internal modules may change as the project stabilises.
 
-⚠️ This project is not recommended for critical or production use without independent review.
-
----
+⚠️ This project is experimental, not security audited, and under active development.
+It should not be relied upon for critical data without independent review.---
 
 ## 🔐 Overview
-
 Keyquorum Vault is a **privacy-first, offline password manager** designed with a strict local-only security model.
-
 - No required accounts
 - No forced cloud sync
 - No telemetry or hidden network activity
 - Full local encryption and control
-
 All sensitive data is handled locally using authenticated encryption (**AES-GCM**) and a strong KDF (**Argon2id**).
 
 ---
@@ -39,9 +35,8 @@ All sensitive data is handled locally using authenticated encryption (**AES-GCM*
 ## 🚀 Recent Updates (April 2026)
 
 ### 🔒 Security Core
-- Native **C++ DLL is now required** for all sensitive operations  
-- Improved memory handling and key isolation  
-- Removal of Python fallback for cryptographic operations  
+- removing DLL-based crypto
+See SECURITY.md for threat model and security considerations.
 
 ### 🔁 Encryption & Rekeying
 - Safer migration when:
