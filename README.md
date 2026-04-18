@@ -3,16 +3,13 @@
 Offline-first password manager by AJH Software not a company, a solo dev learning.
 
 ⚠️ Status: Experimental and under active development, 
- 
 
 🔒 Security Notice:
 This project has not undergone an independent security audit.
 While security is a core focus, it may contain bugs or weaknesses.
 
 Use at your own risk, and always maintain secure backups of your data
-
 Backup functionality is available in the UI under settings > backup
-
 
 ---
 
@@ -30,6 +27,17 @@ Keyquorum Vault is a **privacy-first, offline password manager** designed with a
 - Full local encryption and control
 All sensitive data is handled locally using authenticated encryption (**AES-GCM**) and a strong KDF (**Argon2id**).
 
+---
+
+## 📸 Screenshots
+### Main Interface
+![Main UI](screenshots/main_ui.png)
+
+### Vault View
+![Vault](screenshots/vault_view.png)
+
+### Settings
+![Settings](screenshots/settings.png)
 ---
 
 ## 🚀 Recent Updates (April 2026)
