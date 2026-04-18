@@ -1,185 +1,140 @@
 # Keyquorum Vault
 
-Offline-first password manager by AJH Software not a company, a solo dev learning.
-
-⚠️ Status: Experimental and under active development, 
-
-🔒 Security Notice:
-This project has not undergone an independent security audit.
-While security is a core focus, it may contain bugs or weaknesses.
-
-Use at your own risk, and always maintain secure backups of your data
-Backup functionality is available in the UI under settings > backup
+Offline-first password manager by AJH Software  
+*(Solo developer project focused on learning and security)*
 
 ---
 
-The codebase is actively evolving, including ongoing refactoring and modularisation.
+## 🔒 Security Notice ⚠️
+
+**Status:** Experimental and under active development
+
+This project has **not undergone an independent security audit**.  
+While security is a core focus, bugs or weaknesses may exist.
+
+Use at your own risk, and always maintain secure backups of your data.  
+Backup functionality is available in the UI under **Settings → Backup**.
+
+> ⚠️ This project should not be relied upon for critical data without independent review.
+
+---
+
+The codebase is actively evolving, including ongoing refactoring and modularisation.  
 Folder structure and internal modules may change as the project stabilises.
 
-⚠️ This project is experimental, not security audited, and under active development.
-It should not be relied upon for critical data without independent review.---
+---
 
-## 🔐 Overview
+## Overview
+
 Keyquorum Vault is a **privacy-first, offline password manager** designed with a strict local-only security model.
-- No required accounts
-- No forced cloud sync
-- No telemetry or hidden network activity
-- Full local encryption and control
+
+- No required accounts  
+- No forced cloud sync  
+- No telemetry or hidden network activity  
+- Full local encryption and control  
+
 All sensitive data is handled locally using authenticated encryption (**AES-GCM**) and a strong KDF (**Argon2id**).
 
 ---
 
-## 📸 Screenshots (Will be updated soon)
-### Main Interface
-![Main UI](screenshots/Screenshot 2025-09-28 133032.png)
+## 📸 Screenshots
 
-### Vault View
-![Vault](screenshots/Screenshot 2025-09-01 151441.png)
-
-### Categury
-![Settings](screenshots/Screenshot 2025-09-28 131533.png)
-
-### ➕ Add / Edit Entries
-![Add Entry](screenshots/Screenshot 2025-09-28 130756.png)
+>  Screenshots are from 2025-09-28 and may be slightly outdated.  
+>  UI is currently being updated as part of a Qt6 migration.
 
 ---
 
-## 🚀 Recent Updates (April 2026)
+###  Main Interface
+![Main UI](screenshots/main_ui.png)
 
-### 🔒 Security Core
-- removing DLL-based crypto
-See SECURITY.md for threat model and security considerations.
+---
 
-### 🔁 Encryption & Rekeying
+###  Vault View
+![Vault](screenshots/vault_view.png)
+
+---
+
+###  Categories
+![Categories](screenshots/category.png)
+
+---
+
+###  Add / Edit Entries
+![Add / Edit](screenshots/add_edit.png)
+
+---
+
+###  Password Generator
+![Password Generator](screenshots/passwordgen.png)
+
+---
+
+##  Recent Updates (April 2026)
+
+###  Security Core
+- DLL-based crypto currently in use  
+- Planned removal in the next update in favour of a simpler, more maintainable Python-based approach  
+- Preflight and antivirus-related checks will also be removed to reduce false positives and improve clarity for users and reviewers  
+- A more reliable and transparent security validation approach may be introduced later  
+
+ See `SECURITY.md` and `threat_model.md `  for threat model and security considerations  
+
+---
+
+###  Encryption & Rekeying
 - Safer migration when:
-  - Changing password
-  - Updating vault security
+  - Changing password  
+  - Updating vault security  
   - Enabling/disabling YubiKey WRAP  
 - Covers:
-  - Vault data
-  - Password history
-  - Trash store
-  - Authenticator store
-
-### 🔐 Vault Security
-- Improved Argon2id handling (KDF v2 support)
-- Better compatibility with future security upgrades
-
-### 🔑 YubiKey Support
-- More reliable WRAP enable/disable flows  
-- Improved rekey safety and session handling  
+  - Vault data  
+  - Password history  
+  - Trash store  
+  - Authenticator store  
 
 ---
 
-### ⚡ Performance
-
-#### Watchtower
-- Major performance improvements (large vaults)
-- Fixed breach detection issues
-- Added smarter caching to reduce repeated checks
-- Reduced false positives (e.g. non-URL categories)
-
-#### CSV Import
-- Handles **10K+ entries smoothly**
-- Improved import speed and UI responsiveness
+###  YubiKey Support
+- Improved WRAP enable/disable flows  
+- More reliable rekey handling  
 
 ---
 
-### 🔔 Notifications & Background Tasks
-- Windows notifications for:
-  - Watchtower changes
-  - Reminders
-- New background worker:
-  - Only alerts on changes (no spam)
+##  What this repository contains
 
----
+- Desktop application (Qt / PySide6 via `qtpy`)  
 
-### 🔄 Sync Improvements
-- More reliable sync across:
-  - NAS
-  - Local folders
-  - Cloud-backed folders (user-selected)
-- Improved:
-  - Sync state visibility
-  - Restore on new devices
-- Better handling of:
-  - Vault
-  - Metadata
-  - Side stores (trash, history, etc.)
+>  Ongoing refactor: migrating to Qt6 while simplifying the codebase.  
+> qtpy abstraction will be reintroduced once the UI stabilises.
 
----
-
-### 🌉 Browser Extension Bridge
-- Secure **signed local authentication**
-- Improved reliability of autofill communication
-- Strict localhost-only communication (`127.0.0.1`)
-
----
-
-### 🧠 Storage Changes
-- Salt is now stored in the **identity file**
-- Removed separate salt file for:
-  - Easier sync
-  - Simpler maintenance
-
----
-
-### 📜 Logging
-- Improved per-user logging
-- Logs now initialise correctly after login
-
----
-
-### 🧹 Codebase
-- Ongoing refactor:
-  - Breaking large files into modules
-  - Improving maintainability
-- Some areas may still be unstable — feedback welcome
-
----
-
-## 🧩 What this repository contains
-
-- Desktop application (Qt / PySide6 via `qtpy`)
-- Vault encryption & storage logic
+- Vault encryption & storage logic  
 - Feature modules:
-  - Watchtower
-  - Reminders
-  - Security Center
-  - Sync system
-- Background workers
+  - Watchtower  
+  - Reminders  
+  - Security Center  
+  - Sync system  
+- Background workers  
 
 ---
 
-## 🛠 Running from source (developer)
+## Dependencies
 
-This project is packaged using **fbs Pro** for Windows builds, but can be run locally.
-
-### Steps:
-1. Create a virtual environment
-2. Install dependencies
-3. Run the app
-
----
-
-### 📦 Suggested dependencies
-
-- `PySide6`
-- `qtpy`
-- `cryptography`
-- `argon2-cffi`
-- `pyotp`
-- `qrcode`
-- `reportlab`
+Core:
+- `PySide6` – Qt6 GUI framework  
+- `qtpy` – abstraction layer (planned reintroduction)  
+- `cryptography` – encryption primitives  
+- `argon2-cffi` – password hashing (KDF)  
+- `pyotp` – TOTP / 2FA support  
+- `qrcode` – QR code generation  
+- `reportlab` – PDF/export features  
 
 Optional:
-- `opencv-python` (QR/camera features)
-- `pywinauto` (Windows automation)
+- `opencv-python` – QR scanning / camera  
+- `pywinauto` – Windows automation  
 
 ---
 
-## 📁 Repository layout
-python/
+##  Repository layout (Updating)
 app/ # App bootstrap & UI
 auth/ # Login, 2FA, YubiKey, device unlock
 features/ # Watchtower, reminders, etc.
@@ -187,65 +142,53 @@ security/ # Audit, baseline, integrity
 vault_store/ # Encryption, storage, import/export
 workers/ # Background workers
 
-
 ---
 
-## 🔐 Security Model
+##  Security Model
 
-Keyquorum is designed as **offline-first**:
+Keyquorum is **offline-first**:
 
-- No automatic cloud sync
-- No remote servers
-- No telemetry
-- No hidden background connections
+- No automatic cloud sync — users must explicitly enable it and choose their own storage (e.g. NAS or cloud folder)  
+- No remote servers  
+- No telemetry  
+- No hidden background connections  
 
 Network activity only occurs when:
-- User explicitly opens a link
-- Browser extension communicates locally
-
+- The user explicitly performs an action  
+- The browser extension communicates locally (`127.0.0.1`)  
 All encryption is performed locally.
 
 ---
 
-## 🧱 Future Architecture
-
-Keyquorum is moving toward a **native security core**:
-
-- Shared C++ "VaultCore"
-- Stronger memory isolation
-- Cross-platform support (future Android)
-- Stable vault format
-
-The current desktop app remains the primary client.
-
----
-
-## 🔐 Security Direction
+##  Security Direction
 
 All future changes will:
 
-- Be open-source and reviewable
-- Avoid hidden network features
-- Maintain backward compatibility where possible
-- Prioritise user control and transparency
+- Be open-source and fully reviewable  
+- Avoid hidden network activity — no outbound connections unless explicitly triggered by the user  
+- Maintain backward compatibility (especially vault data and backups)  
+- Prioritise user control and transparency  
+- Keep users informed through clear and visible notifications  
 
 ---
-## 🌐 site
-https://ajhsoftware.uk
+
+##  Site
+👉 https://ajhsoftware.uk
+
 ---
 
-## 🌐 Browser Extension
+##  Browser Extension
 
 👉 https://github.com/ajhsoftware/Keyquorum-Browser-Extension
 
 Provides secure autofill via local bridge:
-- No cloud communication
-- No credential storage in extension
-- Lock-aware behaviour
+- No cloud communication  
+- No credential storage in extension  
+- Lock-aware behaviour  
 
 ---
 
-## ⚖️ License
+##  License
 
 Licensed under:
 
@@ -253,51 +196,54 @@ Licensed under:
 
 See `LICENSE`.
 
-Third-party notices:
+Third-party notices:  
 `THIRD_PARTY_NOTICES.md`
 
 ---
 
-## 💬 Contributing
+##  Contributing
 
 See `CONTRIBUTING.md`.
 
 ---
 
-## 🚨 Security Reporting
+##  Security Reporting
 
 Please report vulnerabilities privately.
 
 See `SECURITY.md`.
 
-
 ---
-## AI-assisted development
+
+##  AI-assisted development
 
 This project is built on 2+ years of hands-on learning and research prior to using AI.
 
 Over the last year, AI has become a regular part of my workflow. I use it as a tool to support development, not replace understanding.
 
 AI has been used for:
-- brainstorming and design ideas  
-- debugging and troubleshooting  
-- exploring alternative approaches and trade-offs  
-- refactoring and improving code structure  
-- improving wording, spelling, and documentation  
+- Brainstorming and design ideas  
+- Debugging and troubleshooting  
+- Improving spelling and grammar  
+- Exploring alternative approaches and trade-offs  
+- Refactoring and improving code structure  
+- Enhancing wording, clarity, and documentation  
+- Assisting with code review and identifying potential issues  
 
-I use multiple AI tools (e.g. ChatGPT, Claude, Gemini) to compare outputs and avoid relying on a single source.
+I use multiple AI tools (e.g. ChatGPT, Claude, Gemini) to compare outputs and avoid relying on a single source. This allows me to evaluate different approaches and choose what I believe is the best solution.
 
-I do not blindly copy and paste code. If I don’t understand something, I research it and validate why a solution is better than my original or other approaches.
+I do not blindly copy and paste code. If I don’t understand something, I research it and validate it before use.
 
-AI is not always correct. Reviewing, testing, and manually fixing code is essential.
-
+AI is not always correct. Reviewing, testing, and manually fixing code is essential.  
 All code is reviewed, tested, and integrated manually.
 
 Contributions that use AI are welcome, but contributors should clearly explain what the code does and ensure it has been properly reviewed before submission.
 
+AI/ML is a powerful tool, but if not used carefully, it can introduce issues due to inaccuracies.
+
 ---
 
-## 🧠 Author
+##  Author
 
-Developed by **AJH Software** 
+Developed by **AJH Software**  
 Solo developer project focused on privacy, security, and local-first design.
