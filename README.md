@@ -29,15 +29,19 @@ All sensitive data is handled locally using authenticated encryption (**AES-GCM*
 
 ---
 
-## 📸 Screenshots
+## 📸 Screenshots (Will be updated soon)
 ### Main Interface
-![Main UI](screenshots/main_ui.png)
+![Main UI](screenshots/Screenshot 2025-09-28 133032.png)
 
 ### Vault View
-![Vault](screenshots/vault_view.png)
+![Vault](screenshots/Screenshot 2025-09-01 151441.png)
 
-### Settings
-![Settings](screenshots/settings.png)
+### Categury
+![Settings](screenshots/Screenshot 2025-09-28 131533.png)
+
+### ➕ Add / Edit Entries
+![Add Entry](screenshots/Screenshot 2025-09-28 130756.png)
+
 ---
 
 ## 🚀 Recent Updates (April 2026)
