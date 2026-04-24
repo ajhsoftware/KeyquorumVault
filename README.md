@@ -13,6 +13,7 @@ This project has **not undergone an independent security audit**.
 While security is a core focus, bugs or weaknesses may exist.
 
 Use at your own risk, and always maintain secure backups of your data.  
+**ABSOLUTELY NO WARRANTY** is provided, to the fullest extent permitted by applicable law.
 Backup functionality is available in the UI under **Settings → Backup**.
 
 > ⚠️ This project should not be relied upon for critical data without independent review.
