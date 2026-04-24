@@ -64,7 +64,6 @@ This helps protect against ransomware, hardware failure, and data corruption.
 ### Disclaimer
 This project is:
 - Not security audited
-- Under active development
 - Provided **as-is, at your own risk**
 
 Users are responsible for reviewing the code and determining whether it meets their security requirements.
