@@ -1,3 +1,7 @@
+
+pytest
+pytest-qt
+
 # Build tools (fbs / packaging)
 
 fbs==1.2.2
