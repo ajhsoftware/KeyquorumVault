@@ -6,6 +6,8 @@ This Python version of Keyquorum Vault is no longer actively maintained.
 It is experimental and provided *as is*, to be used at your own risk.  
 No guarantees are made regarding security, stability, or data integrity.
 
+This rebuild will take time as I learn a stronger language (Rust) alongside continuing my journey in cybersecurity.
+
 ⚠️ If you are using this version:
 - Keep secure backups of your vault
 - Do not rely on it for critical or production use
@@ -265,15 +267,6 @@ AI has been used for:
 - Assisting with code review and identifying potential issues  
 
 I use multiple AI tools (e.g. ChatGPT, Claude, Gemini) to compare outputs and avoid relying on a single source. This allows me to evaluate different approaches and choose what I believe is the best solution.
-
-I do not blindly copy and paste code. If I don’t understand something, I research it and validate it before use.
-
-AI is not always correct. Reviewing, testing, and manually fixing code is essential.  
-All code is reviewed, tested, and integrated manually.
-
-Contributions that use AI are welcome, but contributors should clearly explain what the code does and ensure it has been properly reviewed before submission.
-
-AI/ML is a powerful tool, but if not used carefully, it can introduce issues due to inaccuracies.
 
 ---
 
