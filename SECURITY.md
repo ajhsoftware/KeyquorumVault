@@ -6,8 +6,9 @@ Please report security issues privately.
 - Include: affected version, steps to reproduce, impact, and any proof-of-concept.
 
 ## Supported versions
-- 'main' is under active development.
-- Releases are supported on a best-effort basis.
+- This Python version is no longer actively maintained.
+- It is provided for reference and use at your own risk.
+- No security updates or fixes are guaranteed.
 
 ## What not to include
 Do **not** include real vault data, passwords, private keys, or personal information in reports.
