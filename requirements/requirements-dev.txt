@@ -1,6 +1,0 @@
-# Development / testing tools
-
-pytest
-pytest-qt
-black
-flake8
