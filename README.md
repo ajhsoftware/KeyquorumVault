@@ -1,7 +1,40 @@
 # Keyquorum Vault
 
+🚧 **Project Status: On Hold / Rebuild in Progress**
+
+This Python version of Keyquorum Vault is no longer actively maintained.
+It is experimental and provided *as is*, to be used at your own risk.  
+No guarantees are made regarding security, stability, or data integrity.
+
+⚠️ If you are using this version:
+- Keep secure backups of your vault
+- Do not rely on it for critical or production use
+
+---
+
+A full rewrite in **Rust** is planned to improve:
+- Security (memory safety, stronger guarantees)
+- Performance
+- Code quality and maintainability
+
+The initial Rust version will be minimal, focusing only on:
+- Login / authentication
+- Reading from the vault
+- Writing to the vault
+- Core encryption/decryption
+- YubiKey WRAP support (only)
+
+Many features from the Python version will be removed and rebuilt properly over time.
+
+---
+
+If you're interested in the project, feel free to follow development on GitHub.  
+Feedback, ideas, and Rust learning resources are very welcome.
+
+
 Offline-first password manager by AJH Software  
 *(Solo developer project focused on learning and security)*
+
 
 ---
 
