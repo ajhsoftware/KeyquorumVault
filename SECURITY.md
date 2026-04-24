@@ -10,9 +10,6 @@ Please report security issues privately.
 - It is provided for reference and use at your own risk.
 - No security updates or fixes are guaranteed.
 
-## What not to include
-Do **not** include real vault data, passwords, private keys, or personal information in reports.
-
 ## Cryptography Notes
 Keyquorum uses modern cryptographic primitives:
 - Argon2id (via argon2-cffi) for password-based key derivation
