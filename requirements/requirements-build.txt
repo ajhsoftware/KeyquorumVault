@@ -1,3 +1,10 @@
+# Core runtime dependencies (flexible versions)
+
+# Removed Pillow dependency (pillow 11.3.0)
+# Reason: GHSA-whj4-6x5x-4v2j (FITS decompression bomb vulnerability)
+# Impact: Denial of service via malicious FITS image files
+# This Project does not process FITS or untrusted image inputs.
+# Pillow was previously included but is no longer used by the application.
 
 pytest
 pytest-qt
