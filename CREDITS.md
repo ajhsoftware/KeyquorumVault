@@ -9,26 +9,14 @@ This project exists because of careful development, community feedback, and the 
 ## Project Founder & Maintainer
 
 Anthony Hatton  
-Founder of AJH Software  
-Original author and lead maintainer of Keyquorum Vault  
-
+Original author and maintainer of Keyquorum Vault
 Website: https://www.ajhsoftware.uk  
-
-Responsible for:
-- Architecture and security design
-- Cryptography integration
-- Desktop application development
-- Native core direction
-- Packaging and release management
-- Documentation
-- Long-term roadmap
 
 ---
 
 ## Core Development
 
 Keyquorum Vault is currently maintained and directed by Anthony Hatton.
-
 As the project grows, additional core contributors will be listed here.
 
 ---
@@ -37,11 +25,6 @@ As the project grows, additional core contributors will be listed here.
 
 We welcome contributions of all kinds — including code, documentation, translations,
 bug reports, security reviews, and feature suggestions.
-
-Contributors who have merged pull requests are automatically recognised in the
-GitHub repository’s **Contributors** section.
-
-Future named contributors may also be acknowledged here.
 
 ---
 
@@ -53,7 +36,7 @@ Special thanks to:
 - Community members who reported bugs and edge cases
 - Security-focused discussions and reviewers
 - Reddit and privacy-focused communities
-- Individuals who provided honest UI/UX feedback
+- Individuals who provided honest UI/UX code feedback
 
 Your input helps improve both usability and security.
 
