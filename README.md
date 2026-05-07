@@ -3,9 +3,31 @@
 **Project Status: On Hold / Rebuild in Progress**
 
 This Python version of Keyquorum Vault is no longer actively maintained.
-It is experimental and provided *as is*, to be used at your own risk.  
-No guarantees are made regarding security, stability, or data integrity.
+It is experimental and provided *as is*, to be used at your own risk.
 
+"""
+ THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
+APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
+HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM "AS IS" WITHOUT WARRANTY
+OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO,
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM
+IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF
+ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
+"""
+
+##  License
+**
+Licensed under:
+
+**GNU General Public License v3.0 or later (GPL-3.0-or-later)**
+
+See `LICENSE`.
+
+Third-party notices:  
+`THIRD_PARTY_NOTICES.md`
+
+No guarantees are made regarding security, stability, or data integrity.
 This rebuild will take time as I learn a stronger language (Rust) alongside continuing my journey in cybersecurity.
 
 ⚠️ If you are using this version:
@@ -154,19 +176,6 @@ Provides autofill via local bridge:
 - No cloud communication  
 - No credential storage in extension  
 - Lock-aware behaviour  
-
----
-
-##  License
-**
-Licensed under:
-
-**GNU General Public License v3.0 or later (GPL-3.0-or-later)**
-
-See `LICENSE`.
-
-Third-party notices:  
-`THIRD_PARTY_NOTICES.md`
 
 ---
 
