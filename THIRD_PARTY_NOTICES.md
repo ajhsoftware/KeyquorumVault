@@ -18,3 +18,6 @@ https://www.openssl.org/source/license.html
 
 This software includes the Argon2 reference implementation.
 https://github.com/P-H-C/phc-winner-argon2
+
+
+For more, goto licenses/THIRD_PARTY_NOTICES.txt
